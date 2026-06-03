@@ -1,0 +1,447 @@
+@import "tailwindcss";
+
+/*
+ * GitEye design tokens
+ * Dark-first desktop Git client foundation extracted from the approved
+ * reference set in design/reference/. Tokens are semantic so feature screens
+ * can share chrome, dense panels, graph lanes, diff states, and Git status UI.
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* App chrome and surfaces */
+  --color-bg-primary: #070b12;
+  --color-bg-secondary: #0d131c;
+  --color-bg-tertiary: #111a25;
+  --color-bg-surface: #151f2b;
+  --color-bg-elevated: #1a2635;
+  --color-bg-hover: #1d2a3a;
+  --color-bg-selected: #1f5fbf;
+  --color-bg-selected-muted: rgba(47, 111, 219, 0.18);
+  --color-bg-inset: #0a1018;
+  --color-bg-overlay: rgba(4, 8, 13, 0.76);
+
+  /* Borders and dividers */
+  --color-border: #243244;
+  --color-border-muted: #192432;
+  --color-border-strong: #33455d;
+  --color-border-accent: rgba(70, 137, 235, 0.58);
+
+  /* Text hierarchy */
+  --color-text-primary: #eef5ff;
+  --color-text-secondary: #b5c2d3;
+  --color-text-muted: #78879a;
+  --color-text-subtle: #526173;
+  --color-text-inverse: #ffffff;
+
+  /* Interactive and provider accents */
+  --color-accent: #3f84f5;
+  --color-accent-hover: #65a0ff;
+  --color-accent-active: #2f6fdb;
+  --color-focus-ring: rgba(101, 160, 255, 0.72);
+  --color-selection-text: #ffffff;
+
+  /* Status semantics */
+  --color-success: #77cf67;
+  --color-success-bg: rgba(119, 207, 103, 0.13);
+  --color-success-border: rgba(119, 207, 103, 0.34);
+  --color-warning: #e7b84e;
+  --color-warning-bg: rgba(231, 184, 78, 0.14);
+  --color-warning-border: rgba(231, 184, 78, 0.36);
+  --color-danger: #ff6b6b;
+  --color-danger-bg: rgba(255, 107, 107, 0.14);
+  --color-danger-border: rgba(255, 107, 107, 0.38);
+  --color-info: #6aa9ff;
+  --color-info-bg: rgba(106, 169, 255, 0.14);
+  --color-info-border: rgba(106, 169, 255, 0.36);
+  --color-purple: #a98bff;
+  --color-purple-bg: rgba(169, 139, 255, 0.14);
+  --color-purple-border: rgba(169, 139, 255, 0.36);
+
+  /* Git file status aliases retained for existing consumers */
+  --color-added: var(--color-success);
+  --color-added-bg: var(--color-success-bg);
+  --color-deleted: var(--color-danger);
+  --color-deleted-bg: var(--color-danger-bg);
+  --color-modified: var(--color-warning);
+  --color-untracked: #5ed8ff;
+  --color-untracked-bg: rgba(94, 216, 255, 0.13);
+  --color-ignored: var(--color-text-muted);
+  --color-typechange: var(--color-purple);
+
+  /* Commit graph, stack, and timeline lanes */
+  --color-graph-blue: #4f8dff;
+  --color-graph-purple: #a56eff;
+  --color-graph-green: #6ed36b;
+  --color-graph-amber: #e0b14d;
+  --color-graph-red: #ff6b6b;
+  --color-graph-gray: #6d7d91;
+  --size-graph-node: 10px;
+  --size-graph-node-active: 13px;
+  --size-graph-lane: 2px;
+
+
+  /* Component state matrix */
+  --state-rest-bg: transparent;
+  --state-hover-bg: var(--color-bg-hover);
+  --state-active-bg: var(--color-bg-selected-muted);
+  --state-selected-bg: var(--color-bg-selected);
+  --state-disabled-opacity: 0.45;
+  --state-loading-opacity: 0.72;
+  --state-danger-bg: var(--color-danger-bg);
+  --state-danger-border: var(--color-danger-border);
+  /* Diff, review, and conflict states */
+  --color-diff-added-bg: rgba(67, 177, 97, 0.17);
+  --color-diff-added-line: rgba(67, 177, 97, 0.28);
+  --color-diff-added-text: #9be58e;
+  --color-diff-deleted-bg: rgba(239, 89, 89, 0.17);
+  --color-diff-deleted-line: rgba(239, 89, 89, 0.28);
+  --color-diff-deleted-text: #ff9b9b;
+  --color-diff-hunk-bg: rgba(63, 132, 245, 0.15);
+  --color-diff-hunk-text: #9bc2ff;
+  --color-conflict-current-bg: rgba(63, 132, 245, 0.16);
+  --color-conflict-incoming-bg: rgba(169, 110, 255, 0.16);
+  --color-conflict-result-bg: rgba(119, 207, 103, 0.13);
+
+  /* Typography */
+  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, Consolas, monospace;
+  --font-size-ui: 13px;
+  --font-size-caption: 11px;
+  --font-size-title: 18px;
+  --line-height-ui: 1.42;
+  --letter-spacing-label: 0.08em;
+
+  /* Density and sizing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --size-toolbar: 50px;
+  --size-statusbar: 28px;
+  --size-row-compact: 30px;
+  --size-row: 36px;
+  --size-control: 32px;
+  --size-sidebar: 264px;
+  --size-panel-min: 280px;
+
+  /* Radius */
+  --radius-window: 12px;
+  --radius-panel: 10px;
+  --radius-card: 8px;
+  --radius-control: 7px;
+  --radius-badge: 5px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 28px rgba(0, 0, 0, 0.22);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 60px rgba(0, 0, 0, 0.42);
+  --shadow-popover: 0 18px 46px rgba(0, 0, 0, 0.48);
+  --shadow-drag: 0 18px 42px rgba(0, 0, 0, 0.38), 0 0 0 1px var(--color-border-accent);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-primary: #edf1f6;
+  --color-bg-secondary: #f7f9fc;
+  --color-bg-tertiary: #ffffff;
+  --color-bg-surface: #f1f4f8;
+  --color-bg-elevated: #ffffff;
+  --color-bg-hover: #e7edf5;
+  --color-bg-selected: #246bdb;
+  --color-bg-selected-muted: rgba(36, 107, 219, 0.12);
+  --color-bg-inset: #e8edf4;
+  --color-bg-overlay: rgba(248, 250, 252, 0.82);
+
+  --color-border: #cdd7e4;
+  --color-border-muted: #dde5ef;
+  --color-border-strong: #b8c5d5;
+  --color-border-accent: rgba(36, 107, 219, 0.46);
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #405064;
+  --color-text-muted: #6f7f92;
+  --color-text-subtle: #96a3b2;
+  --color-text-inverse: #ffffff;
+
+  --color-accent: #246bdb;
+  --color-accent-hover: #1f5fc4;
+  --color-accent-active: #1a55ad;
+  --color-focus-ring: rgba(36, 107, 219, 0.5);
+  --color-selection-text: #ffffff;
+
+  --color-success: #2e8b3f;
+  --color-success-bg: rgba(46, 139, 63, 0.12);
+  --color-success-border: rgba(46, 139, 63, 0.28);
+  --color-warning: #a86d00;
+  --color-warning-bg: rgba(168, 109, 0, 0.13);
+  --color-warning-border: rgba(168, 109, 0, 0.3);
+  --color-danger: #cc3636;
+  --color-danger-bg: rgba(204, 54, 54, 0.12);
+  --color-danger-border: rgba(204, 54, 54, 0.3);
+  --color-info: #246bdb;
+  --color-info-bg: rgba(36, 107, 219, 0.12);
+  --color-info-border: rgba(36, 107, 219, 0.3);
+  --color-purple: #7b55d9;
+  --color-purple-bg: rgba(123, 85, 217, 0.12);
+  --color-purple-border: rgba(123, 85, 217, 0.3);
+
+  --color-added: var(--color-success);
+  --color-added-bg: var(--color-success-bg);
+  --color-deleted: var(--color-danger);
+  --color-deleted-bg: var(--color-danger-bg);
+  --color-modified: var(--color-warning);
+  --color-untracked: #047a9c;
+  --color-untracked-bg: rgba(4, 122, 156, 0.12);
+  --color-ignored: var(--color-text-muted);
+  --color-typechange: var(--color-purple);
+
+  --color-graph-blue: #246bdb;
+  --color-graph-purple: #7b55d9;
+  --color-graph-green: #2e8b3f;
+  --color-graph-amber: #a86d00;
+  --color-graph-red: #cc3636;
+  --color-graph-gray: #8a98aa;
+
+  --color-diff-added-bg: rgba(46, 139, 63, 0.14);
+  --color-diff-added-line: rgba(46, 139, 63, 0.24);
+  --color-diff-added-text: #1f6f31;
+  --color-diff-deleted-bg: rgba(204, 54, 54, 0.13);
+  --color-diff-deleted-line: rgba(204, 54, 54, 0.24);
+  --color-diff-deleted-text: #a82828;
+  --color-diff-hunk-bg: rgba(36, 107, 219, 0.12);
+  --color-diff-hunk-text: #1f5fc4;
+  --color-conflict-current-bg: rgba(36, 107, 219, 0.13);
+  --color-conflict-incoming-bg: rgba(123, 85, 217, 0.13);
+  --color-conflict-result-bg: rgba(46, 139, 63, 0.11);
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.78) inset, 0 12px 28px rgba(31, 42, 68, 0.08);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.86) inset, 0 22px 60px rgba(31, 42, 68, 0.14);
+  --shadow-popover: 0 18px 46px rgba(31, 42, 68, 0.18);
+  --shadow-drag: 0 18px 42px rgba(31, 42, 68, 0.18), 0 0 0 1px var(--color-border-accent);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+html {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: var(--line-height-ui);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background:
+    radial-gradient(circle at 28% 0%, rgba(63, 132, 245, 0.11), transparent 32%),
+    linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 42%);
+  color: var(--color-text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-ui);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--color-bg-selected);
+  color: var(--color-selection-text);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-border-strong) 74%, transparent);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-muted) 72%, transparent);
+  background-clip: content-box;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Desktop density helpers shared by reference screens */
+.giteye-shell {
+  min-width: min(100vw, 1240px);
+  min-height: min(100vh, 800px);
+  background: var(--color-bg-primary);
+}
+
+.giteye-toolbar {
+  min-height: var(--size-toolbar);
+}
+
+.giteye-statusbar {
+  min-height: var(--size-statusbar);
+}
+
+.giteye-sidebar {
+  width: var(--size-sidebar);
+}
+
+.giteye-row {
+  min-height: var(--size-row);
+}
+
+.giteye-row-compact {
+  min-height: var(--size-row-compact);
+}
+
+.giteye-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-bg-tertiary);
+  box-shadow: var(--shadow-panel);
+}
+
+.giteye-card {
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-card);
+  background: var(--color-bg-surface);
+}
+
+.giteye-control {
+  min-height: var(--size-control);
+  border-radius: var(--radius-control);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.giteye-control:hover:not(:disabled) {
+  background: var(--state-hover-bg);
+}
+
+.giteye-control:active:not(:disabled),
+.giteye-control[data-state="active"] {
+  background: var(--state-active-bg);
+}
+
+.giteye-control[data-state="selected"] {
+  background: var(--state-selected-bg);
+  color: var(--color-selection-text);
+}
+
+.giteye-control:disabled,
+.giteye-control[data-state="disabled"] {
+  cursor: not-allowed;
+  opacity: var(--state-disabled-opacity);
+}
+
+.giteye-control[data-tone="danger"] {
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
+  color: var(--color-danger);
+}
+
+.giteye-section-label {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 650;
+  letter-spacing: var(--letter-spacing-label);
+  text-transform: uppercase;
+}
+
+.giteye-selection {
+  background: var(--color-bg-selected-muted);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.giteye-drag-elevated {
+  box-shadow: var(--shadow-drag);
+}
+
+.giteye-graph-node {
+  width: var(--size-graph-node);
+  height: var(--size-graph-node);
+  border: var(--size-graph-lane) solid var(--color-graph-blue);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-tertiary);
+}
+
+.giteye-graph-node-active {
+  width: var(--size-graph-node-active);
+  height: var(--size-graph-node-active);
+  background: var(--color-graph-blue);
+  box-shadow: 0 0 0 3px rgba(79, 141, 255, 0.18);
+}
+
+.giteye-diff-added {
+  background: var(--color-diff-added-bg);
+  color: var(--color-diff-added-text);
+}
+
+.giteye-diff-deleted {
+  background: var(--color-diff-deleted-bg);
+  color: var(--color-diff-deleted-text);
+}

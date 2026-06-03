@@ -1,0 +1,583 @@
+import { type ComponentType, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  Bell,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  Clock,
+  Code2,
+  FolderGit2,
+  FolderOpen,
+  GitBranch,
+  GitFork,
+  Github,
+  Gitlab,
+  Home,
+  Layers3,
+  MonitorCog,
+  MoreHorizontal,
+  Package,
+  Plus,
+  Search,
+  Server,
+  Sparkles,
+  Star,
+  XCircle,
+} from "lucide-react";
+import { useOpenRepository, useRecentRepositories } from "../../hooks/useRepository";
+import { cn } from "../../lib/cn";
+import { formatRelativeTime } from "../../lib/format";
+import { LoadingSpinner } from "../common/LoadingSpinner";
+
+const metricCards = [
+  { label: "Active Pull Requests", value: "6", detail: "3 awaiting review", icon: GitFork, tone: "text-[var(--color-info)]" },
+  { label: "Local Changes", value: "12", detail: "Across 4 repositories", icon: Code2, tone: "text-[var(--color-success)]" },
+  { label: "Worktrees", value: "3", detail: "2 busy", icon: Layers3, tone: "text-purple-300" },
+  { label: "Submodules", value: "3", detail: "2 out of date", icon: Package, tone: "text-[var(--color-accent)]" },
+];
+
+const workspaceLinks = [
+  { name: "acme/web-app", icon: Github, tone: "text-sky-300" },
+  { name: "acme/api", icon: Gitlab, tone: "text-[var(--color-success)]" },
+  { name: "acme/design-system", icon: GitBranch, tone: "text-purple-300" },
+];
+
+const remotes = [
+  { name: "GitHub", detail: "acme-inc", count: 32, icon: Github, tone: "text-[var(--color-text-secondary)]" },
+  { name: "GitLab", detail: "acme-group", count: 18, icon: Gitlab, tone: "text-orange-400" },
+  { name: "Bitbucket", detail: "acme", count: 7, icon: GitFork, tone: "text-[var(--color-accent)]" },
+  { name: "Azure DevOps", detail: "acme", count: 12, icon: Server, tone: "text-blue-400" },
+];
+
+const favoriteRepos = [
+  { name: "web-app", owner: "acme/web-app", branch: "main", last: "2m ago", tone: "text-sky-300", icon: Github },
+  { name: "api", owner: "acme/api", branch: "develop", last: "15m ago", tone: "text-[var(--color-success)]", icon: Gitlab },
+  { name: "design-system", owner: "acme/design-system", branch: "main", last: "2h ago", tone: "text-purple-300", icon: GitBranch },
+  { name: "infra", owner: "acme/infra", branch: "main", last: "1d ago", tone: "text-orange-300", icon: MonitorCog },
+  { name: "docs", owner: "acme/docs", branch: "main", last: "2d ago", tone: "text-amber-300", icon: FolderGit2 },
+];
+
+const demoRepos = [
+  { name: "web-app", owner: "acme/web-app", branch: "main", last: "2m ago", added: "+42", deleted: "-8", tone: "text-sky-300", icon: Github },
+  { name: "api", owner: "acme/api", branch: "develop", last: "15m ago", added: "+18", deleted: "-3", tone: "text-[var(--color-success)]", icon: Gitlab },
+  { name: "checkout-flow", owner: "acme/web-app", branch: "feature/checkout-flow", last: "1h ago", added: "+31", deleted: "-4", tone: "text-sky-300", icon: Github },
+  { name: "design-system", owner: "acme/design-system", branch: "main", last: "2h ago", added: "+5", deleted: "-1", tone: "text-purple-300", icon: GitBranch },
+  { name: "mobile-app", owner: "acme/mobile", branch: "release/1.4.0", last: "3h ago", added: "+27", deleted: "-2", tone: "text-orange-300", icon: FolderGit2 },
+];
+
+const activitySections = [
+  {
+    title: "Pushes",
+    rows: [
+      { avatar: "JD", title: "feat(checkout): add payment method step", detail: "Jane Doe pushed to feature/checkout-flow", time: "2h ago" },
+      { avatar: "JS", title: "fix(cart): handle empty cart state", detail: "John Smith pushed to main", time: "5h ago" },
+      { avatar: "JD", title: "docs: update checkout docs", detail: "Jane Doe pushed to docs/update-checkout", time: "1d ago" },
+    ],
+  },
+  {
+    title: "Pull Requests",
+    rows: [
+      { avatar: "JD", title: "Add payment method step", detail: "#20 opened by Jane Doe", time: "2 reviews" },
+      { avatar: "JS", title: "Refactor order summary", detail: "#18 merged by John Smith", time: "Merged" },
+      { avatar: "AK", title: "Add promo code support", detail: "#19 opened by John Smith", time: "1 review" },
+    ],
+  },
+  {
+    title: "Reviews",
+    rows: [
+      { avatar: "AK", title: "Reviewed #20 (Add payment method step)", detail: "Alex Kim approved", time: "1h ago" },
+      { avatar: "TL", title: "Commented on #18 (Refactor order summary)", detail: "Taylor Lee", time: "3h ago" },
+      { avatar: "JP", title: "Requested changes on #17", detail: "Jamie Park", time: "5h ago" },
+    ],
+  },
+];
+
+const checkRows = [
+  { name: "web-app / CI", branch: "main", status: "Passed", icon: CheckCircle2, tone: "text-[var(--color-success)]", time: "12m ago" },
+  { name: "api / Tests", branch: "develop", status: "Passed", icon: CheckCircle2, tone: "text-[var(--color-success)]", time: "18m ago" },
+  { name: "design-system / Build", branch: "main", status: "Failed", icon: XCircle, tone: "text-[var(--color-danger)]", time: "45m ago" },
+];
+
+const teamWorkspaces = [
+  { name: "acme/web-app", meta: "3 members", repos: "12 repos", icon: Github, tone: "text-sky-300", online: true },
+  { name: "acme/api", meta: "2 members", repos: "8 repos", icon: Gitlab, tone: "text-[var(--color-success)]", online: false },
+  { name: "acme/design-system", meta: "4 members", repos: "6 repos", icon: GitBranch, tone: "text-purple-300", online: false },
+];
+
+function AvatarStack() {
+  return (
+    <div className="flex -space-x-1.5">
+      {["JD", "AK", "TL"].map((avatar) => (
+        <span
+          key={avatar}
+          className="flex h-5 w-5 items-center justify-center rounded-full border border-[var(--color-bg-secondary)] bg-[var(--color-bg-surface)] text-[8px] font-semibold text-[var(--color-text-secondary)]"
+        >
+          {avatar}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function RepositoryWelcome() {
+  const [path, setPath] = useState("");
+  const openMutation = useOpenRepository();
+  const { data: recents, isLoading: recentsLoading } = useRecentRepositories();
+  const visualRepos =
+    recents && recents.length > 0
+      ? recents.slice(0, 5).map((repo, index) => ({
+          name: repo.name,
+          owner: repo.path,
+          branch: index === 1 ? "develop" : index === 2 ? "feature/checkout-flow" : "main",
+          last: formatRelativeTime(repo.lastOpenedAt),
+          added: demoRepos[index % demoRepos.length].added,
+          deleted: demoRepos[index % demoRepos.length].deleted,
+          tone: demoRepos[index % demoRepos.length].tone,
+          icon: demoRepos[index % demoRepos.length].icon,
+          path: repo.path,
+        }))
+      : demoRepos;
+
+  const handleOpen = () => {
+    const trimmed = path.trim();
+    if (trimmed) {
+      openMutation.mutate(trimmed);
+    }
+  };
+
+  const handleBrowse = async () => {
+    const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
+    if (selected && typeof selected === "string") {
+      setPath(selected);
+      openMutation.mutate(selected);
+    }
+  };
+
+  return (
+    <div className="giteye-shell flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+      <aside className="flex w-[228px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
+        <div className="flex h-11 items-center gap-2 border-b border-[var(--color-border-muted)] px-4">
+          <span className="h-3 w-3 rounded-full bg-[var(--color-danger)]" />
+          <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
+          <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <button className="flex h-9 w-full items-center gap-3 rounded-lg bg-[var(--color-bg-selected)]/15 px-3 text-left text-sm font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-accent)]/20">
+            <Home className="h-4 w-4 text-[var(--color-accent)]" />
+            Repo Hub
+          </button>
+          <button className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+            <span className="inline-flex items-center gap-3">
+              <Search className="h-4 w-4" />
+              Search
+            </span>
+            <kbd className="rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
+          </button>
+          <button className="mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+            <Bell className="h-4 w-4" />
+            Notifications
+          </button>
+
+          <div className="my-5 h-px bg-[var(--color-border-muted)]" />
+          <SectionLabel>Workspaces</SectionLabel>
+          <div className="mt-2 space-y-1">
+            {workspaceLinks.map((workspace) => (
+              <button key={workspace.name} className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]">
+                <workspace.icon className={cn("h-4 w-4", workspace.tone)} />
+                {workspace.name}
+              </button>
+            ))}
+            <button className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+              <Plus className="h-4 w-4" />
+              New Workspace
+            </button>
+          </div>
+
+          <div className="my-5 h-px bg-[var(--color-border-muted)]" />
+          <SectionLabel>Remotes</SectionLabel>
+          <div className="mt-2 space-y-1">
+            {remotes.map((remote) => (
+              <button key={remote.name} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-[var(--color-bg-hover)]">
+                <remote.icon className={cn("h-4 w-4", remote.tone)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-[var(--color-text-primary)]">{remote.name}</span>
+                  <span className="block truncate text-[11px] text-[var(--color-text-muted)]">{remote.detail}</span>
+                </span>
+                <span className="rounded-md bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-secondary)]">{remote.count}</span>
+              </button>
+            ))}
+            <button className="flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+              <Plus className="h-4 w-4" />
+              Add Account
+            </button>
+          </div>
+        </nav>
+
+        <div className="border-t border-[var(--color-border-muted)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
+          <GitBranch className="mr-2 inline h-3.5 w-3.5" />
+          No repository open
+        </div>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-11 shrink-0 items-center justify-center border-b border-[var(--color-border-muted)] bg-[var(--color-bg-primary)]/85 px-5">
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">Repo Hub</span>
+          <div className="absolute right-5 flex items-center gap-4 text-[var(--color-text-muted)]">
+            <span className="h-2.5 w-2.5 rounded-full bg-[var(--color-bg-surface)]" />
+            <span className="h-2.5 w-2.5 rounded-sm border border-[var(--color-text-muted)]" />
+            <span className="text-lg leading-none">×</span>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <section className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="mx-auto max-w-[980px]">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-[30px] font-semibold leading-none tracking-[-0.035em] text-[var(--color-text-primary)]">Repo Hub</h1>
+                  <p className="mt-2 text-sm text-[var(--color-text-secondary)]">All your code. One place to start.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] shadow-[var(--shadow-panel)] hover:bg-[var(--color-bg-hover)]">
+                    <Clock className="h-4 w-4" />
+                  </button>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                    <input
+                      placeholder="Search repos..."
+                      className="h-9 w-64 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] pl-9 pr-11 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
+                    />
+                    <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4">
+                {metricCards.map((metric) => (
+                  <article key={metric.label} className="h-[100px] rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-bg-surface)]">
+                        <metric.icon className={cn("h-5 w-5", metric.tone)} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate whitespace-nowrap text-xs text-[var(--color-text-secondary)]">{metric.label}</span>
+                        <span className="mt-1 block text-2xl font-semibold leading-none text-[var(--color-text-primary)]">{metric.value}</span>
+                        <span className="mt-2 block text-xs text-[var(--color-text-secondary)]">{metric.detail}</span>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <section className="mt-4 h-[140px] overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-6 shadow-[var(--shadow-panel)]">
+                <div className="flex items-center justify-between gap-6">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--color-text-primary)]">Welcome back, Jane</h2>
+                    <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Ready to ship some code? Here's what's happening across your projects.</p>
+                    <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
+                      Tip: Press <kbd className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 text-[10px]">⌘K</kbd> to quickly search your repositories, files, branches, and more.
+                    </p>
+                  </div>
+                  <div className="relative hidden h-28 w-56 shrink-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] shadow-[var(--shadow-elevated)] lg:block">
+                    <div className="flex h-5 items-center gap-1 border-b border-[var(--color-border-muted)] px-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-danger)]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-success)]" />
+                    </div>
+                    <div className="space-y-2 p-4">
+                      <div className="h-1.5 w-28 rounded-full bg-[var(--color-accent)]/70" />
+                      <div className="ml-4 h-1.5 w-36 rounded-full bg-[var(--color-success)]/70" />
+                      <div className="h-1.5 w-32 rounded-full bg-[var(--color-warning)]/70" />
+                      <div className="ml-8 h-1.5 w-24 rounded-full bg-purple-300/70" />
+                      <div className="h-1.5 w-40 rounded-full bg-[var(--color-text-muted)]/60" />
+                    </div>
+                    <Sparkles className="absolute right-5 top-8 h-6 w-6 rotate-12 text-[var(--color-success)]" />
+                  </div>
+                </div>
+              </section>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <RepositoryList title="Recent Repositories" loading={recentsLoading} repos={visualRepos} onOpen={(repoPath) => repoPath && openMutation.mutate(repoPath)} empty={!recentsLoading && (!recents || recents.length === 0)} />
+                <FavoriteList />
+              </div>
+
+              <section className="mt-4 h-[128px] rounded-lg border border-dashed border-[var(--color-accent)]/45 bg-[var(--color-bg-secondary)] p-6 shadow-[var(--shadow-panel)]">
+                <div className="grid grid-cols-[minmax(220px,0.8fr)_minmax(280px,1.2fr)] gap-6">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Clone a repository</h2>
+                    <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Start working on something new.</p>
+                    <div className="mt-3 flex gap-2">
+                      <button className="h-9 rounded-lg bg-[var(--color-bg-selected)] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[var(--color-accent-hover)]">
+                        Clone Repository
+                      </button>
+                      <button className="h-9 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-4 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]">
+                        New Repository
+                      </button>
+                    </div>
+                  </div>
+                  <div className="border-l border-[var(--color-border-muted)] pl-6">
+                    <label className="block text-xs text-[var(--color-text-secondary)]">Open a repository from path</label>
+                    <div className="mt-2 flex gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                        <input
+                          value={path}
+                          onChange={(event) => setPath(event.target.value)}
+                          onKeyDown={(event) => event.key === "Enter" && handleOpen()}
+                          placeholder="/path/to/git/repository"
+                          className="h-9 w-full rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] pl-9 pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleBrowse}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                        aria-label="Browse for repository folder"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        Browse
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpen}
+                        disabled={!path.trim() || openMutation.isPending}
+                        className="inline-flex h-9 items-center rounded-lg bg-[var(--color-bg-selected)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {openMutation.isPending ? "Opening…" : "Open"}
+                      </button>
+                    </div>
+                    {openMutation.isError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(openMutation.error)}</p>}
+                  </div>
+                </div>
+              </section>
+
+              <section className="mt-4 h-[136px] overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3 shadow-[var(--shadow-panel)]">
+                <SectionHeader title="Team Workspaces" />
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {teamWorkspaces.map((workspace) => (
+                    <article key={workspace.name} className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3">
+                      <div className="flex items-start justify-between">
+                        <span className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
+                          <workspace.icon className={cn("h-4 w-4", workspace.tone)} />
+                          {workspace.name}
+                        </span>
+                        {workspace.online && <Circle className="h-2.5 w-2.5 fill-[var(--color-success)] text-[var(--color-success)]" />}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
+                        <span>{workspace.meta}</span>
+                        <span>{workspace.repos}</span>
+                      </div>
+                      <div className="mt-3">
+                        <AvatarStack />
+                      </div>
+                    </article>
+                  ))}
+                  <button className="flex items-center justify-center gap-3 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-left hover:bg-[var(--color-bg-hover)]">
+                    <Plus className="h-6 w-6 text-[var(--color-text-secondary)]" />
+                    <span>
+                      <span className="block text-sm font-semibold text-[var(--color-text-primary)]">New Workspace</span>
+                      <span className="block text-xs text-[var(--color-text-secondary)]">Create a new workspace</span>
+                    </span>
+                  </button>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <ActivityFeed />
+        </div>
+
+        <footer className="giteye-statusbar flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-6 text-xs text-[var(--color-text-secondary)]">
+          <span className="inline-flex items-center gap-2">
+            <GitBranch className="h-3.5 w-3.5" />
+            No repository open
+          </span>
+          <span className="flex items-center gap-6">
+            <Shortcut keys="⌘K" label="Search" />
+            <Shortcut keys="⌘N" label="New Repo" />
+            <Shortcut keys="⌘O" label="Open Repo" />
+            <Shortcut keys="⌘/" label="Shortcuts" />
+          </span>
+          <span className="inline-flex items-center gap-2 text-[var(--color-success)]">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            All systems operational
+          </span>
+        </footer>
+      </main>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: string }) {
+  return <div className="px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{children}</div>;
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</h2>
+      <button className="rounded-md bg-[var(--color-bg-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">View all</button>
+    </div>
+  );
+}
+
+function RepositoryList({
+  title,
+  loading,
+  repos,
+  empty,
+  onOpen,
+}: {
+  title: string;
+  loading: boolean;
+  empty: boolean;
+  repos: Array<{
+    name: string;
+    owner: string;
+    branch: string;
+    last: string;
+    added: string;
+    deleted: string;
+    tone: string;
+    icon: ComponentType<{ className?: string }>;
+    path?: string;
+  }>;
+  onOpen: (path?: string) => void;
+}) {
+  return (
+    <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
+      <SectionHeader title={title} />
+      <div className="mt-3 h-[220px] divide-y divide-[var(--color-border-muted)]">
+        {loading ? (
+          <div className="flex h-[220px] items-center justify-center">
+            <LoadingSpinner size="sm" />
+          </div>
+        ) : empty ? (
+          <div className="flex h-[220px] flex-col items-center justify-center px-6 text-center">
+            <GitBranch className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">No recent repositories</p>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Open a local Git repository to pin it here.</p>
+          </div>
+        ) : (
+          repos.map((repo) => (
+            <button
+              key={`${repo.name}-${repo.owner}`}
+              onClick={() => onOpen(repo.path)}
+              disabled={!repo.path}
+              className="group grid w-full grid-cols-[minmax(0,1fr)_92px_58px_56px_24px] items-center gap-2 py-2 text-left hover:bg-[var(--color-bg-hover)] disabled:cursor-default disabled:hover:bg-transparent"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)]">
+                  <repo.icon className={cn("h-4 w-4", repo.tone)} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                  <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.owner}</span>
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1 truncate text-[11px] text-[var(--color-text-secondary)]">
+                <GitBranch className="h-3 w-3 shrink-0" />
+                {repo.branch}
+              </span>
+              <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.last}</span>
+              <span className="flex justify-end gap-2 text-[11px] tabular-nums">
+                <span className="text-[var(--color-success)]">{repo.added}</span>
+                <span className="text-[var(--color-danger)]">{repo.deleted}</span>
+              </span>
+              <MoreHorizontal className="h-4 w-4 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FavoriteList() {
+  return (
+    <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
+      <SectionHeader title="Favorite Repositories" />
+      <div className="mt-3 divide-y divide-[var(--color-border-muted)]">
+        {favoriteRepos.map((repo) => (
+          <div key={repo.name} className="grid h-[42px] grid-cols-[minmax(0,1fr)_82px_56px_22px] items-center gap-2 py-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)]">
+                <repo.icon className={cn("h-4 w-4", repo.tone)} />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.owner}</span>
+              </span>
+            </span>
+            <span className="inline-flex items-center gap-1 truncate text-[11px] text-[var(--color-text-secondary)]">
+              <GitBranch className="h-3 w-3 shrink-0" />
+              {repo.branch}
+            </span>
+            <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.last}</span>
+            <Star className="h-4 w-4 fill-[var(--color-warning)] text-[var(--color-warning)]" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ActivityFeed() {
+  return (
+    <aside className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80 p-4 xl:block">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Activity Feed</h2>
+        <button className="inline-flex items-center gap-1 rounded-md bg-[var(--color-bg-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+          Filter
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="space-y-4">
+        {activitySections.map((section) => (
+          <section key={section.title} className="border-b border-[var(--color-border-muted)] pb-4 last:border-b-0">
+            <SectionHeader title={section.title} />
+            <div className="mt-3 space-y-3">
+              {section.rows.map((row) => (
+                <div key={`${section.title}-${row.title}`} className="flex gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[10px] font-semibold text-[var(--color-text-secondary)]">{row.avatar}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-semibold text-[var(--color-text-primary)]">{row.title}</span>
+                    <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{row.detail}</span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)]">{row.time}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+        <section>
+          <SectionHeader title="CI / Checks" />
+          <div className="mt-3 space-y-3">
+            {checkRows.map((check) => (
+              <div key={check.name} className="grid grid-cols-[minmax(0,1fr)_54px_58px_54px] items-center gap-2 text-xs">
+                <span className="flex min-w-0 items-center gap-2 text-[var(--color-text-primary)]">
+                  <check.icon className={cn("h-3.5 w-3.5 shrink-0", check.tone)} />
+                  <span className="truncate">{check.name}</span>
+                </span>
+                <span className="truncate text-[var(--color-text-secondary)]">{check.branch}</span>
+                <span className={cn("truncate font-semibold", check.tone)}>{check.status}</span>
+                <span className="text-right text-[var(--color-text-secondary)]">{check.time}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function Shortcut({ keys, label }: { keys: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-text-secondary)]">{keys}</kbd>
+      {label}
+    </span>
+  );
+}

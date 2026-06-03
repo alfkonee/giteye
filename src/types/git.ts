@@ -1,0 +1,251 @@
+export interface RepositoryInfo {
+  path: string;
+  name: string;
+  currentBranch: string;
+  isClean: boolean;
+  headCommit: string | null;
+}
+
+export interface GitStatusFile {
+  path: string;
+  status: string;
+  staged: boolean;
+  unstaged: boolean;
+  oldPath: string | null;
+}
+
+export interface CommitSummary {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: string;
+  refs: string[];
+}
+
+export interface CommitDetails {
+  hash: string;
+  message: string;
+  body: string | null;
+  authorName: string;
+  authorEmail: string;
+  committerName: string;
+  committerEmail: string;
+  timestamp: string;
+  parents: string[];
+  changedFiles: string[];
+}
+
+export interface Branch {
+  name: string;
+  shortName: string;
+  isCurrent: boolean;
+  isRemote: boolean;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
+}
+
+export interface Remote {
+  name: string;
+  url: string;
+  fetchUrl: string | null;
+  pushUrl: string | null;
+}
+
+export interface DiffResult {
+  filePath: string;
+  oldFilePath: string | null;
+  diffText: string;
+  additions: number;
+  deletions: number;
+  isBinary: boolean;
+}
+
+export interface RecentRepo {
+  path: string;
+  name: string;
+  lastOpenedAt: string;
+}
+
+export interface Worktree {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  isCurrent: boolean;
+  isBare: boolean;
+  isDetached: boolean;
+  isLocked: boolean;
+  lockReason: string | null;
+  prunable: boolean;
+  status: string;
+  modifiedFiles: number;
+  stagedFiles: number;
+  ahead: number;
+  behind: number;
+  updatedAt: string | null;
+}
+
+export interface Submodule {
+  path: string;
+  name: string;
+  url: string | null;
+  branch: string | null;
+  pinnedCommit: string | null;
+  currentCommit: string | null;
+  status: string;
+  isInitialized: boolean;
+  isRecursive: boolean;
+  behind: number;
+  ahead: number;
+  hasChanges: boolean;
+}
+
+export interface RebaseTodoItem {
+  action: string;
+  commit: string;
+  message: string;
+  raw: string;
+  completed: boolean;
+}
+
+export interface ConflictFile {
+  path: string;
+}
+
+export interface ConflictContent {
+  filePath: string;
+  base: string;
+  ours: string;
+  theirs: string;
+  result: string;
+}
+
+export interface RebaseState {
+  inProgress: boolean;
+  rebaseDir: string | null;
+  headName: string | null;
+  onto: string | null;
+  origHead: string | null;
+  currentStep: number | null;
+  totalSteps: number | null;
+  todo: RebaseTodoItem[];
+  done: RebaseTodoItem[];
+  conflicts: ConflictFile[];
+}
+
+export interface GitHubAccount {
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  htmlUrl: string | null;
+}
+
+export interface PullRequestSummary {
+  number: number;
+  title: string;
+  state: string;
+  author: string | null;
+  url: string | null;
+  headRefName: string | null;
+  baseRefName: string | null;
+  isDraft: boolean;
+  updatedAt: string | null;
+}
+
+export interface CheckRunSummary {
+  name: string;
+  state: string | null;
+  conclusion: string | null;
+  url: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface ReviewSummary {
+  author: string | null;
+  state: string;
+  submittedAt: string | null;
+  url: string | null;
+}
+
+export interface ActivityItem {
+  id: string;
+  kind: string;
+  actor: string | null;
+  title: string | null;
+  url: string | null;
+  createdAt: string | null;
+}
+
+export interface RepositoryGithubOverview {
+  providerAvailable: boolean;
+  isGithubRepository: boolean;
+  owner: string | null;
+  repo: string | null;
+  remoteUrl: string | null;
+  account: GitHubAccount | null;
+  pullRequests: PullRequestSummary[];
+  checkRuns: CheckRunSummary[];
+  reviews: ReviewSummary[];
+  activity: ActivityItem[];
+}
+
+export type GlobalViewType = "repo-hub";
+
+export type RepositoryViewType =
+  | "working-tree"
+  | "history"
+  | "stacked-prs"
+  | "review-studio"
+  | "worktrees"
+  | "submodules"
+  | "rebase-conflicts"
+  | "settings";
+
+export type ViewType = RepositoryViewType;
+
+export type AppRoute =
+  | { area: "global"; view: GlobalViewType }
+  | { area: "repository"; view: RepositoryViewType; repoPath: string };
+
+export interface SelectedEntityState {
+  repositoryPath: string | null;
+  branchName: string | null;
+  commitHash: string | null;
+  filePath: string | null;
+  fileStaged: boolean;
+  pullRequestId: string | null;
+  stackId: string | null;
+  worktreePath: string | null;
+  submodulePath: string | null;
+  conflictPath: string | null;
+}
+export type DiffMode = "unified" | "split";
+
+export type FileStatus =
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "untracked"
+  | "ignored"
+  | "conflict"
+  | "typechange";
+
+export function parseFileStatus(xyStatus: string): FileStatus {
+  const x = xyStatus[0];
+  const y = xyStatus[1];
+
+  if ((x === "D" && y === "D") || (x === "A" && y === "A") || (x === "U" && y === "U")) return "conflict";
+  if (x === "?" && y === "?") return "untracked";
+  if (x === "!" && y === "!") return "ignored";
+  if (x === "R") return "renamed";
+  if (x === "C") return "copied";
+  if (x === "T" || y === "T") return "typechange";
+  if (x === "A" || y === "A") return "added";
+  if (x === "D" || y === "D") return "deleted";
+  return "modified";
+}

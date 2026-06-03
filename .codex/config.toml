@@ -1,0 +1,4 @@
+[mcp_servers."@hypothesi/tauri-mcp-server"]
+command = "bunx"
+args = ["@hypothesi/tauri-mcp-server"]
+enabled = true
