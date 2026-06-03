@@ -1,7 +1,8 @@
+use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::github::{
-    ActivityItem, CheckRunSummary, GitHubAccount, PullRequestSummary, RepositoryGithubOverview,
-    ReviewSummary,
+    ActivityItem, CheckRunSummary, GitHubAccount, PullRequestDiff, PullRequestFileDiff,
+    PullRequestSummary, RepositoryGithubOverview, ReviewCommentSummary, ReviewSummary,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -56,6 +57,88 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
 
     overview
 }
+pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullRequestDiff, AppError> {
+    let (owner, repo) = github_repository(repo_path)?;
+    let repository = format!("{owner}/{repo}");
+    let number_string = number.to_string();
+    let diff_text = run_required_process(
+        "gh",
+        &["pr", "diff", &number_string, "--repo", &repository],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    let files = fetch_pull_request_files(repo_path, &owner, &repo, number);
+    let comments = fetch_review_comments(repo_path, &owner, &repo, number);
+    let pr = fetch_pull_request(repo_path, &owner, &repo, number);
+
+    Ok(PullRequestDiff {
+        number,
+        title: pr.as_ref().map(|pr| pr.title.clone()),
+        url: pr.and_then(|pr| pr.url),
+        diff_text,
+        files,
+        comments,
+    })
+}
+
+pub fn checkout_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let number_string = number.to_string();
+    run_required_process(
+        "gh",
+        &["pr", "checkout", &number_string],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    Ok(())
+}
+
+pub fn update_pull_request_branch(repo_path: &Path, number: u64) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let number_string = number.to_string();
+    run_required_process(
+        "gh",
+        &["pr", "update-branch", &number_string],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    Ok(())
+}
+
+pub fn merge_pull_request(repo_path: &Path, number: u64, method: &str) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let number_string = number.to_string();
+    let merge_flag = match method {
+        "merge" => "--merge",
+        "rebase" => "--rebase",
+        _ => "--squash",
+    };
+    run_required_process(
+        "gh",
+        &["pr", "merge", &number_string, merge_flag, "--delete-branch"],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    Ok(())
+}
+
+fn github_repository(repo_path: &Path) -> Result<(String, String), AppError> {
+    let remote_url = GitCli::run(repo_path, &["remote", "get-url", "origin"])
+        .map_err(|e| AppError::GitError(e.to_string()))?;
+    let Some((owner, repo)) = parse_github_remote(remote_url.trim()) else {
+        return Err(AppError::GitError(
+            "Repository origin is not a GitHub remote".to_string(),
+        ));
+    };
+
+    if !gh_is_authenticated(repo_path) {
+        return Err(AppError::GitError(
+            "GitHub CLI is not authenticated for github.com".to_string(),
+        ));
+    }
+
+    Ok((owner, repo))
+}
 
 fn parse_github_remote(remote_url: &str) -> Option<(String, String)> {
     let trimmed = remote_url.trim().trim_end_matches('/');
@@ -66,8 +149,12 @@ fn parse_github_remote(remote_url: &str) -> Option<(String, String)> {
     } else if let Some(protocol_end) = without_suffix.find("://") {
         let after_protocol = &without_suffix[protocol_end + 3..];
         let (authority, path) = after_protocol.split_once('/')?;
-        let host_port = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
-        let host = host_port.split_once(':').map_or(host_port, |(host, _)| host);
+        let host_port = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        let host = host_port
+            .split_once(':')
+            .map_or(host_port, |(host, _)| host);
 
         if host != "github.com" {
             return None;
@@ -165,6 +252,121 @@ fn fetch_pull_requests(repo_path: &Path, owner: &str, repo: &str) -> Vec<PullReq
             base_ref_name: pr.base_ref_name,
             is_draft: pr.is_draft.unwrap_or(false),
             updated_at: pr.updated_at,
+        })
+        .collect()
+}
+
+fn fetch_pull_request(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Option<PullRequestSummary> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GhPullRequest {
+        number: Option<u64>,
+        title: Option<String>,
+        state: Option<String>,
+        author: Option<GhAuthor>,
+        url: Option<String>,
+        head_ref_name: Option<String>,
+        base_ref_name: Option<String>,
+        is_draft: Option<bool>,
+        updated_at: Option<String>,
+    }
+
+    let repository = format!("{owner}/{repo}");
+    let number_string = number.to_string();
+    let output = run_process(
+        "gh",
+        &[
+            "pr",
+            "view",
+            &number_string,
+            "--repo",
+            &repository,
+            "--json",
+            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt",
+        ],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+
+    let pr = serde_json::from_str::<GhPullRequest>(&output).ok()?;
+    Some(PullRequestSummary {
+        number: pr.number.unwrap_or(number),
+        title: pr.title.unwrap_or_default(),
+        state: pr.state.unwrap_or_default(),
+        author: pr.author.and_then(|author| author.login),
+        url: pr.url,
+        head_ref_name: pr.head_ref_name,
+        base_ref_name: pr.base_ref_name,
+        is_draft: pr.is_draft.unwrap_or(false),
+        updated_at: pr.updated_at,
+    })
+}
+
+fn fetch_pull_request_files(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Vec<PullRequestFileDiff> {
+    #[derive(Deserialize)]
+    struct GhFile {
+        filename: Option<String>,
+        additions: Option<u64>,
+        deletions: Option<u64>,
+        status: Option<String>,
+    }
+
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/files?per_page=100");
+    run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)
+        .and_then(|json| serde_json::from_str::<Vec<GhFile>>(&json).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|file| {
+            Some(PullRequestFileDiff {
+                path: file.filename?,
+                additions: file.additions.unwrap_or_default(),
+                deletions: file.deletions.unwrap_or_default(),
+                status: file.status.unwrap_or_default(),
+            })
+        })
+        .collect()
+}
+
+fn fetch_review_comments(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Vec<ReviewCommentSummary> {
+    #[derive(Deserialize)]
+    struct GhComment {
+        id: Option<u64>,
+        user: Option<GhAuthor>,
+        path: Option<String>,
+        line: Option<u64>,
+        body: Option<String>,
+        html_url: Option<String>,
+        created_at: Option<String>,
+    }
+
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/comments?per_page=100");
+    run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)
+        .and_then(|json| serde_json::from_str::<Vec<GhComment>>(&json).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|comment| ReviewCommentSummary {
+            id: comment.id.unwrap_or_default(),
+            author: comment.user.and_then(|user| user.login),
+            path: comment.path,
+            line: comment.line,
+            body: comment.body.unwrap_or_default(),
+            url: comment.html_url,
+            created_at: comment.created_at,
         })
         .collect()
 }
@@ -293,7 +495,55 @@ struct GhAuthor {
     login: Option<String>,
 }
 
-fn run_process(program: &str, args: &[&str], repo_path: &Path, timeout: Duration) -> Option<String> {
+fn run_required_process(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    timeout: Duration,
+) -> Result<String, AppError> {
+    let mut child = Command::new(program)
+        .args(args)
+        .current_dir(repo_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::GitError(e.to_string()))?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| AppError::GitError(e.to_string()))?;
+                if output.status.success() {
+                    return String::from_utf8(output.stdout)
+                        .map_err(|e| AppError::SerializationError(e.to_string()));
+                }
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(AppError::GitError(stderr.trim().to_string()));
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(AppError::GitError(format!(
+                    "{program} command timed out after {}s",
+                    timeout.as_secs()
+                )));
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(e) => return Err(AppError::GitError(e.to_string())),
+        }
+    }
+}
+
+fn run_process(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    timeout: Duration,
+) -> Option<String> {
     let mut child = Command::new(program)
         .args(args)
         .current_dir(repo_path)
@@ -342,6 +592,9 @@ mod tests {
             parse_github_remote("ssh://git@github.com:443/owner/repo.git"),
             Some(("owner".to_string(), "repo".to_string()))
         );
-        assert_eq!(parse_github_remote("https://example.com/owner/repo.git"), None);
+        assert_eq!(
+            parse_github_remote("https://example.com/owner/repo.git"),
+            None
+        );
     }
 }

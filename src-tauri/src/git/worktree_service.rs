@@ -219,8 +219,14 @@ fn status_counts(path: &Path) -> Result<(u32, u32), AppError> {
 }
 
 fn ahead_behind(path: &Path) -> Result<(u32, u32), AppError> {
-    GitCli::run(path, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])?;
-    let output = GitCli::run(path, &["rev-list", "--left-right", "--count", "HEAD...@{u}"])?;
+    GitCli::run(
+        path,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )?;
+    let output = GitCli::run(
+        path,
+        &["rev-list", "--left-right", "--count", "HEAD...@{u}"],
+    )?;
     let mut parts = output.split_whitespace();
     let ahead = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
     let behind = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
@@ -242,7 +248,9 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 fn canonical_or_original(path: &Path) -> Option<PathBuf> {
-    fs::canonicalize(path).ok().or_else(|| Some(path.to_path_buf()))
+    fs::canonicalize(path)
+        .ok()
+        .or_else(|| Some(path.to_path_buf()))
 }
 
 fn updated_at(path: &Path) -> Option<String> {

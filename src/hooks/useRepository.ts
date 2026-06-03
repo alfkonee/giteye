@@ -24,6 +24,34 @@ export function useOpenRepository() {
   });
 }
 
+export function useInitRepository() {
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (path: string) => gitApi.initRepository(path),
+    onSuccess: (data) => {
+      setActiveRepoPath(data.path);
+      queryClient.invalidateQueries({ queryKey: ["recentRepos"] });
+      queryClient.invalidateQueries({ queryKey: ["repoInfo"] });
+    },
+  });
+}
+
+export function useCloneRepository() {
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ url, destination }: { url: string; destination: string }) => gitApi.cloneRepository(url, destination),
+    onSuccess: (data) => {
+      setActiveRepoPath(data.path);
+      queryClient.invalidateQueries({ queryKey: ["recentRepos"] });
+      queryClient.invalidateQueries({ queryKey: ["repoInfo"] });
+    },
+  });
+}
+
 export function useRecentRepositories() {
   return useQuery({
     queryKey: ["recentRepos"],

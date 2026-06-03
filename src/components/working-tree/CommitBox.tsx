@@ -29,11 +29,11 @@ export function CommitBox() {
   };
 
   return (
-    <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] p-3 shadow-lg shadow-black/10">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
+    <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] p-2.5 shadow-lg shadow-black/10">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
               <GitCommitHorizontal className="h-4 w-4" />
             </div>
             <div className="min-w-0">
@@ -55,9 +55,9 @@ export function CommitBox() {
           onKeyDown={handleKeyDown}
           placeholder={`Summary (required) — Ctrl+Enter commits to ${branchName}`}
           rows={3}
-          className="w-full resize-none rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2.5 text-[13px] leading-5 text-[var(--color-text-primary)] shadow-inner outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
+          className="w-full resize-none rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-2 text-[13px] leading-5 text-[var(--color-text-primary)] shadow-inner outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
         />
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-2 flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
             {commitMutation.isPending
               ? "Committing..."
@@ -71,7 +71,7 @@ export function CommitBox() {
             onClick={handleCommit}
             disabled={!message.trim() || commitMutation.isPending}
             className={cn(
-              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold shadow-sm transition-colors",
+              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
               "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
               "disabled:cursor-not-allowed disabled:opacity-40"
             )}

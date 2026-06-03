@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentRepo {
     pub path: String,
@@ -25,6 +25,40 @@ fn recent_repos_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError>
     Ok(get_storage_dir(app_handle)?.join("recent_repositories.json"))
 }
 
+fn normalize_repo_path(path: &str) -> String {
+    let path_buf = PathBuf::from(path);
+    path_buf
+        .canonicalize()
+        .unwrap_or(path_buf)
+        .to_string_lossy()
+        .trim_end_matches(std::path::MAIN_SEPARATOR)
+        .to_string()
+}
+
+fn dedupe_by_path(recents: Vec<RecentRepo>) -> Vec<RecentRepo> {
+    let mut deduped = Vec::with_capacity(recents.len());
+    for mut repo in recents {
+        repo.path = normalize_repo_path(&repo.path);
+        if !deduped
+            .iter()
+            .any(|existing: &RecentRepo| existing.path == repo.path)
+        {
+            deduped.push(repo);
+        }
+    }
+    deduped
+}
+
+fn write_recent_repositories(
+    app_handle: &tauri::AppHandle,
+    recents: &[RecentRepo],
+) -> Result<(), AppError> {
+    let path = recent_repos_path(app_handle)?;
+    let data = serde_json::to_string_pretty(recents)
+        .map_err(|e| AppError::SerializationError(e.to_string()))?;
+    fs::write(&path, data).map_err(|e| AppError::StorageError(e.to_string()))
+}
+
 pub fn load_recent_repositories(
     app_handle: &tauri::AppHandle,
 ) -> Result<Vec<RecentRepo>, AppError> {
@@ -33,7 +67,13 @@ pub fn load_recent_repositories(
         return Ok(vec![]);
     }
     let data = fs::read_to_string(&path).map_err(|e| AppError::StorageError(e.to_string()))?;
-    serde_json::from_str(&data).map_err(|e| AppError::SerializationError(e.to_string()))
+    let recents: Vec<RecentRepo> =
+        serde_json::from_str(&data).map_err(|e| AppError::SerializationError(e.to_string()))?;
+    let deduped = dedupe_by_path(recents.clone());
+    if deduped != recents {
+        write_recent_repositories(app_handle, &deduped)?;
+    }
+    Ok(deduped)
 }
 
 pub fn save_recent_repository(
@@ -41,16 +81,15 @@ pub fn save_recent_repository(
     repo_path: &str,
     name: &str,
 ) -> Result<(), AppError> {
-    let mut recents = load_recent_repositories(app_handle)?;
+    let normalized_path = normalize_repo_path(repo_path);
+    let mut recents = dedupe_by_path(load_recent_repositories(app_handle)?);
 
-    // Remove existing entry with same path
-    recents.retain(|r| r.path != repo_path);
+    recents.retain(|r| r.path != normalized_path);
 
-    // Prepend new entry
     recents.insert(
         0,
         RecentRepo {
-            path: repo_path.to_string(),
+            path: normalized_path,
             name: name.to_string(),
             last_opened_at: chrono::Utc::now().to_rfc3339(),
         },
@@ -59,10 +98,38 @@ pub fn save_recent_repository(
     // Limit to 20
     recents.truncate(20);
 
-    let path = recent_repos_path(app_handle)?;
-    let data = serde_json::to_string_pretty(&recents)
-        .map_err(|e| AppError::SerializationError(e.to_string()))?;
-    fs::write(&path, data).map_err(|e| AppError::StorageError(e.to_string()))?;
+    write_recent_repositories(app_handle, &recents)
+}
 
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupe_by_path_keeps_first_recent_for_each_normalized_path() {
+        let recents = vec![
+            RecentRepo {
+                path: "/tmp/project/".to_string(),
+                name: "first".to_string(),
+                last_opened_at: "2026-06-03T10:00:00Z".to_string(),
+            },
+            RecentRepo {
+                path: "/tmp/project".to_string(),
+                name: "second".to_string(),
+                last_opened_at: "2026-06-03T11:00:00Z".to_string(),
+            },
+            RecentRepo {
+                path: "/tmp/other".to_string(),
+                name: "other".to_string(),
+                last_opened_at: "2026-06-03T12:00:00Z".to_string(),
+            },
+        ];
+
+        let deduped = dedupe_by_path(recents);
+
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].name, "first");
+        assert_eq!(deduped[0].path, "/tmp/project");
+        assert_eq!(deduped[1].path, "/tmp/other");
+    }
 }

@@ -25,6 +25,38 @@ pub struct PullRequestSummary {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct PullRequestFileDiff {
+    pub path: String,
+    pub additions: u64,
+    pub deletions: u64,
+    pub status: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiff {
+    pub number: u64,
+    pub title: Option<String>,
+    pub url: Option<String>,
+    pub diff_text: String,
+    pub files: Vec<PullRequestFileDiff>,
+    pub comments: Vec<ReviewCommentSummary>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewCommentSummary {
+    pub id: u64,
+    pub author: Option<String>,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub body: String,
+    pub url: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct CheckRunSummary {
     pub name: String,
     pub state: Option<String>,

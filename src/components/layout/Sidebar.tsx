@@ -20,16 +20,16 @@ import {
   Tag,
 } from "lucide-react";
 import { useBranches } from "../../hooks/useBranches";
+import { useGitStatus } from "../../hooks/useGitStatus";
 import { useRepositoryInfo } from "../../hooks/useRepository";
+import {
+  useRepositoryGithubOverview,
+  useRebaseState,
+  useSubmodules,
+  useWorktrees,
+} from "../../hooks/useAdvancedGit";
 import type { ViewType } from "../../types/git";
 
-const DEMO_PULL_REQUEST_COUNT = 6;
-const DEMO_WORKTREE_COUNT = 2;
-const DEMO_SUBMODULE_COUNT = 3;
-const DEMO_STASH_COUNT = 1;
-const DEMO_TAG_COUNT = 14;
-const DEMO_REMOTE_COUNT = 2;
-const DEMO_CONFLICT_COUNT = 3;
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -41,10 +41,20 @@ export function Sidebar() {
 
   const { data: branches } = useBranches(activeRepoPath);
   const { data: repoInfo } = useRepositoryInfo(activeRepoPath);
+  const { data: statusFiles } = useGitStatus(activeRepoPath);
+  const { data: githubOverview } = useRepositoryGithubOverview(activeRepoPath);
+  const worktreesQuery = useWorktrees(activeRepoPath);
+  const submodulesQuery = useSubmodules(activeRepoPath);
+  const { data: rebaseState } = useRebaseState(activeRepoPath);
 
   const localBranches = branches?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branches?.filter((b) => b.isRemote) ?? [];
   const activeBranch = repoInfo?.currentBranch;
+  const statusFileCount = statusFiles?.length;
+  const pullRequestCount = githubOverview?.pullRequests.length;
+  const conflictCount = rebaseState?.inProgress ? rebaseState.conflicts.length : undefined;
+  const worktrees = worktreesQuery.data ?? [];
+  const submodules = submodulesQuery.data ?? [];
 
   const navigate = (view: ViewType) => {
     setActiveView(view);
@@ -65,9 +75,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="giteye-sidebar flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-      <div className="border-b border-[var(--color-border-muted)] px-3 py-3">
-        <div className="flex items-center gap-2.5">
+    <aside className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+      <div className="border-b border-[var(--color-border-muted)] px-2.5 py-2.5">
+        <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)]">
             <FolderOpen className="h-4 w-4 text-[var(--color-accent)]" />
           </div>
@@ -85,12 +95,13 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-1.5">
         <SidebarSection title="Workspace" />
         <SidebarNavItem
           icon={<FolderOpen className="h-4 w-4" />}
           label="Working Tree"
           active={activeView === "working-tree"}
+          count={statusFileCount}
           onClick={() => navigate("working-tree")}
         />
         <SidebarNavItem
@@ -102,7 +113,7 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<GitPullRequest className="h-4 w-4" />}
           label="Stacked PRs"
-          count={DEMO_PULL_REQUEST_COUNT}
+          count={pullRequestCount}
           active={activeView === "stacked-prs"}
           onClick={() => navigate("stacked-prs")}
         />
@@ -115,7 +126,7 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<AlertTriangle className="h-4 w-4" />}
           label="Rebase Conflicts"
-          count={DEMO_CONFLICT_COUNT}
+          count={conflictCount}
           active={activeView === "rebase-conflicts"}
           tone="warning"
           onClick={() => navigate("rebase-conflicts")}
@@ -132,21 +143,21 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<GitPullRequest className="h-4 w-4" />}
           label="Pull Requests"
-          count={DEMO_PULL_REQUEST_COUNT}
+          count={pullRequestCount}
           active={activeView === "stacked-prs"}
           onClick={() => navigate("stacked-prs")}
         />
         <SidebarNavItem
           icon={<Layers className="h-4 w-4" />}
           label="Worktrees"
-          count={DEMO_WORKTREE_COUNT}
+          count={worktrees.length}
           active={activeView === "worktrees"}
           onClick={() => navigate("worktrees")}
         />
         <SidebarNavItem
           icon={<Box className="h-4 w-4" />}
           label="Submodules"
-          count={DEMO_SUBMODULE_COUNT}
+          count={submodules.length}
           active={activeView === "submodules"}
           onClick={() => navigate("submodules")}
         />
@@ -191,40 +202,50 @@ export function Sidebar() {
           </>
         )}
 
-        <SidebarSection title="Worktrees" count={DEMO_WORKTREE_COUNT} />
-        <SidebarNavItem
-          icon={<Layers className="h-3.5 w-3.5" />}
-          label="main"
-          active={activeView === "worktrees"}
-          indent
-          onClick={() => navigate("worktrees")}
-        />
-        <SidebarNavItem
-          icon={<Layers className="h-3.5 w-3.5" />}
-          label="feature/review-queue"
-          indent
-          onClick={() => navigate("worktrees")}
-        />
+        <SidebarSection title="Worktrees" count={worktrees.length} />
+        {worktreesQuery.isLoading ? (
+          <SidebarNote>Loading worktrees…</SidebarNote>
+        ) : worktreesQuery.error ? (
+          <SidebarNote>Worktrees unavailable</SidebarNote>
+        ) : worktrees.length === 0 ? (
+          <SidebarNote>No linked worktrees</SidebarNote>
+        ) : (
+          worktrees.slice(0, 3).map((worktree) => (
+            <SidebarNavItem
+              key={worktree.path}
+              icon={<Layers className="h-3.5 w-3.5" />}
+              label={worktree.branch ?? (worktree.isDetached ? "Detached HEAD" : basename(worktree.path))}
+              active={activeView === "worktrees" && worktree.isCurrent}
+              indent
+              onClick={() => navigate("worktrees")}
+            />
+          ))
+        )}
 
-        <SidebarSection title="Submodules" count={DEMO_SUBMODULE_COUNT} />
-        <SidebarNavItem
-          icon={<Box className="h-3.5 w-3.5" />}
-          label="vendor/libgit2"
-          active={activeView === "submodules"}
-          indent
-          onClick={() => navigate("submodules")}
-        />
-        <SidebarNavItem
-          icon={<Box className="h-3.5 w-3.5" />}
-          label="packages/diff-engine"
-          indent
-          onClick={() => navigate("submodules")}
-        />
+        <SidebarSection title="Submodules" count={submodules.length} />
+        {submodulesQuery.isLoading ? (
+          <SidebarNote>Loading submodules…</SidebarNote>
+        ) : submodulesQuery.error ? (
+          <SidebarNote>Submodules unavailable</SidebarNote>
+        ) : submodules.length === 0 ? (
+          <SidebarNote>No submodules configured</SidebarNote>
+        ) : (
+          submodules.slice(0, 3).map((submodule) => (
+            <SidebarNavItem
+              key={submodule.path}
+              icon={<Box className="h-3.5 w-3.5" />}
+              label={submodule.name || submodule.path}
+              active={activeView === "submodules"}
+              indent
+              onClick={() => navigate("submodules")}
+            />
+          ))
+        )}
 
         <SidebarSection title="Repository" />
-        <SidebarNavItem icon={<Archive className="h-4 w-4" />} label="Stashes" count={DEMO_STASH_COUNT} />
-        <SidebarNavItem icon={<Tag className="h-4 w-4" />} label="Tags" count={DEMO_TAG_COUNT} />
-        <SidebarNavItem icon={<Database className="h-4 w-4" />} label="Remotes" count={DEMO_REMOTE_COUNT} />
+        <SidebarNavItem icon={<Archive className="h-4 w-4" />} label="Stashes" />
+        <SidebarNavItem icon={<Tag className="h-4 w-4" />} label="Tags" />
+        <SidebarNavItem icon={<Database className="h-4 w-4" />} label="Remotes" />
         <SidebarNavItem
           icon={<Settings className="h-4 w-4" />}
           label="Settings"
@@ -242,13 +263,13 @@ export function Sidebar() {
 
         <button
           onClick={toggleSidebar}
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
         >
           <PanelLeftClose className="h-4 w-4" />
           <span>Collapse Sidebar</span>
         </button>
 
-        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+        <div className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-[var(--color-text-muted)]">
           <Command className="h-3.5 w-3.5" />
           <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px]">K</kbd>
           <span className="ml-auto">Command Menu</span>
@@ -260,7 +281,7 @@ export function Sidebar() {
 
 function SidebarSection({ title, count }: { title: string; count?: number }) {
   return (
-    <div className="flex items-center px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+    <div className="flex items-center px-2.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
       <span>{title}</span>
       {count !== undefined && count > 0 && <span className="ml-auto tabular-nums">{count}</span>}
     </div>
@@ -289,7 +310,7 @@ function SidebarNavItem({
       onClick={onClick}
       className={cn(
         "giteye-row flex w-full items-center gap-2.5 text-left text-[13px] transition-colors",
-        indent ? "pl-8 pr-3" : "px-3",
+        indent ? "pl-7 pr-2.5" : "px-2.5",
         active
           ? "bg-[var(--color-bg-selected)] text-white"
           : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
@@ -310,4 +331,14 @@ function SidebarNavItem({
       )}
     </button>
   );
+}
+
+function SidebarNote({ children }: { children: ReactNode }) {
+  return <div className="px-7 py-1 text-[12px] italic text-[var(--color-text-muted)]">{children}</div>;
+}
+
+function basename(path: string) {
+  const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
+  const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
+  return path.slice(slashIndex + 1, normalizedEnd);
 }

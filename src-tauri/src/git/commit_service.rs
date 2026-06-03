@@ -7,6 +7,10 @@ pub fn get_commit_history(
     repo_path: &Path,
     limit: Option<u32>,
 ) -> Result<Vec<CommitSummary>, AppError> {
+    if GitCli::run(repo_path, &["rev-parse", "--verify", "HEAD"]).is_err() {
+        return Ok(Vec::new());
+    }
+
     let limit_str = limit
         .map(|l| l.to_string())
         .unwrap_or_else(|| "50".to_string());
@@ -64,22 +68,24 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
             "show",
             "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%P",
             "--name-only",
-            "--no-merge",
+            "--no-renames",
             hash,
         ],
     )?;
 
-    let mut lines = output.lines();
-    let header = lines.next().unwrap_or("");
-    let parts: Vec<&str> = header.split('\0').collect();
+    let parts: Vec<&str> = output.splitn(9, '\0').collect();
 
     if parts.len() < 9 {
         return Err(AppError::CommitNotFound(hash.to_string()));
     }
 
-    let parents: Vec<String> = parts[8].split_whitespace().map(|p| p.to_string()).collect();
-
-    let changed_files: Vec<String> = lines
+    let (parents_str, changed_files_str) = parts[8].split_once("\n\n").unwrap_or((parts[8], ""));
+    let parents: Vec<String> = parents_str
+        .split_whitespace()
+        .map(|p| p.to_string())
+        .collect();
+    let changed_files: Vec<String> = changed_files_str
+        .lines()
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
         .collect();
@@ -87,10 +93,13 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
     Ok(CommitDetails {
         hash: parts[0].to_string(),
         message: parts[1].to_string(),
-        body: if parts[2].is_empty() {
-            None
-        } else {
-            Some(parts[2].to_string())
+        body: {
+            let body = parts[2].trim_end_matches('\n');
+            if body.is_empty() {
+                None
+            } else {
+                Some(body.to_string())
+            }
         },
         author_name: parts[3].to_string(),
         author_email: parts[4].to_string(),
@@ -100,4 +109,96 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         parents,
         changed_files,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("giteye-commit-{name}-{nonce}"));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn init_repo(path: &Path) {
+        git(path, &["init", "-b", "main"]);
+        git(path, &["config", "user.name", "GitEye Test"]);
+        git(path, &["config", "user.email", "test@giteye.local"]);
+    }
+
+    #[test]
+    fn history_returns_empty_for_unborn_repository() {
+        let temp = TestDir::new("empty");
+        init_repo(&temp.path);
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn commit_details_load_changed_files() {
+        let temp = TestDir::new("details");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(
+            &temp.path,
+            &[
+                "commit",
+                "-m",
+                "Initial fixture",
+                "-m",
+                "Body line one",
+                "-m",
+                "Body line two",
+            ],
+        );
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
+
+        assert_eq!(details.message, "Initial fixture");
+        assert_eq!(
+            details.body.as_deref(),
+            Some("Body line one\n\nBody line two")
+        );
+        assert_eq!(details.changed_files, vec!["README.md".to_string()]);
+        assert_eq!(details.parents.len(), 0);
+    }
 }

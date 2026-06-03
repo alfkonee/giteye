@@ -14,12 +14,19 @@ import type {
   ConflictContent,
   RebaseTodoItem,
   RepositoryGithubOverview,
+  PullRequestDiff,
 } from "../types/git";
 
 export const gitApi = {
   // Repository
   openRepository: (path: string) =>
     invoke<RepositoryInfo>("open_repository", { path }),
+
+  initRepository: (path: string) =>
+    invoke<RepositoryInfo>("init_repository", { path }),
+
+  cloneRepository: (url: string, destination: string) =>
+    invoke<RepositoryInfo>("clone_repository", { url, destination }),
 
   getRepositoryInfo: (path: string) =>
     invoke<RepositoryInfo>("get_repository_info", { path }),
@@ -149,4 +156,16 @@ export const gitApi = {
   // GitHub metadata
   getRepositoryGithubOverview: (repoPath: string) =>
     invoke<RepositoryGithubOverview>("get_repository_github_overview", { repoPath }),
+
+  getPullRequestDiff: (repoPath: string, number: number) =>
+    invoke<PullRequestDiff>("get_pull_request_diff", { repoPath, number }),
+
+  checkoutPullRequest: (repoPath: string, number: number) =>
+    invoke<void>("checkout_pull_request", { repoPath, number }),
+
+  updatePullRequestBranch: (repoPath: string, number: number) =>
+    invoke<void>("update_pull_request_branch", { repoPath, number }),
+
+  mergePullRequest: (repoPath: string, number: number, method: "merge" | "rebase" | "squash") =>
+    invoke<void>("merge_pull_request", { repoPath, number, method }),
 };

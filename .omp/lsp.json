@@ -1,0 +1,21 @@
+{
+  "servers": {
+    "rust-analyzer": {
+      "rootMarkers": ["src-tauri/Cargo.toml"],
+      "settings": {
+        "rust-analyzer": {
+          "linkedProjects": ["src-tauri/Cargo.toml"]
+        }
+      },
+      "capabilities": {
+        "expandMacro": true,
+        "runnables": true
+      }
+    },
+    "typescript-language-server": {
+      "command": "typescript-language-server",
+      "args": ["--stdio"],
+      "rootMarkers": ["package.json", "tsconfig.json"]
+    }
+  }
+}

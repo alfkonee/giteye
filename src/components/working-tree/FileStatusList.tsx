@@ -114,7 +114,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
 
   return (
     <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-4 py-2 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-3 py-1.5 backdrop-blur">
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
@@ -133,24 +133,24 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           <button
             onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
             disabled={isBulkMutating}
-            className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-text-secondary)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {staged ? "Unstage all" : "Stage all"}
           </button>
         )}
-        <button className="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]" aria-label={`${title} actions`}>
+        <button className="rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]" aria-label={`${title} actions`}>
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {!collapsed && (
-        <div className="px-3 py-2">
+        <div className="px-2 py-1.5">
           {isLoading ? (
-            <div className="flex justify-center py-8">
+            <div className="flex justify-center py-6">
               <LoadingSpinner size="md" />
             </div>
           ) : files.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/40 py-6">
+            <div className="rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/40 py-5">
               <EmptyState
                 title={staged ? "No staged files" : "No unstaged files"}
                 description={
@@ -161,10 +161,10 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
               />
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {groups.map((group) => (
                 <div key={group.key} className="overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45 shadow-sm">
-                  <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/50 px-2.5 py-1.5">
+                  <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/50 px-2 py-1">
                     <span className={cn("h-2 w-2 rounded-full", group.accentClass)} />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
                       {group.title}
@@ -187,7 +187,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                         <div
                           key={file.path}
                           className={cn(
-                            "group grid min-h-[32px] cursor-pointer grid-cols-[20px_minmax(0,1fr)_32px] items-center gap-2 px-2.5 py-1 transition-colors",
+                            "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-1.5 px-2 py-0.5 transition-colors",
                             isSelected
                               ? "bg-[var(--color-bg-selected)] text-white"
                               : "hover:bg-[var(--color-bg-hover)]"
@@ -222,7 +222,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                             }}
                             disabled={isMutating}
                             className={cn(
-                              "ml-auto rounded p-1 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                              "ml-auto rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                               isSelected
                                 ? "text-white hover:bg-white/15"
                                 : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",

@@ -20,14 +20,8 @@ pub enum AppError {
     #[error("Invalid path: {0}")]
     InvalidPath(String),
 
-    #[error("Branch not found: {0}")]
-    BranchNotFound(String),
-
     #[error("Commit not found: {0}")]
     CommitNotFound(String),
-
-    #[error("File not found: {0}")]
-    FileNotFound(String),
 
     #[error("Storage error: {0}")]
     StorageError(String),

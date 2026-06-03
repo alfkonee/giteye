@@ -48,8 +48,8 @@ export function CommitHistory() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
-      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2.5">
+        <div className="flex items-center gap-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
             <History className="h-3.5 w-3.5" />
           </div>
@@ -64,7 +64,7 @@ export function CommitHistory() {
         </div>
       </div>
 
-      <div className="sticky top-0 z-10 grid grid-cols-[34px_64px_minmax(0,1fr)_120px_74px] items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur">
+      <div className="sticky top-0 z-10 grid grid-cols-[34px_64px_minmax(0,1fr)_120px_74px] items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur">
         <span className="flex items-center justify-center">
           <GitCommitHorizontal className="h-3.5 w-3.5" />
         </span>
@@ -74,7 +74,7 @@ export function CommitHistory() {
         <span className="text-right">Date</span>
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-auto px-2 py-2">
+      <div ref={parentRef} className="flex-1 overflow-auto px-1.5 py-1.5">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

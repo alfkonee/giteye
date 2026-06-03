@@ -24,11 +24,11 @@ export function AppShell() {
         <Sidebar />
         <div className="min-w-0 flex-1 overflow-hidden">
           {isLoading ? (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex h-full items-center justify-center p-3">
               <LoadingSpinner />
             </div>
           ) : error ? (
-            <div className="p-4">
+            <div className="p-3">
               <ErrorCallout message="Failed to load repository" />
             </div>
           ) : (
@@ -58,7 +58,7 @@ function StatusBar({
   activeView: ViewType;
 }) {
   return (
-    <div className="giteye-statusbar flex h-7 shrink-0 items-center gap-3 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 text-[11px] text-[var(--color-text-muted)]">
+    <div className="giteye-statusbar flex h-6 shrink-0 items-center gap-2.5 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 text-[11px] text-[var(--color-text-muted)]">
       <span className="truncate">{repoName ?? "No repository"}</span>
       {branchName && (
         <span className="flex min-w-0 items-center gap-1.5">

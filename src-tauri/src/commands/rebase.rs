@@ -37,9 +37,6 @@ pub fn mark_file_resolved(repo_path: String, file_path: String) -> Result<(), Ap
 }
 
 #[tauri::command]
-pub fn update_rebase_todo(
-    repo_path: String,
-    items: Vec<RebaseTodoItem>,
-) -> Result<(), AppError> {
+pub fn update_rebase_todo(repo_path: String, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
     rebase_service::update_rebase_todo(Path::new(&repo_path), items)
 }

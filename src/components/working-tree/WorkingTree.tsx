@@ -34,9 +34,9 @@ export function WorkingTree(_props: WorkingTreeProps) {
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
       <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <div className="flex items-center justify-between px-5 py-3">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               <h2 className="text-[17px] font-semibold tracking-tight text-[var(--color-text-primary)]">
                 Changes
               </h2>
@@ -46,7 +46,7 @@ export function WorkingTree(_props: WorkingTreeProps) {
                 </span>
               )}
             </div>
-            <div className="mt-2 flex min-w-0 items-center gap-3 text-[12px] text-[var(--color-text-muted)]">
+            <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
                 <span className="truncate text-[var(--color-text-secondary)]">{branchName}</span>
@@ -67,9 +67,9 @@ export function WorkingTree(_props: WorkingTreeProps) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {stackedPullRequests.length > 0 && (
-              <div className="hidden items-center gap-1 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 xl:flex">
+              <div className="hidden items-center gap-1 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 xl:flex">
                 <GitPullRequestArrow className="h-4 w-4 text-[var(--color-purple)]" />
                 {stackedPullRequests.map((pullRequest) => (
                   <button
@@ -85,7 +85,7 @@ export function WorkingTree(_props: WorkingTreeProps) {
             )}
             <button
               onClick={handleRefresh}
-              className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-2 text-[var(--color-text-muted)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
               title="Refresh"
             >
               <RefreshCw className="h-[17px] w-[17px]" />

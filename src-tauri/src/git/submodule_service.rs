@@ -186,7 +186,9 @@ fn parse_status_line(line: &str) -> Option<SubmoduleStatusLine> {
     let marker = chars.next()?;
     let rest = chars.as_str().trim_start();
     let mut parts = rest.split_whitespace();
-    let commit = parts.next().map(|commit| commit.trim_start_matches('-').to_string());
+    let commit = parts
+        .next()
+        .map(|commit| commit.trim_start_matches('-').to_string());
     let path = parts.next()?.to_string();
     Some(SubmoduleStatusLine {
         marker,
@@ -252,7 +254,13 @@ fn submodule_has_changes(repo_path: &Path, path: &str) -> Result<bool, AppError>
 fn parent_status_for_path(repo_path: &Path, path: &str) -> Result<(bool, bool), AppError> {
     let output = GitCli::run(
         repo_path,
-        &["status", "--porcelain", "--ignore-submodules=none", "--", path],
+        &[
+            "status",
+            "--porcelain",
+            "--ignore-submodules=none",
+            "--",
+            path,
+        ],
     )?;
     let has_changes = !output.trim().is_empty();
     let has_conflict = output.lines().any(|line| {
@@ -280,7 +288,10 @@ fn classify_status(
         Some('-') => SubmoduleStatus::Uninitialized,
         _ if has_changes => SubmoduleStatus::Modified,
         Some('+') => SubmoduleStatus::Modified,
-        _ if pinned_commit.is_some() && current_commit.is_some() && pinned_commit != current_commit => {
+        _ if pinned_commit.is_some()
+            && current_commit.is_some()
+            && pinned_commit != current_commit =>
+        {
             SubmoduleStatus::Modified
         }
         _ if behind > 0 => SubmoduleStatus::UpdatesAvailable,
@@ -306,7 +317,10 @@ fn validate_relative_path(path: &str) -> Result<(), AppError> {
         || candidate.components().any(|component| {
             matches!(
                 component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_) | Component::CurDir
+                Component::ParentDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+                    | Component::CurDir
             )
         })
     {

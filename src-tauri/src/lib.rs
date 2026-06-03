@@ -2,16 +2,11 @@ mod commands;
 mod errors;
 mod git;
 mod models;
-mod state;
 mod storage;
-
-use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default()
-        .manage(AppState::new())
-        .plugin(tauri_plugin_dialog::init());
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
 
     #[cfg(debug_assertions)]
     {
@@ -27,6 +22,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::repository::open_repository,
+            commands::repository::init_repository,
+            commands::repository::clone_repository,
             commands::repository::get_repository_info,
             commands::repository::list_recent_repositories,
             commands::status::get_status,
@@ -67,6 +64,10 @@ pub fn run() {
             commands::rebase::mark_file_resolved,
             commands::rebase::update_rebase_todo,
             commands::github::get_repository_github_overview,
+            commands::github::get_pull_request_diff,
+            commands::github::checkout_pull_request,
+            commands::github::update_pull_request_branch,
+            commands::github::merge_pull_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

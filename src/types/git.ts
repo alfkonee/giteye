@@ -154,6 +154,32 @@ export interface PullRequestSummary {
   updatedAt: string | null;
 }
 
+export interface PullRequestFileDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+  status: string;
+}
+
+export interface ReviewCommentSummary {
+  id: number;
+  author: string | null;
+  path: string | null;
+  line: number | null;
+  body: string;
+  url: string | null;
+  createdAt: string | null;
+}
+
+export interface PullRequestDiff {
+  number: number;
+  title: string | null;
+  url: string | null;
+  diffText: string;
+  files: PullRequestFileDiff[];
+  comments: ReviewCommentSummary[];
+}
+
 export interface CheckRunSummary {
   name: string;
   state: string | null;

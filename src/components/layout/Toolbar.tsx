@@ -50,11 +50,11 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   }, []);
 
   return (
-    <div className="giteye-toolbar flex h-12 shrink-0 select-none items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 shadow-[var(--shadow-panel)]">
-      <div className="flex min-w-0 shrink-0 items-center gap-2">
+    <div className="giteye-toolbar flex h-11 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 shadow-[var(--shadow-panel)]">
+      <div className="flex min-w-0 shrink-0 items-center gap-1.5">
         <button
           onClick={() => setActiveRepoPath(null)}
-          className="flex h-8 max-w-[260px] items-center gap-2 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2.5 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
+          className="flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
           title="Switch repository"
         >
           <FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -66,7 +66,7 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           <div className="relative" ref={branchMenuRef}>
             <button
               onClick={() => setBranchMenuOpen((open) => !open)}
-              className="flex h-8 max-w-[220px] items-center gap-2 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2.5 text-[13px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+              className="flex h-7 max-w-[200px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
               title="Checkout branch"
             >
               <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -75,8 +75,8 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
             </button>
 
             {branchMenuOpen && (
-              <div className="absolute left-0 top-full z-50 mt-2 max-h-80 w-80 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1.5 shadow-[var(--shadow-elevated)]">
-                <div className="flex items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+              <div className="absolute left-0 top-full z-50 mt-1.5 max-h-80 w-80 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
+                <div className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
                   <span>Local Branches</span>
                   <span>{localBranches.length}</span>
                 </div>
@@ -88,7 +88,7 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                       setBranchMenuOpen(false);
                     }}
                     className={cn(
-                      "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors",
+                      "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors",
                       branch.isCurrent
                         ? "bg-[var(--color-bg-selected)] text-white"
                         : "text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]",
@@ -105,31 +105,31 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         )}
       </div>
 
-      <div className="mx-1 h-7 w-px shrink-0 bg-[var(--color-border-muted)]" />
+      <div className="mx-0.5 h-6 w-px shrink-0 bg-[var(--color-border-muted)]" />
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5">
         <ToolbarButton icon={<Download className="h-4 w-4" />} label="Fetch" title="Fetch from remote" />
         <ToolbarButton icon={<GitMerge className="h-4 w-4" />} label="Pull" title="Pull from remote" />
         <ToolbarButton icon={<Upload className="h-4 w-4" />} label="Push" title="Push to remote" />
         <ToolbarButton icon={<Zap className="h-4 w-4" />} label="Sync" title="Sync repository" />
       </div>
 
-      <div className="flex min-w-[180px] flex-1 justify-center px-2">
-        <div className="relative w-full max-w-2xl">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+      <div className="flex min-w-[160px] flex-1 justify-center px-1">
+        <div className="relative w-full max-w-xl">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
           <input
             type="text"
             value={commandValue}
             onChange={(event) => setCommandValue(event.target.value)}
             placeholder="Search files, branches, commands..."
-            className="h-8 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-9 pr-3 text-[13px] text-[var(--color-text-primary)] shadow-[var(--shadow-panel)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
+            className="h-7 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-8 pr-2.5 text-[13px] text-[var(--color-text-primary)] shadow-[var(--shadow-panel)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
           />
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-0.5">
         {isClean !== undefined && currentBranch && (
-          <div className={cn("hidden h-8 items-center gap-2 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2.5 text-[12px] xl:flex", isClean ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
+          <div className={cn("hidden h-7 items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[12px] xl:flex", isClean ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
             <Circle className="h-2.5 w-2.5 fill-current" />
             <span>{workingTreeState}</span>
           </div>
@@ -152,7 +152,7 @@ function ToolbarButton({ icon, label, title, onClick }: { icon: ReactNode; label
     <button
       onClick={onClick}
       title={title ?? label}
-      className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
     >
       {icon}
       {label && <span className="hidden lg:inline">{label}</span>}

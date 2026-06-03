@@ -41,7 +41,10 @@ pub fn get_rebase_state(repo_path: &Path) -> Result<RebaseState, AppError> {
     })
 }
 
-pub fn get_conflict_content(repo_path: &Path, file_path: &str) -> Result<ConflictContent, AppError> {
+pub fn get_conflict_content(
+    repo_path: &Path,
+    file_path: &str,
+) -> Result<ConflictContent, AppError> {
     validate_repo_relative_path(file_path)?;
 
     Ok(ConflictContent {
@@ -121,7 +124,9 @@ fn path_from_git_output(repo_path: &Path, path_text: &str) -> PathBuf {
 fn read_optional_file(path: &Path) -> Result<Option<String>, AppError> {
     match fs::read_to_string(path) {
         Ok(value) => {
-            let trimmed = value.trim_end_matches(|c| c == '\r' || c == '\n').to_string();
+            let trimmed = value
+                .trim_end_matches(|c| c == '\r' || c == '\n')
+                .to_string();
             if trimmed.is_empty() {
                 Ok(None)
             } else {
@@ -223,9 +228,12 @@ fn read_worktree_file(repo_path: &Path, file_path: &str) -> Result<String, AppEr
 fn validate_repo_relative_path(file_path: &str) -> Result<(), AppError> {
     let path = Path::new(file_path);
     if file_path.is_empty()
-        || path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
     {
         return Err(AppError::InvalidPath(file_path.to_string()));
     }

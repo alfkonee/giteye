@@ -107,7 +107,7 @@ export function UnifiedDiffFallback({
             {filePath}
           </span>
           <span className="ml-auto rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
-            fallback
+            unified
           </span>
         </div>
       </div>

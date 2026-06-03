@@ -12,6 +12,7 @@ import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import { useFileDiff, useCommitDetails } from "../../hooks/useCommitHistory";
 import { EmptyState } from "../common/EmptyState";
+import { ErrorCallout } from "../common/ErrorCallout";
 import { FolderOpen } from "lucide-react";
 
 export function PanelLayout() {
@@ -103,11 +104,11 @@ export function PanelLayout() {
         minSize={30}
         onResize={setMainPanelSize}
       >
-        <div className="h-full overflow-hidden border-r border-[var(--color-border-muted)]">
+        <div className="h-full overflow-hidden">
           {renderMainContent()}
         </div>
       </Panel>
-      <PanelResizeHandle className="group w-1 bg-[var(--color-border-muted)] hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)] transition-colors cursor-col-resize relative">
+      <PanelResizeHandle className="group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
         <div className="absolute inset-y-0 -left-1 -right-1" />
       </PanelResizeHandle>
       <Panel defaultSize={40} minSize={20}>
@@ -122,12 +123,20 @@ export function PanelLayout() {
 function CommitDetailsWrapper() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
-  const { data: details, isLoading } = useCommitDetails(activeRepoPath, selectedCommitHash);
+  const { data: details, isLoading, error } = useCommitDetails(activeRepoPath, selectedCommitHash);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">
         Loading commit details...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4">
+        <ErrorCallout message={`Failed to load commit details: ${String(error)}`} />
       </div>
     );
   }

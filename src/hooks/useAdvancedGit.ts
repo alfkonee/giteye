@@ -109,3 +109,26 @@ export function useRepositoryGithubOverview(repoPath: string | null) {
     enabled: enabledRepo(repoPath),
   });
 }
+
+export function usePullRequestDiff(repoPath: string | null, number: number | null) {
+  return useQuery({
+    queryKey: ["pull-request-diff", repoPath, number],
+    queryFn: () => gitApi.getPullRequestDiff(repoPath!, number!),
+    enabled: enabledRepo(repoPath) && Boolean(number),
+  });
+}
+
+export function usePullRequestActions(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["github-overview", repoPath] });
+    queryClient.invalidateQueries({ queryKey: ["pull-request-diff", repoPath] });
+    queryClient.invalidateQueries({ queryKey: ["repoInfo", repoPath] });
+  };
+
+  return {
+    checkout: useMutation({ mutationFn: (number: number) => gitApi.checkoutPullRequest(repoPath!, number), onSuccess: invalidate }),
+    updateBranch: useMutation({ mutationFn: (number: number) => gitApi.updatePullRequestBranch(repoPath!, number), onSuccess: invalidate }),
+    merge: useMutation({ mutationFn: ({ number, method }: { number: number; method: "merge" | "rebase" | "squash" }) => gitApi.mergePullRequest(repoPath!, number, method), onSuccess: invalidate }),
+  };
+}

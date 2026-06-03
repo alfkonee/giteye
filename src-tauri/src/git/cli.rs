@@ -26,11 +26,6 @@ impl GitCli {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    pub fn run_lines(repo_path: &Path, args: &[&str]) -> Result<Vec<String>, AppError> {
-        let output = Self::run(repo_path, args)?;
-        Ok(output.lines().map(|s| s.to_string()).collect())
-    }
-
     pub fn is_git_available() -> bool {
         Command::new("git")
             .arg("--version")
