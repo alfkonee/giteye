@@ -10,6 +10,7 @@ pub struct CommitSummary {
     pub author_email: String,
     pub timestamp: String,
     pub refs: Vec<String>,
+    pub parents: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

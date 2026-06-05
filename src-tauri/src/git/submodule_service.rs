@@ -94,6 +94,22 @@ pub fn list_submodules(repo_path: &Path) -> Result<Vec<Submodule>, AppError> {
         .collect()
 }
 
+pub fn submodule_count_and_behind(repo_path: &Path) -> Result<(u32, u32), AppError> {
+    let gitmodules_path = repo_path.join(".gitmodules");
+    if !gitmodules_path.is_file() {
+        return Ok((0, 0));
+    }
+
+    let configs = read_gitmodules(repo_path)?;
+    let status_lines = read_submodule_status(repo_path).unwrap_or_default();
+    let behind_count = status_lines
+        .iter()
+        .filter(|line| matches!(line.marker, '+' | 'U'))
+        .count() as u32;
+
+    Ok((configs.len() as u32, behind_count))
+}
+
 pub fn update_submodule(repo_path: &Path, path: &str, recursive: bool) -> Result<(), AppError> {
     validate_relative_path(path)?;
     let mut args = vec!["submodule", "update", "--init"];

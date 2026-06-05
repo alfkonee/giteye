@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import {
@@ -19,17 +19,10 @@ import {
   Settings,
   Tag,
 } from "lucide-react";
-import { useBranches } from "../../hooks/useBranches";
-import { useGitStatus } from "../../hooks/useGitStatus";
-import { useRepositoryInfo } from "../../hooks/useRepository";
-import {
-  useRepositoryGithubOverview,
-  useRebaseState,
-  useSubmodules,
-  useWorktrees,
-} from "../../hooks/useAdvancedGit";
+import { useQuery } from "@tanstack/react-query";
+import { gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import type { ViewType } from "../../types/git";
-
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -39,20 +32,36 @@ export function Sidebar() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
 
-  const { data: branches } = useBranches(activeRepoPath);
-  const { data: repoInfo } = useRepositoryInfo(activeRepoPath);
-  const { data: statusFiles } = useGitStatus(activeRepoPath);
-  const { data: githubOverview } = useRepositoryGithubOverview(activeRepoPath);
-  const worktreesQuery = useWorktrees(activeRepoPath);
-  const submodulesQuery = useSubmodules(activeRepoPath);
-  const { data: rebaseState } = useRebaseState(activeRepoPath);
+  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: branchSummary } = useQuery(gitQueries.branchSummary(activeRepoPath));
+  const { data: workspaceSummary } = useQuery(gitQueries.workspaceSummary(activeRepoPath));
 
-  const localBranches = branches?.filter((b) => !b.isRemote) ?? [];
-  const remoteBranches = branches?.filter((b) => b.isRemote) ?? [];
-  const activeBranch = repoInfo?.currentBranch;
-  const statusFileCount = statusFiles?.length;
-  const pullRequestCount = githubOverview?.pullRequests.length;
-  const conflictCount = rebaseState?.inProgress ? rebaseState.conflicts.length : undefined;
+  const shouldLoadBranches = activeView === "history";
+  const shouldLoadGithub = activeView === "stacked-prs" || activeView === "review-studio";
+  const shouldLoadWorktrees = activeView === "worktrees";
+  const shouldLoadSubmodules = activeView === "submodules";
+  const shouldLoadRebase = activeView === "rebase-conflicts";
+
+  const branchesQuery = useQuery(gitQueries.branches(activeRepoPath, shouldLoadBranches));
+  const githubOverviewQuery = useQuery(gitQueries.githubOverview(activeRepoPath, shouldLoadGithub));
+  const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees));
+  const submodulesQuery = useQuery(gitQueries.submodules(activeRepoPath, shouldLoadSubmodules));
+  const rebaseStateQuery = useQuery(gitQueries.rebaseState(activeRepoPath, shouldLoadRebase));
+
+  const repoInfo = snapshot?.repositoryInfo;
+  const statusFileCount = snapshot?.summary.totalCount;
+  const pullRequestCount = githubOverviewQuery.data?.pullRequests.length;
+  const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
+  const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
+  const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
+  const conflictCount = rebaseStateQuery.data?.inProgress ? rebaseStateQuery.data.conflicts.length : undefined;
+
+  useEffect(() => {
+    if (!activeRepoPath || !shouldLoadGithub) return;
+    return () => {
+      void gitApi.cancelRepositoryGithubWork(activeRepoPath);
+    };
+  }, [activeRepoPath, shouldLoadGithub]);
   const worktrees = worktreesQuery.data ?? [];
   const submodules = submodulesQuery.data ?? [];
 
@@ -136,7 +145,7 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<GitBranch className="h-4 w-4" />}
           label="Branches"
-          count={localBranches.length}
+          count={branchSummary?.localCount}
           active={activeView === "history"}
           onClick={() => navigate("history")}
         />
@@ -150,23 +159,23 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<Layers className="h-4 w-4" />}
           label="Worktrees"
-          count={worktrees.length}
+          count={workspaceSummary?.worktreeCount}
           active={activeView === "worktrees"}
           onClick={() => navigate("worktrees")}
         />
         <SidebarNavItem
           icon={<Box className="h-4 w-4" />}
           label="Submodules"
-          count={submodules.length}
+          count={workspaceSummary?.submoduleCount}
           active={activeView === "submodules"}
           onClick={() => navigate("submodules")}
         />
 
-        <SidebarSection title="Branches" count={localBranches.length} />
-        {localBranches.length === 0 ? (
-          <div className="px-8 py-1.5 text-[12px] italic text-[var(--color-text-muted)]">
-            No branches
-          </div>
+        <SidebarSection title="Branches" count={branchSummary?.localCount} />
+        {!shouldLoadBranches ? (
+          <SidebarNote>Open History to load branches</SidebarNote>
+        ) : localBranches.length === 0 ? (
+          <SidebarNote>No branches</SidebarNote>
         ) : (
           localBranches.slice(0, 8).map((branch) => (
             <SidebarNavItem
@@ -175,9 +184,7 @@ export function Sidebar() {
                 <GitBranch
                   className={cn(
                     "h-3.5 w-3.5 shrink-0",
-                    branch.isCurrent
-                      ? "text-[var(--color-accent)]"
-                      : "text-[var(--color-text-muted)]"
+                    branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
                   )}
                 />
               }
@@ -188,7 +195,7 @@ export function Sidebar() {
           ))
         )}
 
-        {remoteBranches.length > 0 && (
+        {shouldLoadBranches && remoteBranches.length > 0 && (
           <>
             <SidebarSection title="Remote Branches" count={remoteBranches.length} />
             {remoteBranches.slice(0, 8).map((branch) => (
@@ -202,8 +209,14 @@ export function Sidebar() {
           </>
         )}
 
-        <SidebarSection title="Worktrees" count={worktrees.length} />
-        {worktreesQuery.isLoading ? (
+        <SidebarSection title="Worktrees" count={workspaceSummary?.worktreeCount} />
+        {!shouldLoadWorktrees ? (
+          <SidebarNote>
+            {workspaceSummary?.dirtyWorktreeCount
+              ? `${workspaceSummary.dirtyWorktreeCount} dirty worktree${workspaceSummary.dirtyWorktreeCount === 1 ? "" : "s"}. Open Worktrees to inspect.`
+              : "Open Worktrees to load linked worktrees"}
+          </SidebarNote>
+        ) : worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
         ) : worktreesQuery.error ? (
           <SidebarNote>Worktrees unavailable</SidebarNote>
@@ -222,8 +235,14 @@ export function Sidebar() {
           ))
         )}
 
-        <SidebarSection title="Submodules" count={submodules.length} />
-        {submodulesQuery.isLoading ? (
+        <SidebarSection title="Submodules" count={workspaceSummary?.submoduleCount} />
+        {!shouldLoadSubmodules ? (
+          <SidebarNote>
+            {workspaceSummary?.behindSubmoduleCount
+              ? `${workspaceSummary.behindSubmoduleCount} submodule${workspaceSummary.behindSubmoduleCount === 1 ? "" : "s"} need attention. Open Submodules to inspect.`
+              : "Open Submodules to load submodule state"}
+          </SidebarNote>
+        ) : submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
         ) : submodulesQuery.error ? (
           <SidebarNote>Submodules unavailable</SidebarNote>
@@ -313,7 +332,7 @@ function SidebarNavItem({
         indent ? "pl-7 pr-2.5" : "px-2.5",
         active
           ? "bg-[var(--color-bg-selected)] text-white"
-          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
       )}
     >
       {active ? (

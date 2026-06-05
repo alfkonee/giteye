@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -14,7 +14,8 @@ import {
   Wand2,
   XCircle,
 } from "lucide-react";
-import { useConflictContent, useRebaseActions, useRebaseState } from "../../hooks/useAdvancedGit";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import type { RebaseTodoItem } from "../../types/git";
 
@@ -86,12 +87,13 @@ function EmptyRebaseState({ activeRepoPath, loading, error }: { activeRepoPath: 
 
 export function RebaseConflictResolver() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const rebaseStateQuery = useRebaseState(activeRepoPath);
+  const queryClient = useQueryClient();
+  const rebaseStateQuery = useQuery(gitQueries.rebaseState(activeRepoPath));
   const rebaseState = rebaseStateQuery.data;
   const hasLiveRebase = Boolean(rebaseState?.inProgress);
   const liveConflictFiles = rebaseState?.conflicts ?? [];
-  const [selectedConflictPath, setSelectedConflictPath] = useState<string | null>(null);
-
+  const selectedConflictPath = useAppStore((s) => s.selectedConflictPath);
+  const setSelectedConflictPath = useAppStore((s) => s.setSelectedConflictPath);
   const firstConflictPath = liveConflictFiles[0]?.path ?? null;
 
   useEffect(() => {
@@ -103,11 +105,16 @@ export function RebaseConflictResolver() {
     if (!selectedConflictPath || !liveConflictFiles.some((file) => file.path === selectedConflictPath)) {
       setSelectedConflictPath(firstConflictPath);
     }
-  }, [firstConflictPath, hasLiveRebase, liveConflictFiles, selectedConflictPath]);
-
+  }, [firstConflictPath, hasLiveRebase, liveConflictFiles, selectedConflictPath, setSelectedConflictPath]);
   const displayedConflictPath = selectedConflictPath ?? firstConflictPath;
-  const conflictContentQuery = useConflictContent(activeRepoPath, displayedConflictPath);
-  const actions = useRebaseActions(activeRepoPath);
+  const conflictContentQuery = useQuery(gitQueries.conflictContent(activeRepoPath, displayedConflictPath));
+  const actions = {
+    continueRebase: useMutation(gitMutations.continueRebase(queryClient, activeRepoPath)),
+    abortRebase: useMutation(gitMutations.abortRebase(queryClient, activeRepoPath)),
+    skipRebase: useMutation(gitMutations.skipRebase(queryClient, activeRepoPath)),
+    markFileResolved: useMutation(gitMutations.markFileResolved(queryClient, activeRepoPath)),
+    updateTodo: useMutation(gitMutations.updateRebaseTodo(queryClient, activeRepoPath)),
+  };
   const liveTodo = useMemo(() => [...(rebaseState?.done ?? []), ...(rebaseState?.todo ?? [])], [rebaseState?.done, rebaseState?.todo]);
   const displayedConflicts = liveConflictFiles.map((file) => file.path);
   const conflictContent = conflictContentQuery.data;

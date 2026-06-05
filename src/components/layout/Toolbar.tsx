@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Bell,
@@ -9,15 +9,19 @@ import {
   FolderGit2,
   GitBranch,
   GitMerge,
+  Home,
   RefreshCw,
   Search,
   Settings,
+  Star,
   Upload,
   Zap,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
-import { useBranches, useCheckoutBranch } from "../../hooks/useBranches";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
+import type { FavoriteRepo, RecentRepo } from "../../types/git";
 
 interface ToolbarProps {
   repoName?: string;
@@ -25,42 +29,195 @@ interface ToolbarProps {
   isClean?: boolean;
 }
 
+type RepositorySwitchItem = {
+  path: string;
+  name: string;
+  isFavorite: boolean;
+};
+
 export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
-  const { data: branches } = useBranches(activeRepoPath);
-  const checkoutBranch = useCheckoutBranch(activeRepoPath);
-
+  const queryClient = useQueryClient();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [repoMenuOpen, setRepoMenuOpen] = useState(false);
+  const [repoSearch, setRepoSearch] = useState("");
   const [commandValue, setCommandValue] = useState("");
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const branchMenuRef = useRef<HTMLDivElement>(null);
+  const repoMenuRef = useRef<HTMLDivElement>(null);
+  const { data: branches } = useQuery(gitQueries.branches(activeRepoPath, branchMenuOpen));
+  const { data: recentRepos } = useQuery(gitQueries.recentRepositories());
+  const { data: favoriteRepos } = useQuery(gitQueries.favoriteRepositories());
+  const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
+  const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
+  const setFavorite = useMutation(gitMutations.setRepositoryFavorite(queryClient));
+  const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
+  const pullMutation = useMutation(gitMutations.pull(queryClient, activeRepoPath));
+  const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const workingTreeState = isClean ? "Clean" : "Uncommitted changes";
+  const isRemoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
+
+  const repoSwitchItems = useMemo(
+    () => buildRepositorySwitchItems(recentRepos ?? [], favoriteRepos ?? [], repoSearch),
+    [favoriteRepos, recentRepos, repoSearch],
+  );
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (branchMenuRef.current && !branchMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (branchMenuRef.current && !branchMenuRef.current.contains(target)) {
         setBranchMenuOpen(false);
+      }
+      if (repoMenuRef.current && !repoMenuRef.current.contains(target)) {
+        setRepoMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const runRemoteOperation = (
+    label: string,
+    mutate: (variables: never, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void,
+  ) => {
+    if (!activeRepoPath || isRemoteOperationPending) return;
+
+    setOperationError(null);
+    setOperationMessage(`${label}…`);
+    mutate(undefined as never, {
+      onSuccess: () => {
+        setOperationMessage(`${label} complete`);
+      },
+      onError: (error) => {
+        setOperationMessage(null);
+        setOperationError(error instanceof Error ? error.message : String(error));
+      },
+    });
+  };
+
+  const handleSync = () => {
+    if (!activeRepoPath || isRemoteOperationPending) return;
+
+    setOperationError(null);
+    setOperationMessage("Syncing…");
+    pullMutation.mutate(
+      {},
+      {
+        onSuccess: () => {
+          pushMutation.mutate(
+            {},
+            {
+              onSuccess: () => setOperationMessage("Sync complete"),
+              onError: (error) => {
+                setOperationMessage(null);
+                setOperationError(error instanceof Error ? error.message : String(error));
+              },
+            },
+          );
+        },
+        onError: (error) => {
+          setOperationMessage(null);
+          setOperationError(error instanceof Error ? error.message : String(error));
+        },
+      },
+    );
+  };
+
+  const openRepo = (path: string) => {
+    openRepository.mutate(path, {
+      onSuccess: () => {
+        setRepoMenuOpen(false);
+        setRepoSearch("");
+      },
+      onError: (error) => setOperationError(error instanceof Error ? error.message : String(error)),
+    });
+  };
+
   return (
     <div className="giteye-toolbar flex h-11 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 shadow-[var(--shadow-panel)]">
       <div className="flex min-w-0 shrink-0 items-center gap-1.5">
         <button
+          type="button"
           onClick={() => setActiveRepoPath(null)}
-          className="flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
-          title="Switch repository"
+          className="flex h-7 w-8 items-center justify-center rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          title="Repo Hub"
         >
-          <FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
-          <span className="truncate">{repoName ?? "GitEye"}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
+          <Home className="h-4 w-4" />
         </button>
+
+        <div className="relative" ref={repoMenuRef}>
+          <button
+            type="button"
+            onClick={() => setRepoMenuOpen((open) => !open)}
+            className="flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
+            title="Switch repository"
+          >
+            <FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+            <span className="truncate">{repoName ?? "GitEye"}</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)] transition-transform", repoMenuOpen && "rotate-180")} />
+          </button>
+
+          {repoMenuOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1.5 w-[360px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-2 shadow-[var(--shadow-elevated)]">
+              <div className="relative mb-2">
+                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                <input
+                  value={repoSearch}
+                  onChange={(event) => setRepoSearch(event.target.value)}
+                  placeholder="Search recent and favorite repositories…"
+                  className="h-8 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-7 pr-2 text-[12px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-[320px] overflow-y-auto">
+                {repoSwitchItems.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">No repositories match your search.</div>
+                ) : (
+                  repoSwitchItems.map((repo) => (
+                    <button
+                      key={repo.path}
+                      type="button"
+                      onClick={() => openRepo(repo.path)}
+                      className={cn(
+                        "grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--color-bg-hover)]",
+                        activeRepoPath === repo.path && "bg-[var(--color-bg-selected)]/30",
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-[var(--color-text-primary)]">{repo.name}</span>
+                        <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title={repo.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setFavorite.mutate({ repoPath: repo.path, name: repo.name, favorite: !repo.isFavorite });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setFavorite.mutate({ repoPath: repo.path, name: repo.name, favorite: !repo.isFavorite });
+                          }
+                        }}
+                        className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-warning)]"
+                      >
+                        <Star className={cn("h-4 w-4", repo.isFavorite && "fill-current text-[var(--color-warning)]")} />
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {currentBranch && (
           <div className="relative" ref={branchMenuRef}>
@@ -108,10 +265,34 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
       <div className="mx-0.5 h-6 w-px shrink-0 bg-[var(--color-border-muted)]" />
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <ToolbarButton icon={<Download className="h-4 w-4" />} label="Fetch" title="Fetch from remote" />
-        <ToolbarButton icon={<GitMerge className="h-4 w-4" />} label="Pull" title="Pull from remote" />
-        <ToolbarButton icon={<Upload className="h-4 w-4" />} label="Push" title="Push to remote" />
-        <ToolbarButton icon={<Zap className="h-4 w-4" />} label="Sync" title="Sync repository" />
+        <ToolbarButton
+          icon={<Download className="h-4 w-4" />}
+          label="Fetch"
+          title="Fetch from remote"
+          disabled={!activeRepoPath || isRemoteOperationPending}
+          onClick={() => runRemoteOperation("Fetch", (variables, options) => fetchMutation.mutate(variables, options))}
+        />
+        <ToolbarButton
+          icon={<GitMerge className="h-4 w-4" />}
+          label="Pull"
+          title="Pull from remote"
+          disabled={!activeRepoPath || isRemoteOperationPending}
+          onClick={() => runRemoteOperation("Pull", (_variables, options) => pullMutation.mutate({}, options))}
+        />
+        <ToolbarButton
+          icon={<Upload className="h-4 w-4" />}
+          label="Push"
+          title="Push to remote"
+          disabled={!activeRepoPath || isRemoteOperationPending}
+          onClick={() => runRemoteOperation("Push", (_variables, options) => pushMutation.mutate({}, options))}
+        />
+        <ToolbarButton
+          icon={<Zap className="h-4 w-4" />}
+          label="Sync"
+          title="Pull then push"
+          disabled={!activeRepoPath || isRemoteOperationPending}
+          onClick={handleSync}
+        />
       </div>
 
       <div className="flex min-w-[160px] flex-1 justify-center px-1">
@@ -127,6 +308,12 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         </div>
       </div>
 
+      {(operationMessage || operationError) && (
+        <div className={cn("hidden max-w-[220px] truncate rounded-md border px-2 py-1 text-[11px] xl:block", operationError ? "border-[var(--color-danger)]/30 text-[var(--color-danger)]" : "border-[var(--color-border-muted)] text-[var(--color-text-muted)]")}>
+          {operationError ?? operationMessage}
+        </div>
+      )}
+
       <div className="flex shrink-0 items-center gap-0.5">
         {isClean !== undefined && currentBranch && (
           <div className={cn("hidden h-7 items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[12px] xl:flex", isClean ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
@@ -134,7 +321,12 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
             <span>{workingTreeState}</span>
           </div>
         )}
-        <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} title="Refresh" />
+        <ToolbarButton
+          icon={<RefreshCw className="h-4 w-4" />}
+          title="Refresh"
+          onClick={() => void invalidateGitState(queryClient, activeRepoPath)}
+          disabled={!activeRepoPath}
+        />
         <ToolbarButton icon={<Cloud className="h-4 w-4" />} title="Remote status" />
         <ToolbarButton icon={<Bell className="h-4 w-4" />} title="Notifications" />
         <ToolbarButton
@@ -147,12 +339,50 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   );
 }
 
-function ToolbarButton({ icon, label, title, onClick }: { icon: ReactNode; label?: string; title?: string; onClick?: () => void }) {
+function buildRepositorySwitchItems(
+  recentRepos: RecentRepo[],
+  favoriteRepos: FavoriteRepo[],
+  search: string,
+): RepositorySwitchItem[] {
+  const favoritePaths = new Set(favoriteRepos.map((repo) => repo.path));
+  const merged = new Map<string, RepositorySwitchItem>();
+
+  for (const repo of favoriteRepos) {
+    merged.set(repo.path, { path: repo.path, name: repo.name, isFavorite: true });
+  }
+
+  for (const repo of recentRepos) {
+    if (!merged.has(repo.path)) {
+      merged.set(repo.path, { path: repo.path, name: repo.name, isFavorite: favoritePaths.has(repo.path) });
+    }
+  }
+
+  const query = search.trim().toLowerCase();
+  const items = Array.from(merged.values());
+  if (!query) return items;
+
+  return items.filter((repo) => repo.name.toLowerCase().includes(query) || repo.path.toLowerCase().includes(query));
+}
+
+function ToolbarButton({
+  icon,
+  label,
+  title,
+  onClick,
+  disabled,
+}: {
+  icon: ReactNode;
+  label?: string;
+  title?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
       title={title ?? label}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+      disabled={disabled}
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       {label && <span className="hidden lg:inline">{label}</span>}

@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useAppStore } from "../../stores/app-store";
-import { useCommit } from "../../hooks/useGitStatus";
-import { useRepositoryInfo } from "../../hooks/useRepository";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { GitCommitHorizontal, Sparkles } from "lucide-react";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const [message, setMessage] = useState("");
-  const commitMutation = useCommit(activeRepoPath);
-  const { data: repoInfo } = useRepositoryInfo(activeRepoPath);
+  const queryClient = useQueryClient();
+  const commitMutation = useMutation(gitMutations.commit(queryClient, activeRepoPath));
+  const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
 
   const branchName = repoInfo?.currentBranch ?? "current branch";
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
@@ -17,7 +19,10 @@ export function CommitBox() {
   const handleCommit = () => {
     if (!message.trim()) return;
     commitMutation.mutate(message.trim(), {
-      onSuccess: () => setMessage(""),
+      onSuccess: () => {
+        setMessage("");
+        setSelectedFile(null, false);
+      },
     });
   };
 

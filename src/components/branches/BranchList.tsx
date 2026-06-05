@@ -1,22 +1,26 @@
 import { useState } from "react";
 import { useAppStore } from "../../stores/app-store";
-import { useBranches, useCheckoutBranch, useCreateBranch, useDeleteBranch } from "../../hooks/useBranches";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { GitBranch, Plus, Trash2, Check } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 
 export function BranchList() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const { data: branches, isLoading } = useBranches(activeRepoPath);
-  const checkoutMutation = useCheckoutBranch(activeRepoPath);
-  const createMutation = useCreateBranch(activeRepoPath);
-  const deleteMutation = useDeleteBranch(activeRepoPath);
+  const queryClient = useQueryClient();
+  const { data: branches, isLoading } = useQuery(gitQueries.branches(activeRepoPath));
+  const checkoutMutation = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
+  const createMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
+  const deleteMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
   const localBranches = branches?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branches?.filter((b) => b.isRemote) ?? [];
+  const branchMutationError = checkoutMutation.error ?? createMutation.error ?? deleteMutation.error;
+  const branchMutationPending = checkoutMutation.isPending || createMutation.isPending || deleteMutation.isPending;
 
   const handleCreate = () => {
     if (!newBranchName.trim()) return;
@@ -51,6 +55,11 @@ export function BranchList() {
         </button>
       </div>
 
+      {(branchMutationPending || branchMutationError) && (
+        <div className={cn("border-b border-[var(--color-border)] px-3 py-2 text-xs", branchMutationError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
+          {branchMutationError ? String(branchMutationError) : "Updating branches…"}
+        </div>
+      )}
       {showCreate && (
         <div className="px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
           <input

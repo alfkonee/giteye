@@ -1,26 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { gitApi } from "../lib/tauri-api";
+import { gitQueries } from "../lib/git-data";
 
 export function useCommitHistory(repoPath: string | null, limit?: number) {
-  return useQuery({
-    queryKey: ["commits", repoPath, limit],
-    queryFn: () => gitApi.getCommitHistory(repoPath!, limit),
-    enabled: !!repoPath,
-  });
+  return useQuery(gitQueries.commits(repoPath, limit));
 }
 
 export function useCommitDetails(repoPath: string | null, commitHash: string | null) {
-  return useQuery({
-    queryKey: ["commitDetails", repoPath, commitHash],
-    queryFn: () => gitApi.getCommitDetails(repoPath!, commitHash!),
-    enabled: !!repoPath && !!commitHash,
-  });
+  return useQuery(gitQueries.commitDetails(repoPath, commitHash));
 }
 
 export function useFileDiff(repoPath: string | null, filePath: string | null, staged: boolean) {
-  return useQuery({
-    queryKey: ["fileDiff", repoPath, filePath, staged],
-    queryFn: () => gitApi.getFileDiff(repoPath!, filePath!, staged),
-    enabled: !!repoPath && !!filePath,
-  });
+  return useQuery(gitQueries.fileDiff(repoPath, filePath, staged));
+}
+
+export function useCommitDiff(repoPath: string | null, commitHash: string | null) {
+  return useQuery(gitQueries.commitDiff(repoPath, commitHash));
 }

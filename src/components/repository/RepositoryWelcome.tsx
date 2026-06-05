@@ -14,25 +14,37 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { useCloneRepository, useInitRepository, useOpenRepository, useRecentRepositories } from "../../hooks/useRepository";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
+import { useAppStore } from "../../stores/app-store";
+import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 
-type RecentRepositoryCard = {
+type RepositoryCard = {
   name: string;
   path: string;
-  lastOpenedAt: string;
+  lastOpenedAt?: string;
+  favoritedAt?: string;
 };
 
 export function RepositoryWelcome() {
   const [path, setPath] = useState("");
-  const openMutation = useOpenRepository();
-  const { data: recents, isLoading: recentsLoading } = useRecentRepositories();
-  const initMutation = useInitRepository();
-  const cloneMutation = useCloneRepository();
-  const recentRepos = recents?.slice(0, 5) ?? [];
-  const recentCount = recents?.length ?? 0;
-  const latestRecent = recents?.[0];
+  const queryClient = useQueryClient();
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
+  const initMutation = useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
+  const cloneMutation = useMutation(gitMutations.cloneRepository(queryClient, setActiveRepoPath));
+  const { data: recents, isLoading: recentsLoading } = useQuery(gitQueries.recentRepositories());
+  const { data: favorites, isLoading: favoritesLoading } = useQuery(gitQueries.favoriteRepositories());
+  const favoriteMutation = useMutation(gitMutations.setRepositoryFavorite(queryClient));
+  const [showAllRecents, setShowAllRecents] = useState(false);
+  const recentRepos = recents ?? [];
+  const displayedRecentRepos = showAllRecents ? recentRepos : recentRepos.slice(0, 5);
+  const favoriteRepos = favorites ?? [];
+  const favoritePaths = new Set(favoriteRepos.map((repo) => repo.path));
+  const recentCount = recentRepos.length;
+  const latestRecent = recentRepos[0];
 
   const handleOpen = () => {
     const trimmed = path.trim();
@@ -65,6 +77,10 @@ export function RepositoryWelcome() {
     if (!destination?.trim()) return;
 
     cloneMutation.mutate({ url: url.trim(), destination: destination.trim() });
+  };
+
+  const handleSetFavorite = (repo: RepositoryCard, favorite: boolean) => {
+    favoriteMutation.mutate({ repoPath: repo.path, name: repo.name, favorite });
   };
 
   const actionPending = openMutation.isPending || initMutation.isPending || cloneMutation.isPending;
@@ -195,8 +211,23 @@ export function RepositoryWelcome() {
               </section>
 
               <div className="mt-4 grid grid-cols-2 gap-4">
-                <RepositoryList title="Recent Repositories" loading={recentsLoading} repos={recentRepos} onOpen={(repoPath) => openMutation.mutate(repoPath)} />
-                <FavoriteList />
+                <RepositoryList
+                  title="Recent Repositories"
+                  loading={recentsLoading}
+                  repos={displayedRecentRepos}
+                  totalCount={recentCount}
+                  showAll={showAllRecents}
+                  onToggleShowAll={() => setShowAllRecents((value) => !value)}
+                  favoritePaths={favoritePaths}
+                  onOpen={(repoPath) => openMutation.mutate(repoPath)}
+                  onSetFavorite={handleSetFavorite}
+                />
+                <FavoriteList
+                  loading={favoritesLoading}
+                  repos={favoriteRepos}
+                  onOpen={(repoPath) => openMutation.mutate(repoPath)}
+                  onSetFavorite={handleSetFavorite}
+                />
               </div>
 
               <section className="mt-4 rounded-lg border border-dashed border-[var(--color-accent)]/45 bg-[var(--color-bg-secondary)] p-5 shadow-[var(--shadow-panel)]">
@@ -336,17 +367,40 @@ function RepositoryList({
   title,
   loading,
   repos,
+  totalCount,
+  showAll,
+  onToggleShowAll,
+  favoritePaths,
   onOpen,
+  onSetFavorite,
 }: {
   title: string;
   loading: boolean;
-  repos: RecentRepositoryCard[];
+  repos: RepositoryCard[];
+  totalCount: number;
+  showAll: boolean;
+  onToggleShowAll: () => void;
+  favoritePaths: Set<string>;
   onOpen: (path: string) => void;
+  onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
 }) {
+  const canToggle = totalCount > 5;
+
   return (
     <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
-      <SectionHeader title={title} />
-      <div className="mt-3 h-[220px] divide-y divide-[var(--color-border-muted)]">
+      <div className="flex items-center justify-between">
+        <SectionHeader title={title} />
+        {canToggle && (
+          <button
+            type="button"
+            onClick={onToggleShowAll}
+            className="rounded-md border border-[var(--color-border-muted)] px-2 py-1 text-[11px] font-medium text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-hover)]"
+          >
+            {showAll ? "Show less" : `View all ${totalCount}`}
+          </button>
+        )}
+      </div>
+      <div className="mt-3 h-[220px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
         {loading ? (
           <div className="flex h-[220px] items-center justify-center">
             <LoadingSpinner size="sm" />
@@ -358,40 +412,121 @@ function RepositoryList({
             <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Open a local Git repository to pin it here.</p>
           </div>
         ) : (
-          repos.map((repo) => (
-            <button
-              key={repo.path}
-              type="button"
-              onClick={() => onOpen(repo.path)}
-              className="group grid w-full grid-cols-[minmax(0,1fr)_92px_24px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-                  <FolderGit2 className="h-4 w-4" />
+          repos.map((repo) => {
+            const isFavorite = favoritePaths.has(repo.path);
+
+            return (
+              <button
+                key={repo.path}
+                type="button"
+                onClick={() => onOpen(repo.path)}
+                className="group grid w-full grid-cols-[minmax(0,1fr)_92px_56px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
+                    <FolderGit2 className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                    <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                  </span>
                 </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
-                  <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
+                <span className="flex justify-end gap-1">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSetFavorite(repo, !isFavorite);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSetFavorite(repo, !isFavorite);
+                      }
+                    }}
+                    className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-warning)]"
+                  >
+                    <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-warning)]")} />
+                  </span>
+                  <MoreHorizontal className="h-4 w-4 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
                 </span>
-              </span>
-              <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{formatRelativeTime(repo.lastOpenedAt)}</span>
-              <MoreHorizontal className="h-4 w-4 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
-            </button>
-          ))
+              </button>
+            );
+          })
         )}
       </div>
     </section>
   );
 }
 
-function FavoriteList() {
+function FavoriteList({
+  loading,
+  repos,
+  onOpen,
+  onSetFavorite,
+}: {
+  loading: boolean;
+  repos: RepositoryCard[];
+  onOpen: (path: string) => void;
+  onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
+}) {
   return (
     <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
       <SectionHeader title="Favorite Repositories" />
-      <div className="mt-3 flex h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 px-5 text-center">
-        <Star className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-        <p className="text-sm font-medium text-[var(--color-text-primary)]">No favorites yet</p>
-        <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Favorite repositories will appear here when real favorite data is available.</p>
+      <div className="mt-3 h-[220px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
+        {loading ? (
+          <div className="flex h-[220px] items-center justify-center">
+            <LoadingSpinner size="sm" />
+          </div>
+        ) : repos.length === 0 ? (
+          <div className="flex h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 px-5 text-center">
+            <Star className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">No favorites yet</p>
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Favorite repositories from the recent list or repo switcher to pin them here.</p>
+          </div>
+        ) : (
+          repos.map((repo) => (
+            <button
+              key={repo.path}
+              type="button"
+              onClick={() => onOpen(repo.path)}
+              className="group grid w-full grid-cols-[minmax(0,1fr)_32px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-warning)]">
+                  <Star className="h-4 w-4 fill-current" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                  <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                </span>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                title="Remove from favorites"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSetFavorite(repo, false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onSetFavorite(repo, false);
+                  }
+                }}
+                className="rounded-md p-1 text-[var(--color-warning)] transition-colors hover:bg-[var(--color-bg-surface)]"
+              >
+                <Star className="h-4 w-4 fill-current" />
+              </span>
+            </button>
+          ))
+        )}
       </div>
     </section>
   );

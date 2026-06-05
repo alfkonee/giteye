@@ -1,5 +1,7 @@
 import type { CommitDetails as CommitDetailsType } from "../../types/git";
 import { truncateHash } from "../../lib/format";
+import { cn } from "../../lib/cn";
+import { useAppStore } from "../../stores/app-store";
 import { Calendar, User, ChevronRight, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
 
 interface CommitDetailsProps {
@@ -7,6 +9,9 @@ interface CommitDetailsProps {
 }
 
 export function CommitDetails({ commit }: CommitDetailsProps) {
+  const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
+  const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
+
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
       <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-3">
@@ -85,17 +90,28 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
             </p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45">
-              {commit.changedFiles.map((file, index) => (
-                <div
-                  key={index}
-                  className="group flex cursor-pointer items-center gap-1.5 border-b border-[var(--color-border-muted)]/70 px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] transition-colors last:border-b-0 hover:bg-[var(--color-bg-hover)]"
-                >
-                  <ChevronRight className="h-3.5 w-3.5 text-[var(--color-text-muted)] transition-colors group-hover:text-[var(--color-accent)]" />
-                  <span className="truncate font-mono text-[var(--color-text-secondary)]">
-                    {file}
-                  </span>
-                </div>
-              ))}
+              {commit.changedFiles.map((file) => {
+                const isSelected = selectedCommitFilePath === file;
+
+                return (
+                  <button
+                    key={file}
+                    type="button"
+                    onClick={() => setSelectedCommitFilePath(file)}
+                    className={cn(
+                      "group flex w-full cursor-pointer items-center gap-1.5 border-b border-[var(--color-border-muted)]/70 px-2 py-1.5 text-left text-[12px] transition-colors last:border-b-0",
+                      isSelected
+                        ? "bg-[var(--color-bg-selected)] text-white"
+                        : "text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                    )}
+                  >
+                    <ChevronRight className={cn("h-3.5 w-3.5 transition-colors", isSelected ? "text-white" : "text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)]")} />
+                    <span className={cn("truncate font-mono", isSelected ? "text-white" : "text-[var(--color-text-secondary)]")}>
+                      {file}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

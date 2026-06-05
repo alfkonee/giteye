@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -10,7 +11,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { UnifiedDiffFallback } from "../diff-viewer/UnifiedDiffFallback";
-import { usePullRequestDiff, useRepositoryGithubOverview } from "../../hooks/useAdvancedGit";
+import { useQuery } from "@tanstack/react-query";
+import { gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { ActivityItem, CheckRunSummary, PullRequestSummary, ReviewCommentSummary, ReviewSummary } from "../../types/git";
 
@@ -95,10 +98,17 @@ function PrSummary({ pr }: { pr: PullRequestSummary }) {
 
 export function DiffReviewStudio() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const { data: githubOverview, isError } = useRepositoryGithubOverview(activeRepoPath);
+  const { data: githubOverview, isError } = useQuery(gitQueries.githubOverview(activeRepoPath));
   const livePrs = githubOverview?.pullRequests ?? [];
+
+  useEffect(() => {
+    if (!activeRepoPath) return;
+    return () => {
+      void gitApi.cancelRepositoryGithubWork(activeRepoPath);
+    };
+  }, [activeRepoPath]);
   const currentPr = livePrs[0] ?? null;
-  const { data: prDiff, isLoading: prDiffLoading, error: prDiffError } = usePullRequestDiff(activeRepoPath, currentPr?.number ?? null);
+  const { data: prDiff, isLoading: prDiffLoading, error: prDiffError } = useQuery(gitQueries.pullRequestDiff(activeRepoPath, currentPr?.number ?? null));
   const parentPr = livePrs[1] ?? null;
   const checkRows = (githubOverview?.checkRuns ?? []).map(statusFromCheck);
   const reviewRows = (githubOverview?.reviews ?? []).map((review) => reviewFromSummary(review, currentPr?.author));

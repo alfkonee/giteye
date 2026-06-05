@@ -13,6 +13,9 @@ export interface AppStore {
 
   selectedCommitHash: string | null;
   setSelectedCommitHash: (hash: string | null) => void;
+  selectedCommitFilePath: string | null;
+  setSelectedCommitFilePath: (path: string | null) => void;
+
 
   selectedFilePath: string | null;
   selectedFileStaged: boolean;
@@ -58,6 +61,7 @@ export const useAppStore = create<AppStore>((set) => ({
     branchName: null,
     commitHash: null,
     filePath: null,
+    commitFilePath: null,
     fileStaged: false,
     pullRequestId: null,
     stackId: null,
@@ -74,6 +78,7 @@ export const useAppStore = create<AppStore>((set) => ({
         branchName: null,
         commitHash: null,
         filePath: null,
+        commitFilePath: null,
         fileStaged: false,
         pullRequestId: null,
         stackId: null,
@@ -82,6 +87,7 @@ export const useAppStore = create<AppStore>((set) => ({
         conflictPath: null,
       },
       selectedCommitHash: null,
+      selectedCommitFilePath: null,
       selectedFilePath: null,
       selectedFileStaged: false,
       selectedBranchName: null,
@@ -100,12 +106,20 @@ export const useAppStore = create<AppStore>((set) => ({
     })),
 
   selectedCommitHash: null,
+  selectedCommitFilePath: null,
   setSelectedCommitHash: (hash) =>
     set((state) => ({
       selectedCommitHash: hash,
+      selectedCommitFilePath: null,
       selectedFilePath: null,
       selectedFileStaged: false,
-      selected: { ...state.selected, commitHash: hash, filePath: null, fileStaged: false },
+      selected: { ...state.selected, commitHash: hash, commitFilePath: null, filePath: null, fileStaged: false },
+    })),
+
+  setSelectedCommitFilePath: (path) =>
+    set((state) => ({
+      selectedCommitFilePath: path,
+      selected: { ...state.selected, commitFilePath: path },
     })),
 
   selectedFilePath: null,
@@ -114,7 +128,8 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => ({
       selectedFilePath: path,
       selectedFileStaged: staged,
-      selected: { ...state.selected, filePath: path, fileStaged: staged },
+      selectedCommitFilePath: null,
+      selected: { ...state.selected, filePath: path, fileStaged: staged, commitFilePath: null },
     })),
 
   selectedPullRequestId: null,
@@ -158,9 +173,10 @@ export const useAppStore = create<AppStore>((set) => ({
       activeView: view,
       route: state.activeRepoPath ? { area: "repository", view, repoPath: state.activeRepoPath } : state.route,
       selectedCommitHash: null,
+      selectedCommitFilePath: null,
       selectedFilePath: null,
       selectedFileStaged: false,
-      selected: { ...state.selected, commitHash: null, filePath: null, fileStaged: false },
+      selected: { ...state.selected, commitHash: null, commitFilePath: null, filePath: null, fileStaged: false },
     })),
 
   sidebarCollapsed: false,

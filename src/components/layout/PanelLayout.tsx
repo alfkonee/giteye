@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
+import { gitQueries } from "../../lib/git-data";
 import { WorkingTree } from "../working-tree/WorkingTree";
 import { CommitHistory } from "../commit-history/CommitHistory";
 import { CommitDetails } from "../commit-history/CommitDetails";
@@ -10,10 +12,9 @@ import { DiffReviewStudio } from "../review-studio/DiffReviewStudio";
 import { WorktreesSubmodules } from "../workspaces/WorktreesSubmodules";
 import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
-import { useFileDiff, useCommitDetails } from "../../hooks/useCommitHistory";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
-import { FolderOpen } from "lucide-react";
+import { ArrowLeft, FolderOpen } from "lucide-react";
 
 export function PanelLayout() {
   const activeView = useAppStore((s) => s.activeView);
@@ -21,13 +22,12 @@ export function PanelLayout() {
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
+  const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
 
   const [mainPanelSize, setMainPanelSize] = useState(60);
 
-  const { data: fileDiff, isLoading: diffLoading, error: diffError } = useFileDiff(
-    activeRepoPath,
-    selectedFilePath,
-    selectedFileStaged
+  const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
+    gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
   );
 
   const renderMainContent = useCallback(() => {
@@ -51,9 +51,14 @@ export function PanelLayout() {
   }, [activeView]);
 
   const renderDetailPane = useCallback(() => {
+    if (selectedCommitHash && selectedCommitFilePath) {
+      return <CommitDiffWrapper />;
+    }
+
     if (selectedCommitHash) {
       return <CommitDetailsWrapper />;
     }
+
     if (selectedFilePath && fileDiff) {
       return (
         <DiffViewer
@@ -67,6 +72,7 @@ export function PanelLayout() {
         />
       );
     }
+
     if (selectedFilePath && diffLoading) {
       return (
         <DiffViewer
@@ -78,6 +84,7 @@ export function PanelLayout() {
         />
       );
     }
+
     return (
       <EmptyState
         icon={<FolderOpen className="w-8 h-8" />}
@@ -85,7 +92,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, fileDiff, diffLoading, diffError]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError]);
 
   const showDetailPane = activeView === "working-tree" || activeView === "history";
 
@@ -123,7 +130,7 @@ export function PanelLayout() {
 function CommitDetailsWrapper() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
-  const { data: details, isLoading, error } = useCommitDetails(activeRepoPath, selectedCommitHash);
+  const { data: details, isLoading, error } = useQuery(gitQueries.commitDetails(activeRepoPath, selectedCommitHash));
 
   if (isLoading) {
     return (
@@ -152,4 +159,42 @@ function CommitDetailsWrapper() {
   }
 
   return <CommitDetails commit={details} />;
+}
+
+function CommitDiffWrapper() {
+  const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
+  const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
+  const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
+  const { data: commitDiff, isLoading, error } = useQuery(gitQueries.commitDiff(activeRepoPath, selectedCommitHash));
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setSelectedCommitFilePath(null)}
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Commit details
+        </button>
+        <span className="min-w-0 truncate text-[var(--color-text-muted)]">
+          Focusing <span className="font-mono text-[var(--color-text-secondary)]">{selectedCommitFilePath}</span> inside the full commit diff
+        </span>
+      </div>
+      <div className="min-h-0 flex-1">
+        <DiffViewer
+          diffText={commitDiff?.diffText ?? ""}
+          filePath={commitDiff?.filePath ?? selectedCommitHash ?? "commit"}
+          oldFilePath={commitDiff?.oldFilePath ?? undefined}
+          isBinary={commitDiff?.isBinary}
+          isLoading={isLoading}
+          error={error?.toString() ?? null}
+          mode="unified"
+          focusedFilePath={selectedCommitFilePath ?? undefined}
+        />
+      </div>
+    </div>
+  );
 }

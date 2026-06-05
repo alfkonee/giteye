@@ -1,7 +1,8 @@
 import type { GitStatusFile, FileStatus } from "../../types/git";
 import { parseFileStatus } from "../../types/git";
 import { StatusBadge } from "../common/StatusBadge";
-import { useStageFile, useUnstageFile, useStageAll, useUnstageAll } from "../../hooks/useGitStatus";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { gitMutations } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { Plus, Minus, ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
@@ -91,10 +92,11 @@ function splitPath(path: string): { directory: string; name: string } {
 export function FileStatusList({ title, files, isLoading, repoPath, staged }: FileStatusListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
-  const stageMutation = useStageFile(repoPath);
-  const unstageMutation = useUnstageFile(repoPath);
-  const stageAllMutation = useStageAll(repoPath);
-  const unstageAllMutation = useUnstageAll(repoPath);
+  const queryClient = useQueryClient();
+  const stageMutation = useMutation(gitMutations.stageFile(queryClient, repoPath));
+  const unstageMutation = useMutation(gitMutations.unstageFile(queryClient, repoPath));
+  const stageAllMutation = useMutation(gitMutations.stageAll(queryClient, repoPath));
+  const unstageAllMutation = useMutation(gitMutations.unstageAll(queryClient, repoPath));
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);

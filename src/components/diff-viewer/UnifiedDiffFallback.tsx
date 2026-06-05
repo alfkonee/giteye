@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { cn } from "../../lib/cn";
 import { FileCode2 } from "lucide-react";
 
@@ -6,6 +6,7 @@ interface UnifiedDiffFallbackProps {
   diffText: string;
   filePath: string;
   mode: "unified" | "split";
+  focusedFilePath?: string;
 }
 
 interface DiffLine {
@@ -68,12 +69,30 @@ function formatLineNumber(n: number | undefined): string {
   return String(n);
 }
 
+function normalizeDiffPath(path: string) {
+  return path.startsWith("a/") || path.startsWith("b/") ? path.slice(2) : path;
+}
+
+function diffHeaderMatchesFile(header: string, filePath: string | undefined) {
+  if (!filePath || !header.startsWith("diff --git ")) return false;
+
+  const normalized = normalizeDiffPath(filePath);
+  return header.includes(` a/${normalized}`) || header.includes(` b/${normalized}`);
+}
+
+
 export function UnifiedDiffFallback({
   diffText,
   filePath,
   mode: _mode,
+  focusedFilePath,
 }: UnifiedDiffFallbackProps) {
+  const focusedRowRef = useRef<HTMLDivElement | null>(null);
   const lines = useMemo(() => parseDiff(diffText), [diffText]);
+
+  useEffect(() => {
+    focusedRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focusedFilePath, diffText]);
 
   const rowClass: Record<string, string> = {
     header:
@@ -104,7 +123,7 @@ export function UnifiedDiffFallback({
             Unified Diff
           </span>
           <span className="min-w-0 truncate font-mono text-[11px] text-[var(--color-text-muted)]">
-            {filePath}
+            {focusedFilePath ?? filePath}
           </span>
           <span className="ml-auto rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
             unified
@@ -114,10 +133,14 @@ export function UnifiedDiffFallback({
 
       <div className="flex-1 overflow-auto p-3">
         <div className="min-w-max overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] font-mono text-[12px] leading-5 shadow-inner">
-          {lines.map((line, i) => (
+          {lines.map((line, i) => {
+            const isFocusedFileHeader = diffHeaderMatchesFile(line.content, focusedFilePath);
+
+            return (
             <div
               key={i}
-              className={cn("flex whitespace-pre", rowClass[line.type])}
+              ref={isFocusedFileHeader ? focusedRowRef : undefined}
+              className={cn("flex whitespace-pre", rowClass[line.type], isFocusedFileHeader && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/18")}
             >
               <span
                 className={cn(
@@ -142,7 +165,8 @@ export function UnifiedDiffFallback({
                 {line.content || " "}
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

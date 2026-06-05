@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   CheckCircle2,
   CircleDot,
@@ -11,7 +12,9 @@ import {
   Tag,
   Users,
 } from "lucide-react";
-import { usePullRequestActions, useRepositoryGithubOverview } from "../../hooks/useAdvancedGit";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { ActivityItem, PullRequestSummary, ReviewSummary } from "../../types/git";
 
@@ -125,8 +128,20 @@ function EmptyState({ message }: { message: string }) {
 
 export function StackedPrBoard() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const { data: githubOverview, isError, refetch: refetchGithubOverview } = useRepositoryGithubOverview(activeRepoPath);
-  const prActions = usePullRequestActions(activeRepoPath);
+  const queryClient = useQueryClient();
+  const { data: githubOverview, isError, refetch: refetchGithubOverview } = useQuery(gitQueries.githubOverview(activeRepoPath));
+
+  useEffect(() => {
+    if (!activeRepoPath) return;
+    return () => {
+      void gitApi.cancelRepositoryGithubWork(activeRepoPath);
+    };
+  }, [activeRepoPath]);
+  const prActions = {
+    checkout: useMutation(gitMutations.checkoutPullRequest(queryClient, activeRepoPath)),
+    updateBranch: useMutation(gitMutations.updatePullRequestBranch(queryClient, activeRepoPath)),
+    merge: useMutation(gitMutations.mergePullRequest(queryClient, activeRepoPath)),
+  };
   const livePrs = githubOverview?.pullRequests ?? [];
   const liveReviews = githubOverview?.reviews ?? [];
   const liveActivity = githubOverview?.activity ?? [];

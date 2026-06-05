@@ -13,6 +13,12 @@ pub fn get_repository_github_overview(
 }
 
 #[tauri::command]
+pub fn cancel_repository_github_work(repo_path: String) -> Result<(), AppError> {
+    github_service::cancel_repository_github_work(Path::new(&repo_path));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_pull_request_diff(repo_path: String, number: u64) -> Result<PullRequestDiff, AppError> {
     github_service::get_pull_request_diff(Path::new(&repo_path), number)
 }

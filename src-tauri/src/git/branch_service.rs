@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
-use crate::models::Branch;
+use crate::git::repository_service;
+use crate::models::{Branch, BranchSummary};
 use std::path::Path;
 
 pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
@@ -72,6 +73,21 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
         .collect();
 
     Ok(branches)
+}
+
+pub fn get_branch_summary(repo_path: &Path) -> Result<BranchSummary, AppError> {
+    let snapshot = repository_service::get_repository_snapshot(repo_path)?;
+    let branches = list_branches(repo_path)?;
+    let local_count = branches.iter().filter(|branch| !branch.is_remote).count() as u32;
+    let remote_count = branches.iter().filter(|branch| branch.is_remote).count() as u32;
+
+    Ok(BranchSummary {
+        current_branch: snapshot.repository_info.current_branch,
+        local_count,
+        remote_count,
+        ahead: snapshot.repository_info.ahead,
+        behind: snapshot.repository_info.behind,
+    })
 }
 
 pub fn get_current_branch(repo_path: &Path) -> Result<String, AppError> {

@@ -4,6 +4,37 @@ export interface RepositoryInfo {
   currentBranch: string;
   isClean: boolean;
   headCommit: string | null;
+  ahead: number;
+  behind: number;
+}
+
+export interface GitStatusSummary {
+  stagedCount: number;
+  unstagedCount: number;
+  untrackedCount: number;
+  ignoredCount: number;
+  totalCount: number;
+}
+
+export interface RepositorySnapshot {
+  repositoryInfo: RepositoryInfo;
+  files: GitStatusFile[];
+  summary: GitStatusSummary;
+}
+
+export interface BranchSummary {
+  currentBranch: string;
+  localCount: number;
+  remoteCount: number;
+  ahead: number;
+  behind: number;
+}
+
+export interface WorkspaceSummary {
+  worktreeCount: number;
+  dirtyWorktreeCount: number;
+  submoduleCount: number;
+  behindSubmoduleCount: number;
 }
 
 export interface GitStatusFile {
@@ -22,6 +53,7 @@ export interface CommitSummary {
   authorEmail: string;
   timestamp: string;
   refs: string[];
+  parents: string[];
 }
 
 export interface CommitDetails {
@@ -67,6 +99,12 @@ export interface RecentRepo {
   path: string;
   name: string;
   lastOpenedAt: string;
+}
+
+export interface FavoriteRepo {
+  path: string;
+  name: string;
+  favoritedAt: string;
 }
 
 export interface Worktree {
@@ -241,6 +279,7 @@ export interface SelectedEntityState {
   branchName: string | null;
   commitHash: string | null;
   filePath: string | null;
+  commitFilePath: string | null;
   fileStaged: boolean;
   pullRequestId: string | null;
   stackId: string | null;

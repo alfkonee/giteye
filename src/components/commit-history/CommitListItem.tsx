@@ -1,20 +1,40 @@
+import type { CSSProperties } from "react";
 import type { CommitSummary } from "../../types/git";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
-import { GitBranch, GitCommitHorizontal } from "lucide-react";
+import { GitBranch } from "lucide-react";
+import type { CommitGraphRow } from "./commit-graph";
+import { laneX } from "./commit-graph";
+
 interface CommitListItemProps {
   commit: CommitSummary;
+  graph: CommitGraphRow;
 }
 
 /**
- * Dense commit row with graph-lane stub, hash, message, ref pills, author, and relative time.
- * Selected rows use the `--color-bg-selected` token for clear highlighting.
+ * Dense commit row with a colored commit graph, hash, message, ref pills,
+ * author, and relative time. Selected rows use the `--color-bg-selected`
+ * token for clear highlighting.
  */
-export function CommitListItem({ commit }: CommitListItemProps) {
+export function CommitListItem({ commit, graph }: CommitListItemProps) {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
   const isSelected = selectedCommitHash === commit.hash;
+
+  const style: CSSProperties = {
+    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px`,
+  };
+
+  if (isSelected) {
+    Object.assign(style, {
+      color: "#ffffff",
+      ["--color-text-primary" as string]: "#ffffff",
+      ["--color-text-secondary" as string]: "rgba(255,255,255,0.78)",
+      ["--color-text-muted" as string]: "rgba(255,255,255,0.58)",
+      ["--color-accent" as string]: "rgba(255,255,255,0.92)",
+    });
+  }
 
   return (
     <div
@@ -22,36 +42,14 @@ export function CommitListItem({ commit }: CommitListItemProps) {
       role="row"
       aria-selected={isSelected}
       className={cn(
-        "grid h-[42px] grid-cols-[34px_64px_minmax(0,1fr)_120px_74px] items-center gap-2 rounded-lg border px-2.5 transition-colors select-none",
+        "grid h-[42px] items-center gap-2 rounded-lg px-2.5 transition-colors select-none",
         isSelected
-          ? "border-[var(--color-accent)]/45 bg-[var(--color-bg-selected)] text-white shadow-md shadow-[var(--color-accent)]/10"
-          : "border-transparent hover:border-[var(--color-border-muted)] hover:bg-[var(--color-bg-secondary)]"
+          ? "bg-[var(--color-bg-selected)] text-white shadow-md shadow-[var(--color-accent)]/10 ring-1 ring-inset ring-[var(--color-accent)]/45"
+          : "hover:bg-[var(--color-bg-secondary)]"
       )}
-      style={
-        isSelected
-          ? {
-              color: "#ffffff",
-              ["--color-text-primary" as string]: "#ffffff",
-              ["--color-text-secondary" as string]: "rgba(255,255,255,0.78)",
-              ["--color-text-muted" as string]: "rgba(255,255,255,0.58)",
-              ["--color-accent" as string]: "rgba(255,255,255,0.92)",
-            }
-          : undefined
-      }
+      style={style}
     >
-      <span className="relative flex h-full items-center justify-center">
-        <span className="absolute bottom-0 top-0 w-px bg-[var(--color-border-muted)]" />
-        <span
-          className={cn(
-            "relative z-[1] flex h-4 w-4 items-center justify-center rounded-full border bg-[var(--color-bg-primary)]",
-            commit.refs.length > 0
-              ? "border-[var(--color-accent)] text-[var(--color-accent)] shadow-[0_0_0_3px_var(--color-accent)]/10"
-              : "border-[var(--color-border)] text-[var(--color-text-muted)]"
-          )}
-        >
-          <GitCommitHorizontal className="h-2.5 w-2.5" />
-        </span>
-      </span>
+      <CommitGraph graph={graph} selected={isSelected} refs={commit.refs} />
 
       <span className="truncate font-mono text-[11px] text-[var(--color-accent)]">
         {truncateHash(commit.shortHash)}
@@ -93,5 +91,111 @@ export function CommitListItem({ commit }: CommitListItemProps) {
         {formatRelativeTime(commit.timestamp)}
       </span>
     </div>
+  );
+}
+
+function CommitGraph({ graph, selected, refs }: { graph: CommitGraphRow; selected: boolean; refs: string[] }) {
+  const centerY = 21;
+  const strokeWidth = 1.75;
+  const nodeRadius = refs.length > 0 ? 4.25 : 3.5;
+
+  return (
+    <span className="relative h-full overflow-hidden" aria-hidden="true">
+      <svg className="h-full" width={graph.width} height="42" viewBox={`0 0 ${graph.width} 42`}>
+        {graph.passthroughConnections.map((connection) => {
+          const fromX = laneX(connection.fromLane);
+          const toX = laneX(connection.toLane);
+          const key = `pass-${connection.fromLane}-${connection.toLane}`;
+
+          if (fromX === toX) {
+            return (
+              <line
+                key={key}
+                x1={fromX}
+                y1="0"
+                x2={toX}
+                y2="42"
+                stroke={connection.color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                opacity="0.9"
+              />
+            );
+          }
+
+          return (
+            <path
+              key={key}
+              d={`M ${fromX} 0 C ${fromX} 18, ${toX} 24, ${toX} 42`}
+              fill="none"
+              stroke={connection.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              opacity="0.9"
+            />
+          );
+        })}
+
+        {graph.parentConnections.map((connection, index) => {
+          const fromX = laneX(connection.fromLane);
+          const toX = laneX(connection.toLane);
+          const key = `parent-${index}-${connection.toLane}`;
+
+          if (fromX === toX) {
+            return (
+              <line
+                key={key}
+                x1={fromX}
+                y1={centerY}
+                x2={toX}
+                y2="42"
+                stroke={connection.color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+              />
+            );
+          }
+
+          const controlY = centerY + 9;
+          return (
+            <path
+              key={key}
+              d={`M ${fromX} ${centerY} C ${fromX} ${controlY}, ${toX} ${controlY}, ${toX} 42`}
+              fill="none"
+              stroke={connection.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+            />
+          );
+        })}
+
+        {graph.lanesBefore[graph.commitLane] && (
+          <line
+            x1={laneX(graph.commitLane)}
+            y1="0"
+            x2={laneX(graph.commitLane)}
+            y2={centerY}
+            stroke={graph.color}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+        )}
+
+        <circle
+          cx={laneX(graph.commitLane)}
+          cy={centerY}
+          r={nodeRadius}
+          fill={selected ? "#fff" : graph.color}
+          stroke={selected ? "#fff" : "var(--color-bg-primary)"}
+          strokeWidth="1.75"
+        />
+        <circle
+          cx={laneX(graph.commitLane)}
+          cy={centerY}
+          r={selected ? 1.75 : 1.5}
+          fill={selected ? "var(--color-bg-selected)" : "var(--color-bg-primary)"}
+        />
+      </svg>
+    </span>
   );
 }

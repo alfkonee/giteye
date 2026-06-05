@@ -6,14 +6,26 @@ use crate::models::github::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+
+static GITHUB_OVERVIEW_CACHE: LazyLock<Mutex<HashMap<String, RepositoryGithubOverview>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static GITHUB_REQUEST_GENERATIONS: LazyLock<Mutex<HashMap<String, u64>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 const GH_TIMEOUT: Duration = Duration::from_secs(3);
 const GH_AUTH_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone)]
+struct GithubRequestContext {
+    repo_key: String,
+    generation: u64,
+}
 pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverview {
     let remote_url = GitCli::run(repo_path, &["remote", "get-url", "origin"])
         .ok()
@@ -27,6 +39,18 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     let Some((owner, repo)) = parse_github_remote(remote_url_value) else {
         return RepositoryGithubOverview::default();
     };
+
+    let request_context = begin_github_request(repo_path);
+
+    let head = GitCli::run(repo_path, &["rev-parse", "HEAD"])
+        .ok()
+        .map(|value| value.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let cache_key = format!("{owner}/{repo}@{head}");
+
+    if let Some(cached) = cached_github_overview(&cache_key) {
+        return cached;
+    }
 
     let mut overview = RepositoryGithubOverview {
         provider_available: false,
@@ -42,21 +66,129 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     };
 
     if !gh_is_authenticated(repo_path) {
+        store_github_overview(cache_key, overview.clone());
         return overview;
     }
 
-    overview.provider_available = true;
-    overview.account = fetch_account(repo_path);
-    overview.pull_requests = fetch_pull_requests(repo_path, &owner, &repo);
-    overview.check_runs = fetch_check_runs(repo_path, &owner, &repo);
-    overview.activity = fetch_activity(repo_path, &owner, &repo);
+    let repo_path_buf = repo_path.to_path_buf();
+    let owner_for_prs = owner.clone();
+    let owner_for_checks = owner.clone();
+    let owner_for_activity = owner.clone();
+    let repo_for_prs = repo.clone();
+    let repo_for_checks = repo.clone();
+    let repo_for_activity = repo.clone();
 
-    if let Some(first_pr) = overview.pull_requests.first() {
-        overview.reviews = fetch_reviews(repo_path, &owner, &repo, first_pr.number);
+    let account_handle = thread::spawn({
+        let repo_path_buf = repo_path_buf.clone();
+        let request_context = request_context.clone();
+        move || fetch_account(&repo_path_buf, &request_context)
+    });
+    let pull_request_handle = thread::spawn({
+        let repo_path_buf = repo_path_buf.clone();
+        let request_context = request_context.clone();
+        move || {
+            fetch_pull_requests(
+                &repo_path_buf,
+                &owner_for_prs,
+                &repo_for_prs,
+                &request_context,
+            )
+        }
+    });
+    let check_runs_handle = thread::spawn({
+        let repo_path_buf = repo_path_buf.clone();
+        let request_context = request_context.clone();
+        move || {
+            fetch_check_runs(
+                &repo_path_buf,
+                &owner_for_checks,
+                &repo_for_checks,
+                &request_context,
+            )
+        }
+    });
+    let activity_handle = thread::spawn({
+        let request_context = request_context.clone();
+        move || {
+            fetch_activity(
+                &repo_path_buf,
+                &owner_for_activity,
+                &repo_for_activity,
+                &request_context,
+            )
+        }
+    });
+
+    overview.provider_available = true;
+    overview.account = account_handle.join().ok().flatten();
+    overview.pull_requests = pull_request_handle.join().unwrap_or_default();
+    overview.check_runs = check_runs_handle.join().unwrap_or_default();
+    overview.activity = activity_handle.join().unwrap_or_default();
+
+    if !github_request_active(&request_context) {
+        return overview;
     }
 
+    if let Some(first_pr) = overview.pull_requests.first() {
+        overview.reviews =
+            fetch_reviews(repo_path, &owner, &repo, first_pr.number, &request_context);
+    }
+
+    store_github_overview(cache_key, overview.clone());
     overview
 }
+
+fn cached_github_overview(cache_key: &str) -> Option<RepositoryGithubOverview> {
+    github_overview_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(cache_key).cloned())
+}
+
+fn store_github_overview(cache_key: String, overview: RepositoryGithubOverview) {
+    if let Ok(mut cache) = github_overview_cache().lock() {
+        cache.insert(cache_key, overview);
+    }
+}
+
+fn github_overview_cache() -> &'static Mutex<HashMap<String, RepositoryGithubOverview>> {
+    &GITHUB_OVERVIEW_CACHE
+}
+
+pub fn cancel_repository_github_work(repo_path: &Path) {
+    let context = begin_github_request(repo_path);
+    let _ = context;
+}
+
+fn begin_github_request(repo_path: &Path) -> GithubRequestContext {
+    let repo_key = canonical_repo_key(repo_path);
+    let generation = if let Ok(mut generations) = github_request_generations().lock() {
+        let entry = generations.entry(repo_key.clone()).or_insert(0);
+        *entry += 1;
+        *entry
+    } else {
+        0
+    };
+
+    GithubRequestContext {
+        repo_key,
+        generation,
+    }
+}
+
+fn github_request_active(context: &GithubRequestContext) -> bool {
+    github_request_generations()
+        .lock()
+        .ok()
+        .and_then(|generations| generations.get(&context.repo_key).copied())
+        .map(|generation| generation == context.generation)
+        .unwrap_or(false)
+}
+
+fn github_request_generations() -> &'static Mutex<HashMap<String, u64>> {
+    &GITHUB_REQUEST_GENERATIONS
+}
+
 pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullRequestDiff, AppError> {
     let (owner, repo) = github_repository(repo_path)?;
     let repository = format!("{owner}/{repo}");
@@ -186,7 +318,10 @@ fn gh_is_authenticated(repo_path: &Path) -> bool {
     .is_some()
 }
 
-fn fetch_account(repo_path: &Path) -> Option<GitHubAccount> {
+fn fetch_account(
+    repo_path: &Path,
+    request_context: &GithubRequestContext,
+) -> Option<GitHubAccount> {
     #[derive(Deserialize)]
     struct UserResponse {
         login: Option<String>,
@@ -195,7 +330,13 @@ fn fetch_account(repo_path: &Path) -> Option<GitHubAccount> {
         html_url: Option<String>,
     }
 
-    let output = run_process("gh", &["api", "user"], repo_path, GH_TIMEOUT)?;
+    let output = run_process_for_request(
+        "gh",
+        &["api", "user"],
+        repo_path,
+        GH_TIMEOUT,
+        request_context,
+    )?;
     let user: UserResponse = serde_json::from_str(&output).ok()?;
 
     Some(GitHubAccount {
@@ -206,7 +347,12 @@ fn fetch_account(repo_path: &Path) -> Option<GitHubAccount> {
     })
 }
 
-fn fetch_pull_requests(repo_path: &Path, owner: &str, repo: &str) -> Vec<PullRequestSummary> {
+fn fetch_pull_requests(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    request_context: &GithubRequestContext,
+) -> Vec<PullRequestSummary> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct GhPullRequest {
@@ -222,7 +368,7 @@ fn fetch_pull_requests(repo_path: &Path, owner: &str, repo: &str) -> Vec<PullReq
     }
 
     let repository = format!("{owner}/{repo}");
-    let output = run_process(
+    let output = run_process_for_request(
         "gh",
         &[
             "pr",
@@ -236,6 +382,7 @@ fn fetch_pull_requests(repo_path: &Path, owner: &str, repo: &str) -> Vec<PullReq
         ],
         repo_path,
         GH_TIMEOUT,
+        request_context,
     );
 
     output
@@ -371,7 +518,12 @@ fn fetch_review_comments(
         .collect()
 }
 
-fn fetch_check_runs(repo_path: &Path, owner: &str, repo: &str) -> Vec<CheckRunSummary> {
+fn fetch_check_runs(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    request_context: &GithubRequestContext,
+) -> Vec<CheckRunSummary> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct GhCheckRun {
@@ -384,7 +536,7 @@ fn fetch_check_runs(repo_path: &Path, owner: &str, repo: &str) -> Vec<CheckRunSu
     }
 
     let repository = format!("{owner}/{repo}");
-    let output = run_process(
+    let output = run_process_for_request(
         "gh",
         &[
             "pr",
@@ -396,6 +548,7 @@ fn fetch_check_runs(repo_path: &Path, owner: &str, repo: &str) -> Vec<CheckRunSu
         ],
         repo_path,
         GH_TIMEOUT,
+        request_context,
     );
 
     output
@@ -413,7 +566,13 @@ fn fetch_check_runs(repo_path: &Path, owner: &str, repo: &str) -> Vec<CheckRunSu
         .collect()
 }
 
-fn fetch_reviews(repo_path: &Path, owner: &str, repo: &str, number: u64) -> Vec<ReviewSummary> {
+fn fetch_reviews(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    request_context: &GithubRequestContext,
+) -> Vec<ReviewSummary> {
     #[derive(Deserialize)]
     struct GhReview {
         user: Option<GhAuthor>,
@@ -423,7 +582,13 @@ fn fetch_reviews(repo_path: &Path, owner: &str, repo: &str, number: u64) -> Vec<
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/reviews");
-    let output = run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT);
+    let output = run_process_for_request(
+        "gh",
+        &["api", &endpoint],
+        repo_path,
+        GH_TIMEOUT,
+        request_context,
+    );
 
     output
         .and_then(|json| serde_json::from_str::<Vec<GhReview>>(&json).ok())
@@ -438,9 +603,20 @@ fn fetch_reviews(repo_path: &Path, owner: &str, repo: &str, number: u64) -> Vec<
         .collect()
 }
 
-fn fetch_activity(repo_path: &Path, owner: &str, repo: &str) -> Vec<ActivityItem> {
+fn fetch_activity(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    request_context: &GithubRequestContext,
+) -> Vec<ActivityItem> {
     let endpoint = format!("repos/{owner}/{repo}/events?per_page=20");
-    let output = run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT);
+    let output = run_process_for_request(
+        "gh",
+        &["api", &endpoint],
+        repo_path,
+        GH_TIMEOUT,
+        request_context,
+    );
 
     output
         .and_then(|json| serde_json::from_str::<Vec<Value>>(&json).ok())
@@ -572,6 +748,56 @@ fn run_process(
             Err(_) => return None,
         }
     }
+}
+
+fn run_process_for_request(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    timeout: Duration,
+    request_context: &GithubRequestContext,
+) -> Option<String> {
+    let mut child = Command::new(program)
+        .args(args)
+        .current_dir(repo_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        if !github_request_active(request_context) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child.wait_with_output().ok()?;
+                if !output.status.success() {
+                    return None;
+                }
+                return String::from_utf8(output.stdout).ok();
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(_) => return None,
+        }
+    }
+}
+
+fn canonical_repo_key(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(path))
+        .to_string_lossy()
+        .to_string()
 }
 
 #[cfg(test)]

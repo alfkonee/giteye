@@ -1,34 +1,31 @@
 import { useAppStore } from "../../stores/app-store";
 import { FileStatusList } from "./FileStatusList";
 import { CommitBox } from "./CommitBox";
-import { useStagedFiles, useUnstagedFiles, useGitStatus } from "../../hooks/useGitStatus";
-import { RefreshCw, GitBranch, CheckCircle2, AlertCircle, GitPullRequestArrow } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useRepositoryInfo } from "../../hooks/useRepository";
-import { useRepositoryGithubOverview } from "../../hooks/useAdvancedGit";
+import { RefreshCw, GitBranch, CheckCircle2, AlertCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitQueries, invalidateGitState } from "../../lib/git-data";
 
 interface WorkingTreeProps {}
 
 export function WorkingTree(_props: WorkingTreeProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const { data: status } = useGitStatus(activeRepoPath);
-  const { data: stagedFiles, isLoading: stagedLoading } = useStagedFiles(activeRepoPath);
-  const { data: unstagedFiles, isLoading: unstagedLoading } = useUnstagedFiles(activeRepoPath);
-  const { data: repoInfo } = useRepositoryInfo(activeRepoPath);
-  const { data: githubOverview } = useRepositoryGithubOverview(activeRepoPath);
-  const stagedCount = stagedFiles?.length ?? 0;
-  const unstagedCount = unstagedFiles?.length ?? 0;
-  const ignoredCount = status?.filter((file) => file.status.includes("!")).length ?? 0;
-  const totalCount = stagedCount + unstagedCount;
+  const { data: snapshot, isLoading } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+
+  const repoInfo = snapshot?.repositoryInfo;
+  const status = snapshot?.files ?? [];
+  const stagedFiles = status.filter((file) => file.staged);
+  const unstagedFiles = status.filter((file) => file.unstaged);
+  const summary = snapshot?.summary;
+  const stagedCount = summary?.stagedCount ?? stagedFiles.length;
+  const unstagedCount = summary?.unstagedCount ?? unstagedFiles.length;
+  const ignoredCount = summary?.ignoredCount ?? 0;
+  const totalCount = summary?.totalCount ?? stagedFiles.length + unstagedFiles.length;
   const branchName = repoInfo?.currentBranch ?? "No branch";
   const queryClient = useQueryClient();
-  const stackedPullRequests = githubOverview?.pullRequests?.slice(0, 4) ?? [];
+
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["status", activeRepoPath] });
-    queryClient.invalidateQueries({ queryKey: ["stagedFiles", activeRepoPath] });
-    queryClient.invalidateQueries({ queryKey: ["unstagedFiles", activeRepoPath] });
-    queryClient.invalidateQueries({ queryKey: ["repoInfo", activeRepoPath] });
+    void invalidateGitState(queryClient, activeRepoPath);
   };
 
   return (
@@ -40,7 +37,7 @@ export function WorkingTree(_props: WorkingTreeProps) {
               <h2 className="text-[17px] font-semibold tracking-tight text-[var(--color-text-primary)]">
                 Changes
               </h2>
-              {!stagedLoading && !unstagedLoading && (
+              {!isLoading && (
                 <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--color-text-muted)] tabular-nums">
                   {totalCount} files
                 </span>
@@ -68,21 +65,6 @@ export function WorkingTree(_props: WorkingTreeProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {stackedPullRequests.length > 0 && (
-              <div className="hidden items-center gap-1 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 xl:flex">
-                <GitPullRequestArrow className="h-4 w-4 text-[var(--color-purple)]" />
-                {stackedPullRequests.map((pullRequest) => (
-                  <button
-                    key={pullRequest.number}
-                    type="button"
-                    className="max-w-[150px] truncate rounded-md border border-[var(--color-purple-border)] bg-[var(--color-purple-bg)] px-2 py-1 text-[11px] font-medium text-[var(--color-purple)]"
-                    title={pullRequest.title}
-                  >
-                    #{pullRequest.number}
-                  </button>
-                ))}
-              </div>
-            )}
             <button
               onClick={handleRefresh}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
@@ -97,15 +79,15 @@ export function WorkingTree(_props: WorkingTreeProps) {
       <div className="flex-1 overflow-y-auto">
         <FileStatusList
           title="Staged"
-          files={stagedFiles ?? []}
-          isLoading={stagedLoading}
+          files={stagedFiles}
+          isLoading={isLoading}
           repoPath={activeRepoPath}
           staged={true}
         />
         <FileStatusList
           title="Unstaged"
-          files={unstagedFiles ?? []}
-          isLoading={unstagedLoading}
+          files={unstagedFiles}
+          isLoading={isLoading}
           repoPath={activeRepoPath}
           staged={false}
         />

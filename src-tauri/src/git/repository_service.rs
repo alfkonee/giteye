@@ -1,32 +1,200 @@
 use crate::errors::AppError;
-use crate::git::cli::GitCli;
-use crate::models::RepositoryInfo;
-use std::path::Path;
+use crate::git::{
+    cli::GitCli,
+    state_graph::{mark_node_fresh, mark_repository_change, RepoStateNode, RepoStateReason},
+    submodule_service, worktree_service,
+};
+use crate::models::{
+    BranchSummary, GitStatusFile, GitStatusSummary, RepositoryInfo, RepositorySnapshot,
+    WorkspaceSummary,
+};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{mpsc, LazyLock, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub fn get_repository_info(path: &Path) -> Result<RepositoryInfo, AppError> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SnapshotFingerprint {
+    head_contents: Option<String>,
+    head_mtime: Option<u128>,
+    current_ref: Option<String>,
+    current_ref_mtime: Option<u128>,
+    index_mtime: Option<u128>,
+    fetch_head_mtime: Option<u128>,
+    packed_refs_mtime: Option<u128>,
+    worktree_sequence: u64,
+}
+
+#[derive(Clone)]
+struct SnapshotCacheEntry {
+    fingerprint: SnapshotFingerprint,
+    snapshot: RepositorySnapshot,
+}
+
+#[derive(Clone)]
+struct BranchSummaryCacheEntry {
+    fingerprint: SnapshotFingerprint,
+    summary: BranchSummary,
+}
+
+#[derive(Clone)]
+struct WorkspaceSummaryCacheEntry {
+    fingerprint: SnapshotFingerprint,
+    summary: WorkspaceSummary,
+}
+
+static SNAPSHOT_CACHE: LazyLock<Mutex<HashMap<String, SnapshotCacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static WORKTREE_SEQUENCES: LazyLock<Mutex<HashMap<String, u64>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static BRANCH_SUMMARY_CACHE: LazyLock<Mutex<HashMap<String, BranchSummaryCacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static WORKSPACE_SUMMARY_CACHE: LazyLock<Mutex<HashMap<String, WorkspaceSummaryCacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+const OPEN_CONTEXT_BUDGET: Duration = Duration::from_millis(100);
+
+pub fn get_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
+    let repo_key = canonical_repo_key(path);
+    let fingerprint = snapshot_fingerprint(path, &repo_key)?;
+
+    if let Some(snapshot) = cached_snapshot(&repo_key, &fingerprint)? {
+        return Ok(snapshot);
+    }
+
+    let snapshot = build_repository_snapshot(path)?;
+    store_snapshot(repo_key, fingerprint, snapshot.clone())?;
+    Ok(snapshot)
+}
+fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
     let name = GitCli::repo_name_from_path(path);
+    let output = GitCli::run(path, &["status", "--porcelain=v2", "--branch", "-z"])?;
+    let entries: Vec<&str> = output
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
+        .collect();
 
-    let current_branch = GitCli::run(path, &["rev-parse", "--abbrev-ref", "HEAD"])
-        .or_else(|_| GitCli::run(path, &["symbolic-ref", "--short", "HEAD"]))
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
+    let mut current_branch = "unknown".to_string();
+    let mut head_commit = None;
+    let mut ahead = 0;
+    let mut behind = 0;
+    let mut files = Vec::new();
+    let mut summary = GitStatusSummary::default();
 
-    let head_commit = GitCli::run(path, &["rev-parse", "HEAD"])
-        .map(|s| Some(s.trim().to_string()))
-        .unwrap_or(None);
+    let mut index = 0;
+    while index < entries.len() {
+        let entry = entries[index];
 
-    let is_clean = GitCli::run(path, &["status", "--porcelain"])
-        .map(|s| s.trim().is_empty())
-        .unwrap_or(false);
+        if let Some(value) = entry.strip_prefix("# branch.head ") {
+            current_branch = value.to_string();
+            index += 1;
+            continue;
+        }
 
-    Ok(RepositoryInfo {
+        if let Some(value) = entry.strip_prefix("# branch.oid ") {
+            if value != "(initial)" {
+                head_commit = Some(value.to_string());
+            }
+            index += 1;
+            continue;
+        }
+
+        if let Some(value) = entry.strip_prefix("# branch.ab ") {
+            let mut parts = value.split_whitespace();
+            ahead = parts
+                .next()
+                .and_then(|part| part.strip_prefix('+'))
+                .and_then(|part| part.parse::<u32>().ok())
+                .unwrap_or(0);
+            behind = parts
+                .next()
+                .and_then(|part| part.strip_prefix('-'))
+                .and_then(|part| part.parse::<u32>().ok())
+                .unwrap_or(0);
+            index += 1;
+            continue;
+        }
+
+        match parse_status_entry(&entries, index) {
+            Some((file, consumed)) => {
+                update_summary(&mut summary, &file);
+                files.push(file);
+                index += consumed;
+            }
+            None => {
+                index += 1;
+            }
+        }
+    }
+
+    let repository_info = RepositoryInfo {
         path: path.to_string_lossy().to_string(),
         name,
         current_branch,
-        is_clean,
+        is_clean: summary.total_count == 0,
         head_commit,
+        ahead,
+        behind,
+    };
+
+    Ok(RepositorySnapshot {
+        repository_info,
+        files,
+        summary,
     })
+}
+
+pub fn get_repository_info(path: &Path) -> Result<RepositoryInfo, AppError> {
+    Ok(get_repository_snapshot(path)?.repository_info)
+}
+
+pub fn get_branch_summary(path: &Path) -> Result<BranchSummary, AppError> {
+    let repo_key = canonical_repo_key(path);
+    let fingerprint = snapshot_fingerprint(path, &repo_key)?;
+
+    if let Some(summary) = cached_branch_summary(&repo_key, &fingerprint)? {
+        return Ok(summary);
+    }
+
+    let snapshot = get_repository_snapshot(path)?;
+    let branches = crate::git::branch_service::list_branches(path)?;
+    let local_count = branches.iter().filter(|branch| !branch.is_remote).count() as u32;
+    let remote_count = branches.iter().filter(|branch| branch.is_remote).count() as u32;
+
+    let summary = BranchSummary {
+        current_branch: snapshot.repository_info.current_branch,
+        local_count,
+        remote_count,
+        ahead: snapshot.repository_info.ahead,
+        behind: snapshot.repository_info.behind,
+    };
+    store_branch_summary(repo_key, fingerprint, summary.clone())?;
+    Ok(summary)
+}
+
+pub fn get_workspace_summary(path: &Path) -> Result<WorkspaceSummary, AppError> {
+    let repo_key = canonical_repo_key(path);
+    let fingerprint = snapshot_fingerprint(path, &repo_key)?;
+
+    if let Some(summary) = cached_workspace_summary(&repo_key, &fingerprint)? {
+        return Ok(summary);
+    }
+
+    let (worktree_count, dirty_worktree_count) = worktree_service::worktree_count_and_dirty(path)?;
+    let (submodule_count, behind_submodule_count) =
+        submodule_service::submodule_count_and_behind(path)?;
+
+    let summary = WorkspaceSummary {
+        worktree_count,
+        dirty_worktree_count,
+        submodule_count,
+        behind_submodule_count,
+    };
+    store_workspace_summary(repo_key, fingerprint, summary.clone())?;
+    Ok(summary)
 }
 
 pub fn init_repository(path: &Path) -> Result<RepositoryInfo, AppError> {
@@ -77,6 +245,386 @@ pub fn clone_repository(url: &str, destination: &Path) -> Result<RepositoryInfo,
     }
 
     get_repository_info(destination)
+}
+
+pub fn warm_repository_context(path: PathBuf, include_github: bool) {
+    thread::spawn(move || {
+        let _ = get_branch_summary(&path);
+        let _ = get_workspace_summary(&path);
+        if include_github {
+            let _ = crate::git::github_service::get_repository_github_overview(&path);
+        }
+    });
+}
+
+pub fn prime_repository_context_with_budget(path: PathBuf, include_github: bool) {
+    let (tx, rx) = mpsc::channel();
+    let mut task_count = 2;
+
+    {
+        let tx = tx.clone();
+        let path = path.clone();
+        thread::spawn(move || {
+            let _ = get_branch_summary(&path);
+            let _ = tx.send(());
+        });
+    }
+
+    {
+        let tx = tx.clone();
+        let path = path.clone();
+        thread::spawn(move || {
+            let _ = get_workspace_summary(&path);
+            let _ = tx.send(());
+        });
+    }
+
+    if include_github {
+        task_count += 1;
+        let tx = tx.clone();
+        thread::spawn(move || {
+            let _ = crate::git::github_service::get_repository_github_overview(&path);
+            let _ = tx.send(());
+        });
+    }
+
+    drop(tx);
+
+    let deadline = std::time::Instant::now() + OPEN_CONTEXT_BUDGET;
+    for _ in 0..task_count {
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            break;
+        };
+        if rx.recv_timeout(remaining).is_err() {
+            break;
+        }
+    }
+}
+
+pub fn note_repository_change(path: &Path, reason: RepoStateReason) {
+    let repo_key = canonical_repo_key(path);
+    let plan = mark_repository_change(&repo_key, reason);
+
+    if matches!(reason, RepoStateReason::Worktree | RepoStateReason::Remote) {
+        if let Ok(mut sequences) = worktree_sequences().lock() {
+            let entry = sequences.entry(repo_key.clone()).or_insert(0);
+            *entry += 1;
+        }
+    }
+
+    if plan.affects(RepoStateNode::Snapshot) {
+        if let Ok(mut cache) = snapshot_cache().lock() {
+            cache.remove(&repo_key);
+        }
+    }
+    if plan.affects(RepoStateNode::BranchSummary) {
+        if let Ok(mut cache) = branch_summary_cache().lock() {
+            cache.remove(&repo_key);
+        }
+    }
+    if plan.affects(RepoStateNode::WorkspaceSummary) {
+        if let Ok(mut cache) = workspace_summary_cache().lock() {
+            cache.remove(&repo_key);
+        }
+    }
+}
+
+fn cached_snapshot(
+    repo_key: &str,
+    fingerprint: &SnapshotFingerprint,
+) -> Result<Option<RepositorySnapshot>, AppError> {
+    let cache = snapshot_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    Ok(cache
+        .get(repo_key)
+        .filter(|entry| entry.fingerprint == *fingerprint)
+        .map(|entry| entry.snapshot.clone()))
+}
+
+fn store_snapshot(
+    repo_key: String,
+    fingerprint: SnapshotFingerprint,
+    snapshot: RepositorySnapshot,
+) -> Result<(), AppError> {
+    let mut cache = snapshot_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    let graph_fingerprint = format!("{fingerprint:?}");
+    cache.insert(
+        repo_key.clone(),
+        SnapshotCacheEntry {
+            fingerprint,
+            snapshot,
+        },
+    );
+    mark_node_fresh(&repo_key, RepoStateNode::Snapshot, graph_fingerprint);
+    Ok(())
+}
+
+fn cached_branch_summary(
+    repo_key: &str,
+    fingerprint: &SnapshotFingerprint,
+) -> Result<Option<BranchSummary>, AppError> {
+    let cache = branch_summary_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    Ok(cache
+        .get(repo_key)
+        .filter(|entry| entry.fingerprint == *fingerprint)
+        .map(|entry| entry.summary.clone()))
+}
+
+fn store_branch_summary(
+    repo_key: String,
+    fingerprint: SnapshotFingerprint,
+    summary: BranchSummary,
+) -> Result<(), AppError> {
+    let mut cache = branch_summary_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    let graph_fingerprint = format!("{fingerprint:?}");
+    cache.insert(
+        repo_key.clone(),
+        BranchSummaryCacheEntry {
+            fingerprint,
+            summary,
+        },
+    );
+    mark_node_fresh(&repo_key, RepoStateNode::BranchSummary, graph_fingerprint);
+    Ok(())
+}
+
+fn cached_workspace_summary(
+    repo_key: &str,
+    fingerprint: &SnapshotFingerprint,
+) -> Result<Option<WorkspaceSummary>, AppError> {
+    let cache = workspace_summary_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    Ok(cache
+        .get(repo_key)
+        .filter(|entry| entry.fingerprint == *fingerprint)
+        .map(|entry| entry.summary.clone()))
+}
+
+fn store_workspace_summary(
+    repo_key: String,
+    fingerprint: SnapshotFingerprint,
+    summary: WorkspaceSummary,
+) -> Result<(), AppError> {
+    let mut cache = workspace_summary_cache()
+        .lock()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    let graph_fingerprint = format!("{fingerprint:?}");
+    cache.insert(
+        repo_key.clone(),
+        WorkspaceSummaryCacheEntry {
+            fingerprint,
+            summary,
+        },
+    );
+    mark_node_fresh(
+        &repo_key,
+        RepoStateNode::WorkspaceSummary,
+        graph_fingerprint,
+    );
+    Ok(())
+}
+
+fn branch_summary_cache() -> &'static Mutex<HashMap<String, BranchSummaryCacheEntry>> {
+    &BRANCH_SUMMARY_CACHE
+}
+
+fn workspace_summary_cache() -> &'static Mutex<HashMap<String, WorkspaceSummaryCacheEntry>> {
+    &WORKSPACE_SUMMARY_CACHE
+}
+
+fn snapshot_cache() -> &'static Mutex<HashMap<String, SnapshotCacheEntry>> {
+    &SNAPSHOT_CACHE
+}
+
+fn worktree_sequences() -> &'static Mutex<HashMap<String, u64>> {
+    &WORKTREE_SEQUENCES
+}
+
+fn snapshot_fingerprint(path: &Path, repo_key: &str) -> Result<SnapshotFingerprint, AppError> {
+    let git_dir = absolute_git_dir(path)?;
+    let head_path = git_dir.join("HEAD");
+    let head_contents = fs::read_to_string(&head_path)
+        .ok()
+        .map(|content| content.trim().to_string());
+    let current_ref = head_contents
+        .as_deref()
+        .and_then(|head| head.strip_prefix("ref: "))
+        .map(str::to_string);
+    let current_ref_mtime = current_ref
+        .as_ref()
+        .and_then(|reference| file_mtime(&git_dir.join(reference)));
+
+    Ok(SnapshotFingerprint {
+        head_contents,
+        head_mtime: file_mtime(&head_path),
+        current_ref,
+        current_ref_mtime,
+        index_mtime: file_mtime(&git_dir.join("index")),
+        fetch_head_mtime: file_mtime(&git_dir.join("FETCH_HEAD")),
+        packed_refs_mtime: file_mtime(&git_dir.join("packed-refs")),
+        worktree_sequence: repo_worktree_sequence(repo_key),
+    })
+}
+
+fn repo_worktree_sequence(repo_key: &str) -> u64 {
+    worktree_sequences()
+        .lock()
+        .ok()
+        .and_then(|sequences| sequences.get(repo_key).copied())
+        .unwrap_or(0)
+}
+
+fn absolute_git_dir(path: &Path) -> Result<PathBuf, AppError> {
+    GitCli::run(path, &["rev-parse", "--absolute-git-dir"])
+        .map(|output| PathBuf::from(output.trim()))
+}
+
+fn canonical_repo_key(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn file_mtime(path: &Path) -> Option<u128> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+}
+
+fn parse_status_entry(entries: &[&str], index: usize) -> Option<(GitStatusFile, usize)> {
+    let entry = entries.get(index)?;
+
+    if let Some(path) = entry.strip_prefix("? ") {
+        return Some((
+            GitStatusFile {
+                path: path.to_string(),
+                status: "??".to_string(),
+                staged: false,
+                unstaged: true,
+                old_path: None,
+            },
+            1,
+        ));
+    }
+
+    if let Some(path) = entry.strip_prefix("! ") {
+        return Some((
+            GitStatusFile {
+                path: path.to_string(),
+                status: "!!".to_string(),
+                staged: false,
+                unstaged: false,
+                old_path: None,
+            },
+            1,
+        ));
+    }
+
+    if entry.starts_with("1 ") {
+        let parts: Vec<&str> = entry.splitn(9, ' ').collect();
+        if parts.len() < 9 {
+            return None;
+        }
+
+        let status = parts[1].to_string();
+        let (staged, unstaged) = status_flags(&status);
+        return Some((
+            GitStatusFile {
+                path: parts[8].to_string(),
+                status,
+                staged,
+                unstaged,
+                old_path: None,
+            },
+            1,
+        ));
+    }
+
+    if entry.starts_with("2 ") {
+        let parts: Vec<&str> = entry.splitn(10, ' ').collect();
+        if parts.len() < 10 {
+            return None;
+        }
+
+        let status = parts[1].to_string();
+        let (staged, unstaged) = status_flags(&status);
+        let old_path = entries.get(index + 1).map(|value| (*value).to_string());
+        return Some((
+            GitStatusFile {
+                path: parts[9].to_string(),
+                status,
+                staged,
+                unstaged,
+                old_path,
+            },
+            if entries.get(index + 1).is_some() {
+                2
+            } else {
+                1
+            },
+        ));
+    }
+
+    if entry.starts_with("u ") {
+        let parts: Vec<&str> = entry.splitn(11, ' ').collect();
+        if parts.len() < 11 {
+            return None;
+        }
+
+        let status = parts[1].to_string();
+        let (staged, unstaged) = status_flags(&status);
+        return Some((
+            GitStatusFile {
+                path: parts[10].to_string(),
+                status,
+                staged,
+                unstaged,
+                old_path: None,
+            },
+            1,
+        ));
+    }
+
+    None
+}
+
+fn status_flags(status: &str) -> (bool, bool) {
+    let chars: Vec<char> = status.chars().collect();
+    let index_status = chars.first().copied().unwrap_or(' ');
+    let worktree_status = chars.get(1).copied().unwrap_or(' ');
+
+    (
+        index_status != ' ' && index_status != '?' && index_status != '!',
+        worktree_status != ' ' || status == "??",
+    )
+}
+
+fn update_summary(summary: &mut GitStatusSummary, file: &GitStatusFile) {
+    summary.total_count += 1;
+
+    if file.status == "??" {
+        summary.untracked_count += 1;
+    }
+    if file.status == "!!" {
+        summary.ignored_count += 1;
+    }
+    if file.staged {
+        summary.staged_count += 1;
+    }
+    if file.unstaged {
+        summary.unstaged_count += 1;
+    }
 }
 
 #[cfg(test)]
@@ -144,6 +692,8 @@ mod tests {
         assert_eq!(info.current_branch, "main");
         assert!(info.is_clean);
         assert!(info.head_commit.is_none());
+        assert_eq!(info.ahead, 0);
+        assert_eq!(info.behind, 0);
     }
 
     #[test]
@@ -163,5 +713,55 @@ mod tests {
         assert_eq!(info.current_branch, "main");
         assert!(info.is_clean);
         assert!(info.head_commit.is_some());
+        assert_eq!(info.ahead, 0);
+        assert_eq!(info.behind, 0);
+    }
+
+    #[test]
+    fn repository_snapshot_parses_status_summary_and_rename() {
+        let temp = TestDir::new("snapshot");
+        create_source_repo(&temp.path);
+        fs::rename(temp.path.join("README.md"), temp.path.join("RENAMED.md")).expect("rename file");
+        git(&temp.path, &["add", "-A"]);
+        fs::write(temp.path.join("untracked.txt"), "hello\n").expect("write untracked");
+
+        let snapshot = get_repository_snapshot(&temp.path).expect("snapshot");
+
+        assert_eq!(snapshot.repository_info.current_branch, "main");
+        assert!(!snapshot.repository_info.is_clean);
+        assert_eq!(snapshot.summary.total_count, 2);
+        assert_eq!(snapshot.summary.staged_count, 1);
+        assert_eq!(snapshot.summary.untracked_count, 1);
+        assert!(
+            snapshot
+                .files
+                .iter()
+                .any(|file| file.path == "RENAMED.md"
+                    && file.old_path.as_deref() == Some("README.md"))
+        );
+        assert!(snapshot
+            .files
+            .iter()
+            .any(|file| file.path == "untracked.txt" && file.status == "??"));
+    }
+
+    #[test]
+    fn repository_snapshot_cache_refreshes_after_worktree_change_event() {
+        let temp = TestDir::new("snapshot-cache");
+        create_source_repo(&temp.path);
+
+        let clean_snapshot = get_repository_snapshot(&temp.path).expect("clean snapshot");
+        assert_eq!(clean_snapshot.summary.total_count, 0);
+
+        fs::write(temp.path.join("new-file.txt"), "new\n").expect("write untracked");
+        note_repository_change(&temp.path, RepoStateReason::Worktree);
+
+        let changed_snapshot = get_repository_snapshot(&temp.path).expect("changed snapshot");
+        assert_eq!(changed_snapshot.summary.total_count, 1);
+        assert_eq!(changed_snapshot.summary.untracked_count, 1);
+        assert!(changed_snapshot
+            .files
+            .iter()
+            .any(|file| file.path == "new-file.txt" && file.status == "??"));
     }
 }

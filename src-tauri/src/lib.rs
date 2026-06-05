@@ -3,6 +3,7 @@ mod errors;
 mod git;
 mod models;
 mod storage;
+mod watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,6 +15,7 @@ pub fn run() {
     }
 
     builder
+        .manage(watcher::RepositoryWatcherState::default())
         .setup(|_app| {
             if !git::cli::GitCli::is_git_available() {
                 eprintln!("Warning: Git is not installed or not in PATH");
@@ -25,7 +27,15 @@ pub fn run() {
             commands::repository::init_repository,
             commands::repository::clone_repository,
             commands::repository::get_repository_info,
+            commands::repository::get_repository_snapshot,
+            commands::repository::get_branch_summary,
+            commands::repository::get_workspace_summary,
+            commands::repository::warm_repository_context,
             commands::repository::list_recent_repositories,
+            commands::repository::list_favorite_repositories,
+            commands::repository::set_repository_favorite,
+            watcher::start_repository_watch,
+            watcher::stop_repository_watch,
             commands::status::get_status,
             commands::status::get_staged_files,
             commands::status::get_unstaged_files,
@@ -49,6 +59,7 @@ pub fn run() {
             commands::diff::get_commit_diff,
             commands::worktrees::list_worktrees,
             commands::worktrees::create_worktree,
+            commands::github::cancel_repository_github_work,
             commands::worktrees::remove_worktree,
             commands::worktrees::prune_worktrees,
             commands::submodules::list_submodules,

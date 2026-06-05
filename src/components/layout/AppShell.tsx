@@ -1,43 +1,54 @@
+import { useEffect } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { PanelLayout } from "./PanelLayout";
 import { useAppStore } from "../../stores/app-store";
-import { LoadingSpinner } from "../common/LoadingSpinner";
 import { ErrorCallout } from "../common/ErrorCallout";
-import { useRepositoryInfo } from "../../hooks/useRepository";
+import { useQuery } from "@tanstack/react-query";
+import { gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { Circle, GitBranch } from "lucide-react";
 import type { ViewType } from "../../types/git";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const activeView = useAppStore((s) => s.activeView);
-  const { data: repoInfo, isLoading, error } = useRepositoryInfo(activeRepoPath);
+  const { data: snapshot, error } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+
+  const repoInfo = snapshot?.repositoryInfo;
+  const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
+
+  useEffect(() => {
+    if (!activeRepoPath) return;
+
+    const includeGithub = activeView === "stacked-prs" || activeView === "review-studio";
+    const timer = window.setTimeout(() => {
+      void gitApi.warmRepositoryContext(activeRepoPath, includeGithub);
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [activeRepoPath, activeView]);
 
   return (
     <div className="giteye-shell flex h-full w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <Toolbar
-        repoName={repoInfo?.name}
+        repoName={repoInfo?.name ?? fallbackRepoName}
         currentBranch={repoInfo?.currentBranch}
         isClean={repoInfo?.isClean}
       />
+      {error ? (
+        <div className="border-b border-[var(--color-border)] p-3">
+          <ErrorCallout message="Failed to load repository snapshot" />
+        </div>
+      ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <Sidebar />
         <div className="min-w-0 flex-1 overflow-hidden">
-          {isLoading ? (
-            <div className="flex h-full items-center justify-center p-3">
-              <LoadingSpinner />
-            </div>
-          ) : error ? (
-            <div className="p-3">
-              <ErrorCallout message="Failed to load repository" />
-            </div>
-          ) : (
-            <PanelLayout />
-          )}
+          <PanelLayout />
         </div>
       </div>
       <StatusBar
-        repoName={repoInfo?.name}
+        repoName={repoInfo?.name ?? fallbackRepoName}
         branchName={repoInfo?.currentBranch}
         isClean={repoInfo?.isClean}
         activeView={activeView}
@@ -79,4 +90,10 @@ function StatusBar({
 
 function viewLabel(view: ViewType) {
   return view.split("-").join(" ");
+}
+
+function basename(path: string) {
+  const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
+  const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
+  return path.slice(slashIndex + 1, normalizedEnd);
 }

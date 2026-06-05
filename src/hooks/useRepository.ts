@@ -1,60 +1,29 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { gitApi } from "../lib/tauri-api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../lib/git-data";
 import { useAppStore } from "../stores/app-store";
 
 export function useRepositoryInfo(repoPath: string | null) {
-  return useQuery({
-    queryKey: ["repoInfo", repoPath],
-    queryFn: () => gitApi.getRepositoryInfo(repoPath!),
-    enabled: !!repoPath,
-  });
+  return useQuery(gitQueries.repositoryInfo(repoPath));
 }
 
 export function useOpenRepository() {
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (path: string) => gitApi.openRepository(path),
-    onSuccess: (data) => {
-      setActiveRepoPath(data.path);
-      queryClient.invalidateQueries({ queryKey: ["recentRepos"] });
-      queryClient.invalidateQueries({ queryKey: ["repoInfo"] });
-    },
-  });
+  return useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
 }
 
 export function useInitRepository() {
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (path: string) => gitApi.initRepository(path),
-    onSuccess: (data) => {
-      setActiveRepoPath(data.path);
-      queryClient.invalidateQueries({ queryKey: ["recentRepos"] });
-      queryClient.invalidateQueries({ queryKey: ["repoInfo"] });
-    },
-  });
+  return useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
 }
 
 export function useCloneRepository() {
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ url, destination }: { url: string; destination: string }) => gitApi.cloneRepository(url, destination),
-    onSuccess: (data) => {
-      setActiveRepoPath(data.path);
-      queryClient.invalidateQueries({ queryKey: ["recentRepos"] });
-      queryClient.invalidateQueries({ queryKey: ["repoInfo"] });
-    },
-  });
+  return useMutation(gitMutations.cloneRepository(queryClient, setActiveRepoPath));
 }
 
 export function useRecentRepositories() {
-  return useQuery({
-    queryKey: ["recentRepos"],
-    queryFn: () => gitApi.listRecentRepositories(),
-  });
+  return useQuery(gitQueries.recentRepositories());
 }

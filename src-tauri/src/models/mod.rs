@@ -13,5 +13,7 @@ pub use branch::Branch;
 pub use commit::{CommitDetails, CommitSummary};
 pub use diff::DiffResult;
 pub use remote::Remote;
-pub use repository::RepositoryInfo;
+pub use repository::{
+    BranchSummary, GitStatusSummary, RepositoryInfo, RepositorySnapshot, WorkspaceSummary,
+};
 pub use status::GitStatusFile;

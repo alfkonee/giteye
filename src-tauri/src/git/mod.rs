@@ -6,6 +6,7 @@ pub mod github_service;
 pub mod rebase_service;
 pub mod remote_service;
 pub mod repository_service;
+pub mod state_graph;
 pub mod status_service;
 pub mod submodule_service;
 pub mod worktree_service;

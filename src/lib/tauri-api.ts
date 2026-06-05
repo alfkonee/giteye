@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   RepositoryInfo,
+  RepositorySnapshot,
+  BranchSummary,
+  WorkspaceSummary,
   GitStatusFile,
   CommitSummary,
   CommitDetails,
@@ -8,6 +11,7 @@ import type {
   Remote,
   DiffResult,
   RecentRepo,
+  FavoriteRepo,
   Worktree,
   Submodule,
   RebaseState,
@@ -18,21 +22,44 @@ import type {
 } from "../types/git";
 
 export const gitApi = {
-  // Repository
   openRepository: (path: string) =>
-    invoke<RepositoryInfo>("open_repository", { path }),
+    invoke<RepositorySnapshot>("open_repository", { path }),
 
   initRepository: (path: string) =>
-    invoke<RepositoryInfo>("init_repository", { path }),
+    invoke<RepositorySnapshot>("init_repository", { path }),
 
   cloneRepository: (url: string, destination: string) =>
-    invoke<RepositoryInfo>("clone_repository", { url, destination }),
+    invoke<RepositorySnapshot>("clone_repository", { url, destination }),
 
   getRepositoryInfo: (path: string) =>
     invoke<RepositoryInfo>("get_repository_info", { path }),
 
+  getRepositorySnapshot: (path: string) =>
+    invoke<RepositorySnapshot>("get_repository_snapshot", { path }),
+
+
+  getBranchSummary: (path: string) =>
+    invoke<BranchSummary>("get_branch_summary", { path }),
+
+  getWorkspaceSummary: (path: string) =>
+    invoke<WorkspaceSummary>("get_workspace_summary", { path }),
+
+  warmRepositoryContext: (repoPath: string, includeGithub: boolean) =>
+    invoke<void>("warm_repository_context", { repoPath, includeGithub }),
   listRecentRepositories: () =>
     invoke<RecentRepo[]>("list_recent_repositories"),
+
+  listFavoriteRepositories: () =>
+    invoke<FavoriteRepo[]>("list_favorite_repositories"),
+
+  setRepositoryFavorite: (repoPath: string, name: string, favorite: boolean) =>
+    invoke<FavoriteRepo[]>("set_repository_favorite", { repoPath, name, favorite }),
+
+  startRepositoryWatch: (repoPath: string) =>
+    invoke<void>("start_repository_watch", { repoPath }),
+
+  stopRepositoryWatch: (repoPath: string) =>
+    invoke<void>("stop_repository_watch", { repoPath }),
 
   // Status
   getStatus: (repoPath: string) =>
@@ -53,6 +80,9 @@ export const gitApi = {
   stageAll: (repoPath: string) =>
     invoke<void>("stage_all", { repoPath }),
 
+
+  cancelRepositoryGithubWork: (repoPath: string) =>
+    invoke<void>("cancel_repository_github_work", { repoPath }),
   unstageAll: (repoPath: string) =>
     invoke<void>("unstage_all", { repoPath }),
 

@@ -44,7 +44,7 @@ class DiffErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState
  * @pierre/diffs gracefully degrades to the fallback.
  */
 export function DiffViewer(props: DiffViewerProps) {
-  const { diffText, filePath, isBinary, isLoading, error, mode } = props;
+  const { diffText, filePath, isBinary, isLoading, error, mode, focusedFilePath } = props;
 
   // Loading state
   if (isLoading) {
@@ -94,8 +94,12 @@ export function DiffViewer(props: DiffViewerProps) {
   }
 
   const fallback = (
-    <UnifiedDiffFallback diffText={diffText} filePath={filePath} mode={mode} />
+    <UnifiedDiffFallback diffText={diffText} filePath={filePath} mode={mode} focusedFilePath={focusedFilePath} />
   );
+
+  if (focusedFilePath) {
+    return fallback;
+  }
 
   return (
     <DiffErrorBoundary fallback={fallback}>

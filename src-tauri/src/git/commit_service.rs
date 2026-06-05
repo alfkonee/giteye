@@ -19,9 +19,10 @@ pub fn get_commit_history(
         repo_path,
         &[
             "log",
+            "--date-order",
             "--max-count",
             &limit_str,
-            "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D",
+            "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D%x00%P",
         ],
     )?;
 
@@ -30,7 +31,7 @@ pub fn get_commit_history(
         .filter(|l| !l.is_empty())
         .filter_map(|line| {
             let parts: Vec<&str> = line.split('\0').collect();
-            if parts.len() < 7 {
+            if parts.len() < 8 {
                 return None;
             }
 
@@ -46,6 +47,11 @@ pub fn get_commit_history(
                     .collect()
             };
 
+            let parents: Vec<String> = parts[7]
+                .split_whitespace()
+                .map(|parent| parent.to_string())
+                .collect();
+
             Some(CommitSummary {
                 hash: parts[0].to_string(),
                 short_hash: parts[1].to_string(),
@@ -54,6 +60,7 @@ pub fn get_commit_history(
                 author_email: parts[4].to_string(),
                 timestamp: parts[5].to_string(),
                 refs,
+                parents,
             })
         })
         .collect();
@@ -155,6 +162,22 @@ mod tests {
         );
     }
 
+    fn git_at(cwd: &Path, args: &[&str], iso_date: &str) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_AUTHOR_DATE", iso_date)
+            .env("GIT_COMMITTER_DATE", iso_date)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn init_repo(path: &Path) {
         git(path, &["init", "-b", "main"]);
         git(path, &["config", "user.name", "GitEye Test"]);
@@ -200,5 +223,84 @@ mod tests {
         );
         assert_eq!(details.changed_files, vec!["README.md".to_string()]);
         assert_eq!(details.parents.len(), 0);
+    }
+
+    #[test]
+    fn history_includes_parent_hashes() {
+        let temp = TestDir::new("parents");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+
+        fs::write(temp.path.join("README.md"), "# fixture\n\nupdated\n").expect("update file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Second fixture"]);
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].message, "Second fixture");
+        assert_eq!(history[0].parents, vec![history[1].hash.clone()]);
+        assert!(history[1].parents.is_empty());
+    }
+
+    #[test]
+    fn history_keeps_recent_side_branch_near_merge() {
+        let temp = TestDir::new("date-order");
+        init_repo(&temp.path);
+
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git_at(
+            &temp.path,
+            &["commit", "-m", "Initial fixture"],
+            "2026-01-01T00:00:00Z",
+        );
+
+        git(&temp.path, &["branch", "feature"]);
+        fs::write(temp.path.join("main.txt"), "main\n").expect("write main");
+        git(&temp.path, &["add", "main.txt"]);
+        git_at(
+            &temp.path,
+            &["commit", "-m", "Main work"],
+            "2026-01-02T00:00:00Z",
+        );
+
+        git(&temp.path, &["checkout", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature");
+        git(&temp.path, &["add", "feature.txt"]);
+        git_at(
+            &temp.path,
+            &["commit", "-m", "Feature work"],
+            "2026-01-04T00:00:00Z",
+        );
+
+        git(&temp.path, &["checkout", "main"]);
+        git_at(
+            &temp.path,
+            &["merge", "--no-ff", "feature", "-m", "Merge feature"],
+            "2026-01-05T00:00:00Z",
+        );
+
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+            .expect("history")
+            .into_iter()
+            .map(|commit| commit.message)
+            .collect();
+        let feature_index = messages
+            .iter()
+            .position(|message| message == "Feature work")
+            .expect("feature commit");
+        let main_index = messages
+            .iter()
+            .position(|message| message == "Main work")
+            .expect("main commit");
+
+        assert_eq!(messages[0], "Merge feature");
+        assert!(
+            feature_index < main_index,
+            "recent merged branch should stay close to merge: {messages:?}"
+        );
     }
 }

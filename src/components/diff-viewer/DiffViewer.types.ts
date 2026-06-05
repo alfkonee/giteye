@@ -2,6 +2,7 @@ export interface DiffViewerProps {
   diffText: string;
   filePath: string;
   oldFilePath?: string;
+  focusedFilePath?: string;
   language?: string;
   mode: "unified" | "split";
   isBinary?: boolean;

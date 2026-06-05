@@ -18,18 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
-import {
-  useBumpSubmodule,
-  useCreateWorktree,
-  usePruneWorktrees,
-  useRemoveWorktree,
-  useSubmodules,
-  useSyncSubmodules,
-  useUpdateSubmodule,
-  useWorktrees,
-} from "../../hooks/useAdvancedGit";
-import { useOpenRepository } from "../../hooks/useRepository";
-import { gitApi } from "../../lib/tauri-api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import type { Submodule, Worktree } from "../../types/git";
 
 type WorktreeRow = {
@@ -157,15 +147,18 @@ function EmptyState({ message }: { message: string }) {
 
 export function WorktreesSubmodules() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const worktreesQuery = useWorktrees(activeRepoPath);
-  const submodulesQuery = useSubmodules(activeRepoPath);
-  const updateSubmodule = useUpdateSubmodule(activeRepoPath);
-  const syncSubmodules = useSyncSubmodules(activeRepoPath);
-  const bumpSubmodule = useBumpSubmodule(activeRepoPath);
-  const pruneWorktrees = usePruneWorktrees(activeRepoPath);
-  const createWorktree = useCreateWorktree(activeRepoPath);
-  const removeWorktree = useRemoveWorktree(activeRepoPath);
-  const openRepository = useOpenRepository();
+  const queryClient = useQueryClient();
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath));
+  const submodulesQuery = useQuery(gitQueries.submodules(activeRepoPath));
+  const updateSubmodule = useMutation(gitMutations.updateSubmodule(queryClient, activeRepoPath));
+  const syncSubmodules = useMutation(gitMutations.syncSubmodules(queryClient, activeRepoPath));
+  const bumpSubmodule = useMutation(gitMutations.bumpSubmodule(queryClient, activeRepoPath));
+  const pruneWorktrees = useMutation(gitMutations.pruneWorktrees(queryClient, activeRepoPath));
+  const createWorktree = useMutation(gitMutations.createWorktree(queryClient, activeRepoPath));
+  const removeWorktree = useMutation(gitMutations.removeWorktree(queryClient, activeRepoPath));
+  const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
+  const openSubmodule = useMutation(gitMutations.openSubmodule(activeRepoPath));
   const [actionError, setActionError] = useState<string | null>(null);
 
   const worktreeRows = activeRepoPath ? (worktreesQuery.data ?? []).map((worktree) => toWorktreeRow(worktree, activeRepoPath)) : [];
@@ -208,15 +201,13 @@ export function WorktreesSubmodules() {
     removeWorktree.mutate({ path: worktreePath, force: false });
   };
 
-  const handleOpenSubmodule = async (submodulePath: string) => {
+  const handleOpenSubmodule = (submodulePath: string) => {
     if (!activeRepoPath) return;
     setActionError(null);
-    try {
-      const repoPath = await gitApi.openSubmodule(activeRepoPath, submodulePath);
-      openRepository.mutate(repoPath);
-    } catch (error) {
-      setActionError(formatMutationError(error));
-    }
+    openSubmodule.mutate(submodulePath, {
+      onSuccess: (repoPath) => openRepository.mutate(repoPath),
+      onError: (error) => setActionError(formatMutationError(error)),
+    });
   };
   return (
     <section className="grid h-full min-h-0 grid-cols-[minmax(760px,1fr)_300px] gap-3 bg-[var(--color-bg-primary)] p-3 text-[var(--color-text-primary)]">
