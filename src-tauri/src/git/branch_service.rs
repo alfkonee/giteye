@@ -1,7 +1,6 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
-use crate::git::repository_service;
-use crate::models::{Branch, BranchSummary};
+use crate::models::Branch;
 use std::path::Path;
 
 pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
@@ -10,7 +9,7 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
         &[
             "branch",
             "--all",
-            "--format=%(refname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)",
+            "--format=%(refname)|%(refname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)",
         ],
     )?;
 
@@ -18,32 +17,27 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
         .lines()
         .filter(|l| !l.is_empty())
         .filter_map(|line| {
-            let parts: Vec<&str> = line.splitn(4, '|').collect();
-            if parts.is_empty() {
+            let parts: Vec<&str> = line.splitn(5, '|').collect();
+            if parts.len() < 2 {
                 return None;
             }
 
-            let name = parts[0];
-            let is_current = parts.get(3).map_or(false, |h| *h == "*");
-            let is_remote = name.starts_with("remotes/");
+            let ref_name = parts[0];
+            let short_ref = parts[1];
+            let is_remote = ref_name.starts_with("refs/remotes/");
+            if is_remote && short_ref.ends_with("/HEAD") {
+                return None;
+            }
 
-            let short_name = if is_remote {
-                name.trim_start_matches("remotes/")
-                    .splitn(2, '/')
-                    .nth(1)
-                    .unwrap_or(name)
-                    .to_string()
-            } else {
-                name.to_string()
-            };
+            let is_current = parts.get(4).map_or(false, |h| *h == "*");
 
             let upstream = parts
-                .get(1)
+                .get(2)
                 .filter(|u| !u.is_empty())
                 .map(|u| u.to_string());
 
             let (ahead, behind) = parts
-                .get(2)
+                .get(3)
                 .filter(|t| !t.is_empty())
                 .map(|track| {
                     let track = track.trim_matches(|c| c == '[' || c == ']');
@@ -61,8 +55,8 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
                 .unwrap_or((None, None));
 
             Some(Branch {
-                name: name.to_string(),
-                short_name,
+                name: ref_name.to_string(),
+                short_name: short_ref.to_string(),
                 is_current,
                 is_remote,
                 upstream,
@@ -75,34 +69,35 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
     Ok(branches)
 }
 
-pub fn get_branch_summary(repo_path: &Path) -> Result<BranchSummary, AppError> {
-    let snapshot = repository_service::get_repository_snapshot(repo_path)?;
-    let branches = list_branches(repo_path)?;
-    let local_count = branches.iter().filter(|branch| !branch.is_remote).count() as u32;
-    let remote_count = branches.iter().filter(|branch| branch.is_remote).count() as u32;
-
-    Ok(BranchSummary {
-        current_branch: snapshot.repository_info.current_branch,
-        local_count,
-        remote_count,
-        ahead: snapshot.repository_info.ahead,
-        behind: snapshot.repository_info.behind,
-    })
-}
 
 pub fn get_current_branch(repo_path: &Path) -> Result<String, AppError> {
     GitCli::run(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string())
 }
 
-pub fn checkout_branch(repo_path: &Path, name: &str) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["checkout", name])?;
+pub fn checkout_branch(repo_path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
+    if strategy == "stash" && has_worktree_changes(repo_path)? {
+        let message = format!("GitEye: before switching to {name}");
+        GitCli::run(repo_path, &["stash", "push", "--include-untracked", "-m", &message])?;
+    }
+
+    switch_branch(repo_path, name)?;
     Ok(())
 }
 
-pub fn create_branch(repo_path: &Path, name: &str, checkout: bool) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["branch", name])?;
+pub fn create_branch(
+    repo_path: &Path,
+    name: &str,
+    checkout: bool,
+    start_point: Option<&str>,
+) -> Result<(), AppError> {
+    if let Some(start_point) = start_point.filter(|value| !value.is_empty()) {
+        GitCli::run(repo_path, &["branch", name, start_point])?;
+    } else {
+        GitCli::run(repo_path, &["branch", name])?;
+    }
+
     if checkout {
-        GitCli::run(repo_path, &["checkout", name])?;
+        GitCli::run(repo_path, &["switch", name])?;
     }
     Ok(())
 }
@@ -110,4 +105,37 @@ pub fn create_branch(repo_path: &Path, name: &str, checkout: bool) -> Result<(),
 pub fn delete_branch(repo_path: &Path, name: &str) -> Result<(), AppError> {
     GitCli::run(repo_path, &["branch", "-d", name])?;
     Ok(())
+}
+
+fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
+    GitCli::run(repo_path, &["status", "--porcelain"]).map(|status| !status.trim().is_empty())
+}
+
+fn switch_branch(repo_path: &Path, name: &str) -> Result<(), AppError> {
+    if remote_branch_exists(repo_path, name) {
+        let local_name = name
+            .split_once('/')
+            .map(|(_, branch_name)| branch_name)
+            .unwrap_or(name);
+
+        if local_branch_exists(repo_path, local_name) {
+            GitCli::run(repo_path, &["switch", local_name])?;
+        } else {
+            GitCli::run(repo_path, &["switch", "--track", name])?;
+        }
+    } else {
+        GitCli::run(repo_path, &["switch", name])?;
+    }
+
+    Ok(())
+}
+
+fn local_branch_exists(repo_path: &Path, name: &str) -> bool {
+    let ref_name = format!("refs/heads/{name}");
+    GitCli::run(repo_path, &["show-ref", "--verify", "--quiet", &ref_name]).is_ok()
+}
+
+fn remote_branch_exists(repo_path: &Path, name: &str) -> bool {
+    let ref_name = format!("refs/remotes/{name}");
+    GitCli::run(repo_path, &["show-ref", "--verify", "--quiet", &ref_name]).is_ok()
 }

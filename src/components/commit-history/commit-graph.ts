@@ -18,6 +18,11 @@ const LANE_COLORS = [
   "#c084fc",
 ];
 
+interface LaneState {
+  hash: string;
+  color: string;
+}
+
 export interface CommitGraphConnection {
   fromLane: number;
   toLane: number;
@@ -26,8 +31,7 @@ export interface CommitGraphConnection {
 
 export interface CommitGraphRow {
   commitLane: number;
-  lanesBefore: string[];
-  lanesAfter: string[];
+  hasCommitLineBefore: boolean;
   passthroughConnections: CommitGraphConnection[];
   parentConnections: CommitGraphConnection[];
   color: string;
@@ -36,31 +40,40 @@ export interface CommitGraphRow {
 
 export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitGraphRow> {
   const rows = new Map<string, CommitGraphRow>();
-  const lanes: string[] = [];
+  const lanes: LaneState[] = [];
   let maxLaneCount = 1;
+  let nextColorIndex = 0;
 
   for (const commit of commits) {
-    let commitLane = lanes.indexOf(commit.hash);
+    let commitLane = lanes.findIndex((lane) => lane.hash === commit.hash);
     if (commitLane === -1) {
       commitLane = lanes.length;
-      lanes.push(commit.hash);
+      lanes.push({
+        hash: commit.hash,
+        color: colorForLane(nextColorIndex),
+      });
+      nextColorIndex += 1;
     }
 
     const lanesBefore = lanes.slice();
     const parents = commit.parents;
     const nextLanes = lanesBefore.slice();
+    const commitColor = lanesBefore[commitLane]?.color ?? colorForLane(commitLane);
 
     if (parents.length === 0) {
       nextLanes.splice(commitLane, 1);
     } else {
       const firstParent = parents[0];
       const existingFirstParentLane = nextLanes.findIndex(
-        (hash, lane) => lane !== commitLane && hash === firstParent,
+        (lane, index) => index !== commitLane && lane.hash === firstParent,
       );
       let insertionLane = commitLane + 1;
 
       if (existingFirstParentLane === -1) {
-        nextLanes[commitLane] = firstParent;
+        nextLanes[commitLane] = {
+          hash: firstParent,
+          color: commitColor,
+        };
       } else {
         nextLanes.splice(commitLane, 1);
         insertionLane = commitLane;
@@ -69,38 +82,45 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
       for (let parentIndex = 1; parentIndex < parents.length; parentIndex += 1) {
         const parentHash = parents[parentIndex];
 
-        if (!nextLanes.includes(parentHash)) {
-          nextLanes.splice(Math.min(insertionLane, nextLanes.length), 0, parentHash);
+        if (!nextLanes.some((lane) => lane.hash === parentHash)) {
+          const parentLane = Math.min(insertionLane, nextLanes.length);
+          nextLanes.splice(parentLane, 0, {
+            hash: parentHash,
+            color: colorForLane(nextColorIndex),
+          });
+          nextColorIndex += 1;
           insertionLane += 1;
         }
       }
     }
 
-    const lanesAfter = nextLanes.slice();
-    const parentConnections = parents
-      .map((parentHash) => ({ parentHash, lane: lanesAfter.indexOf(parentHash) }))
-      .filter((parent) => parent.lane >= 0)
-      .map((parent) => ({
-        fromLane: commitLane,
-        toLane: parent.lane,
-        color: colorForLane(parent.lane),
-      }));
-    const passthroughConnections = lanesBefore
-      .map((hash, lane) => ({ lane, nextLane: lanesAfter.indexOf(hash) }))
-      .filter((lane) => lane.lane !== commitLane && lane.nextLane >= 0)
-      .map((lane) => ({
-        fromLane: lane.lane,
-        toLane: lane.nextLane,
-        color: colorForLane(lane.nextLane),
-      }));
+    const lanesAfter = nextLanes;
+    const parentConnections = compactConnections(
+      parents
+        .map((parentHash) => ({
+          parentHash,
+          lane: lanesAfter.findIndex((lane) => lane.hash === parentHash),
+        }))
+        .filter((parent) => parent.lane >= 0)
+        .map((parent) => connection(commitLane, parent.lane, lanesAfter[parent.lane].color)),
+    );
+    const passthroughConnections = compactConnections(
+      lanesBefore
+        .map((lane, index) => ({
+          color: lane.color,
+          lane: index,
+          nextLane: lanesAfter.findIndex((nextLane) => nextLane.hash === lane.hash),
+        }))
+        .filter((lane) => lane.lane !== commitLane && lane.nextLane >= 0)
+        .map((lane) => connection(lane.lane, lane.nextLane, lane.color)),
+    );
 
     rows.set(commit.hash, {
-      commitLane,
-      lanesBefore,
-      lanesAfter,
+      commitLane: visibleLane(commitLane),
+      hasCommitLineBefore: lanesBefore[commitLane]?.hash === commit.hash,
       passthroughConnections,
       parentConnections,
-      color: colorForLane(commitLane),
+      color: commitColor,
       width: MIN_WIDTH,
     });
 
@@ -118,6 +138,31 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
   }
 
   return rows;
+}
+
+function connection(fromLane: number, toLane: number, color: string): CommitGraphConnection {
+  return {
+    fromLane: visibleLane(fromLane),
+    toLane: visibleLane(toLane),
+    color,
+  };
+}
+
+function compactConnections(connections: CommitGraphConnection[]) {
+  const seen = new Set<string>();
+  return connections.filter((connection) => {
+    const key = `${connection.fromLane}:${connection.toLane}:${connection.color}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function visibleLane(lane: number) {
+  return Math.min(lane, MAX_VISIBLE_LANES - 1);
 }
 
 export function laneX(lane: number) {

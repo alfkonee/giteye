@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import {
@@ -19,10 +19,13 @@ import {
   Settings,
   Tag,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { gitQueries } from "../../lib/git-data";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
-import type { ViewType } from "../../types/git";
+import type { Branch, ViewType } from "../../types/git";
+import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
+import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
+import { BranchContextMenu } from "../branches/BranchContextMenu";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -31,6 +34,10 @@ export function Sidebar() {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+
+  const queryClient = useQueryClient();
+  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
+  const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
 
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
   const { data: branchSummary } = useQuery(gitQueries.branchSummary(activeRepoPath));
@@ -43,6 +50,8 @@ export function Sidebar() {
   const shouldLoadRebase = activeView === "rebase-conflicts";
 
   const branchesQuery = useQuery(gitQueries.branches(activeRepoPath, shouldLoadBranches));
+  const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
+  const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const githubOverviewQuery = useQuery(gitQueries.githubOverview(activeRepoPath, shouldLoadGithub));
   const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees));
   const submodulesQuery = useQuery(gitQueries.submodules(activeRepoPath, shouldLoadSubmodules));
@@ -54,6 +63,8 @@ export function Sidebar() {
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
   const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
+  const branchCount = branchSummary ? branchSummary.localCount + branchSummary.remoteCount : undefined;
+  const isClean = snapshot?.repositoryInfo.isClean ?? true;
   const conflictCount = rebaseStateQuery.data?.inProgress ? rebaseStateQuery.data.conflicts.length : undefined;
 
   useEffect(() => {
@@ -67,6 +78,32 @@ export function Sidebar() {
 
   const navigate = (view: ViewType) => {
     setActiveView(view);
+  };
+
+  const requestBranchSwitch = (branch: Branch) => {
+    if (!branch.isCurrent) {
+      setBranchToSwitch(branch);
+    }
+  };
+
+  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
+    if (!branchToSwitch) return;
+    checkoutBranch.mutate(
+      { branchName: branchToSwitch.shortName, strategy },
+      { onSuccess: () => setBranchToSwitch(null) },
+    );
+  };
+
+  const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
+    event.preventDefault();
+    setContextBranch({ branch, x: event.clientX, y: event.clientY });
+  };
+
+  const createBranchFrom = (branch: Branch) => {
+    const name = window.prompt(`New branch name from ${branch.shortName}`);
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+    createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
   };
 
   if (sidebarCollapsed) {
@@ -145,7 +182,7 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<GitBranch className="h-4 w-4" />}
           label="Branches"
-          count={branchSummary?.localCount}
+          count={branchCount}
           active={activeView === "history"}
           onClick={() => navigate("history")}
         />
@@ -171,7 +208,7 @@ export function Sidebar() {
           onClick={() => navigate("submodules")}
         />
 
-        <SidebarSection title="Branches" count={branchSummary?.localCount} />
+        <SidebarSection title="Local Branches" count={branchSummary?.localCount} />
         {!shouldLoadBranches ? (
           <SidebarNote>Open History to load branches</SidebarNote>
         ) : localBranches.length === 0 ? (
@@ -191,6 +228,9 @@ export function Sidebar() {
               label={branch.shortName}
               active={branch.isCurrent}
               indent
+              onDoubleClick={() => requestBranchSwitch(branch)}
+              title={branch.isCurrent ? "Current branch" : "Double-click to switch branch"}
+              onContextMenu={(event) => openBranchContextMenu(event, branch)}
             />
           ))
         )}
@@ -204,6 +244,9 @@ export function Sidebar() {
                 icon={<Globe className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />}
                 label={branch.shortName}
                 indent
+                onDoubleClick={() => requestBranchSwitch(branch)}
+                title="Double-click to switch remote branch"
+                onContextMenu={(event) => openBranchContextMenu(event, branch)}
               />
             ))}
           </>
@@ -293,6 +336,21 @@ export function Sidebar() {
           <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px]">K</kbd>
           <span className="ml-auto">Command Menu</span>
         </div>
+        <BranchSwitchDialog
+          branch={branchToSwitch}
+          isClean={isClean}
+          isPending={checkoutBranch.isPending}
+          onCancel={() => setBranchToSwitch(null)}
+          onConfirm={confirmBranchSwitch}
+        />
+        <BranchContextMenu
+          branch={contextBranch?.branch ?? null}
+          x={contextBranch?.x ?? 0}
+          y={contextBranch?.y ?? 0}
+          onCreateFromBranch={createBranchFrom}
+          onClose={() => setContextBranch(null)}
+        />
+
       </div>
     </aside>
   );
@@ -315,6 +373,9 @@ function SidebarNavItem({
   count,
   tone = "default",
   onClick,
+  onDoubleClick,
+  title,
+  onContextMenu,
 }: {
   icon: ReactNode;
   label: string;
@@ -323,10 +384,16 @@ function SidebarNavItem({
   count?: number;
   tone?: "default" | "warning";
   onClick?: () => void;
+  onDoubleClick?: () => void;
+  title?: string;
+  onContextMenu?: (event: MouseEvent) => void;
 }) {
   return (
     <button
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      title={title}
+      onContextMenu={onContextMenu}
       className={cn(
         "giteye-row flex w-full items-center gap-2.5 text-left text-[13px] transition-colors",
         indent ? "pl-7 pr-2.5" : "px-2.5",

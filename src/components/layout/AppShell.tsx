@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { PanelLayout } from "./PanelLayout";
@@ -6,7 +5,6 @@ import { useAppStore } from "../../stores/app-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
-import { gitApi } from "../../lib/tauri-api";
 import { Circle, GitBranch } from "lucide-react";
 import type { ViewType } from "../../types/git";
 
@@ -18,16 +16,6 @@ export function AppShell() {
   const repoInfo = snapshot?.repositoryInfo;
   const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
 
-  useEffect(() => {
-    if (!activeRepoPath) return;
-
-    const includeGithub = activeView === "stacked-prs" || activeView === "review-studio";
-    const timer = window.setTimeout(() => {
-      void gitApi.warmRepositoryContext(activeRepoPath, includeGithub);
-    }, 100);
-
-    return () => window.clearTimeout(timer);
-  }, [activeRepoPath, activeView]);
 
   return (
     <div className="giteye-shell flex h-full w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">

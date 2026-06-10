@@ -169,7 +169,7 @@ function CommitGraph({ graph, selected, refs }: { graph: CommitGraphRow; selecte
           );
         })}
 
-        {graph.lanesBefore[graph.commitLane] && (
+        {graph.hasCommitLineBefore && (
           <line
             x1={laneX(graph.commitLane)}
             y1="0"

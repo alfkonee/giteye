@@ -1,26 +1,34 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { GitBranch, Plus, Trash2, Check } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { BranchSwitchDialog } from "./BranchSwitchDialog";
+import { BranchContextMenu } from "./BranchContextMenu";
+import type { Branch } from "../../types/git";
+import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 
 export function BranchList() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const { data: branches, isLoading } = useQuery(gitQueries.branches(activeRepoPath));
+  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
   const checkoutMutation = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
   const createMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const deleteMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
+  const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
 
   const localBranches = branches?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branches?.filter((b) => b.isRemote) ?? [];
   const branchMutationError = checkoutMutation.error ?? createMutation.error ?? deleteMutation.error;
   const branchMutationPending = checkoutMutation.isPending || createMutation.isPending || deleteMutation.isPending;
+  const isClean = snapshot?.repositoryInfo.isClean ?? true;
 
   const handleCreate = () => {
     if (!newBranchName.trim()) return;
@@ -33,6 +41,32 @@ export function BranchList() {
         },
       }
     );
+  };
+
+  const requestBranchSwitch = (branch: Branch) => {
+    if (!branch.isCurrent) {
+      setBranchToSwitch(branch);
+    }
+  };
+
+  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
+    if (!branchToSwitch) return;
+    checkoutMutation.mutate(
+      { branchName: branchToSwitch.shortName, strategy },
+      { onSuccess: () => setBranchToSwitch(null) },
+    );
+  };
+
+  const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
+    event.preventDefault();
+    setContextBranch({ branch, x: event.clientX, y: event.clientY });
+  };
+
+  const createBranchFrom = (branch: Branch) => {
+    const name = window.prompt(`New branch name from ${branch.shortName}`);
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+    createMutation.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
   };
 
   if (isLoading) {
@@ -84,11 +118,9 @@ export function BranchList() {
                 ? "bg-[var(--color-bg-hover)]"
                 : "hover:bg-[var(--color-bg-surface)]"
             )}
-            onClick={() => {
-              if (!branch.isCurrent) {
-                checkoutMutation.mutate(branch.shortName);
-              }
-            }}
+            onDoubleClick={() => requestBranchSwitch(branch)}
+            onContextMenu={(event) => openBranchContextMenu(event, branch)}
+            title={branch.isCurrent ? "Current branch" : "Double-click to switch branch, right-click for branch actions"}
           >
             <GitBranch
               className={cn("w-3.5 h-3.5 shrink-0", branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]")}
@@ -121,6 +153,9 @@ export function BranchList() {
               <div
                 key={branch.name}
                 className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--color-bg-surface)] cursor-pointer text-xs text-[var(--color-text-secondary)]"
+                onDoubleClick={() => requestBranchSwitch(branch)}
+                onContextMenu={(event) => openBranchContextMenu(event, branch)}
+                title="Double-click to switch remote branch, right-click for branch actions"
               >
                 <GitBranch className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
                 <span className="truncate">{branch.shortName}</span>
@@ -129,6 +164,21 @@ export function BranchList() {
           </>
         )}
       </div>
+
+      <BranchSwitchDialog
+        branch={branchToSwitch}
+        isClean={isClean}
+        isPending={checkoutMutation.isPending}
+        onCancel={() => setBranchToSwitch(null)}
+        onConfirm={confirmBranchSwitch}
+      />
+      <BranchContextMenu
+        branch={contextBranch?.branch ?? null}
+        x={contextBranch?.x ?? 0}
+        y={contextBranch?.y ?? 0}
+        onCreateFromBranch={createBranchFrom}
+        onClose={() => setContextBranch(null)}
+      />
     </div>
   );
 }

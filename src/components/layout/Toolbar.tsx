@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReactNode } from "react";
 import {
   Bell,
@@ -21,7 +21,11 @@ import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
-import type { FavoriteRepo, RecentRepo } from "../../types/git";
+import { useNoticeStore } from "../../stores/notice-store";
+import type { Branch, FavoriteRepo, RecentRepo } from "../../types/git";
+import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
+import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
+import { BranchContextMenu } from "../branches/BranchContextMenu";
 
 interface ToolbarProps {
   repoName?: string;
@@ -44,14 +48,17 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
   const [commandValue, setCommandValue] = useState("");
-  const [operationMessage, setOperationMessage] = useState<string | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
+  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
+  const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
+  const notices = useNoticeStore((s) => s.notices);
+  const clearFinishedNotices = useNoticeStore((s) => s.clearFinished);
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath, branchMenuOpen));
   const { data: recentRepos } = useQuery(gitQueries.recentRepositories());
   const { data: favoriteRepos } = useQuery(gitQueries.favoriteRepositories());
   const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
+  const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const setFavorite = useMutation(gitMutations.setRepositoryFavorite(queryClient));
   const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
@@ -59,8 +66,11 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
+  const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
   const workingTreeState = isClean ? "Clean" : "Uncommitted changes";
   const isRemoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
+  const pendingNoticeCount = notices.filter((notice) => notice.status === "pending").length;
+  const activeNotice = notices.find((notice) => notice.status === "pending") ?? notices[0] ?? null;
 
   const repoSwitchItems = useMemo(
     () => buildRepositorySwitchItems(recentRepos ?? [], favoriteRepos ?? [], repoSearch),
@@ -81,48 +91,14 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const runRemoteOperation = (
-    label: string,
-    mutate: (variables: never, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void,
-  ) => {
-    if (!activeRepoPath || isRemoteOperationPending) return;
-
-    setOperationError(null);
-    setOperationMessage(`${label}…`);
-    mutate(undefined as never, {
-      onSuccess: () => {
-        setOperationMessage(`${label} complete`);
-      },
-      onError: (error) => {
-        setOperationMessage(null);
-        setOperationError(error instanceof Error ? error.message : String(error));
-      },
-    });
-  };
-
   const handleSync = () => {
     if (!activeRepoPath || isRemoteOperationPending) return;
 
-    setOperationError(null);
-    setOperationMessage("Syncing…");
     pullMutation.mutate(
       {},
       {
         onSuccess: () => {
-          pushMutation.mutate(
-            {},
-            {
-              onSuccess: () => setOperationMessage("Sync complete"),
-              onError: (error) => {
-                setOperationMessage(null);
-                setOperationError(error instanceof Error ? error.message : String(error));
-              },
-            },
-          );
-        },
-        onError: (error) => {
-          setOperationMessage(null);
-          setOperationError(error instanceof Error ? error.message : String(error));
+          pushMutation.mutate({});
         },
       },
     );
@@ -134,8 +110,33 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         setRepoMenuOpen(false);
         setRepoSearch("");
       },
-      onError: (error) => setOperationError(error instanceof Error ? error.message : String(error)),
     });
+  };
+
+  const requestBranchSwitch = (branch: Branch) => {
+    if (branch.isCurrent) return;
+    setBranchToSwitch(branch);
+    setBranchMenuOpen(false);
+  };
+
+  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
+    if (!branchToSwitch) return;
+    checkoutBranch.mutate(
+      { branchName: branchToSwitch.shortName, strategy },
+      { onSuccess: () => setBranchToSwitch(null) },
+    );
+  };
+
+  const openBranchContextMenu = (event: ReactMouseEvent, branch: Branch) => {
+    event.preventDefault();
+    setContextBranch({ branch, x: event.clientX, y: event.clientY });
+  };
+
+  const createBranchFrom = (branch: Branch) => {
+    const name = window.prompt(`New branch name from ${branch.shortName}`);
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+    createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
   };
 
   return (
@@ -240,10 +241,8 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                 {localBranches.map((branch) => (
                   <button
                     key={branch.name}
-                    onClick={() => {
-                      checkoutBranch.mutate(branch.shortName);
-                      setBranchMenuOpen(false);
-                    }}
+                    onClick={() => requestBranchSwitch(branch)}
+                    onContextMenu={(event) => openBranchContextMenu(event, branch)}
                     className={cn(
                       "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors",
                       branch.isCurrent
@@ -256,6 +255,25 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                     {branch.isCurrent && <span className="ml-auto text-[11px] opacity-80">current</span>}
                   </button>
                 ))}
+                {remoteBranches.length > 0 && (
+                  <>
+                    <div className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+                      <span>Remote Branches</span>
+                      <span>{remoteBranches.length}</span>
+                    </div>
+                    {remoteBranches.map((branch) => (
+                      <button
+                        key={branch.name}
+                        onClick={() => requestBranchSwitch(branch)}
+                        onContextMenu={(event) => openBranchContextMenu(event, branch)}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)]"
+                      >
+                        <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
+                        <span className="truncate">{branch.shortName}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -270,21 +288,21 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           label="Fetch"
           title="Fetch from remote"
           disabled={!activeRepoPath || isRemoteOperationPending}
-          onClick={() => runRemoteOperation("Fetch", (variables, options) => fetchMutation.mutate(variables, options))}
+          onClick={() => fetchMutation.mutate(undefined)}
         />
         <ToolbarButton
           icon={<GitMerge className="h-4 w-4" />}
           label="Pull"
           title="Pull from remote"
           disabled={!activeRepoPath || isRemoteOperationPending}
-          onClick={() => runRemoteOperation("Pull", (_variables, options) => pullMutation.mutate({}, options))}
+          onClick={() => pullMutation.mutate({})}
         />
         <ToolbarButton
           icon={<Upload className="h-4 w-4" />}
           label="Push"
           title="Push to remote"
           disabled={!activeRepoPath || isRemoteOperationPending}
-          onClick={() => runRemoteOperation("Push", (_variables, options) => pushMutation.mutate({}, options))}
+          onClick={() => pushMutation.mutate({})}
         />
         <ToolbarButton
           icon={<Zap className="h-4 w-4" />}
@@ -308,9 +326,20 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         </div>
       </div>
 
-      {(operationMessage || operationError) && (
-        <div className={cn("hidden max-w-[220px] truncate rounded-md border px-2 py-1 text-[11px] xl:block", operationError ? "border-[var(--color-danger)]/30 text-[var(--color-danger)]" : "border-[var(--color-border-muted)] text-[var(--color-text-muted)]")}>
-          {operationError ?? operationMessage}
+      {activeNotice && (
+        <div
+          className={cn(
+            "hidden max-w-[240px] items-center gap-1.5 truncate rounded-md border px-2 py-1 text-[11px] xl:flex",
+            activeNotice.status === "error"
+              ? "border-[var(--color-danger)]/30 text-[var(--color-danger)]"
+              : activeNotice.status === "success"
+                ? "border-[var(--color-success)]/30 text-[var(--color-success)]"
+                : "border-[var(--color-accent)]/30 text-[var(--color-accent)]",
+          )}
+          title={activeNotice.detail}
+        >
+          <Circle className={cn("h-2 w-2 shrink-0 fill-current", activeNotice.status === "pending" && "animate-pulse")} />
+          <span className="truncate">{activeNotice.title}</span>
         </div>
       )}
 
@@ -328,13 +357,40 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           disabled={!activeRepoPath}
         />
         <ToolbarButton icon={<Cloud className="h-4 w-4" />} title="Remote status" />
-        <ToolbarButton icon={<Bell className="h-4 w-4" />} title="Notifications" />
+        <ToolbarButton
+          icon={
+            <span className="relative">
+              <Bell className="h-4 w-4" />
+              {pendingNoticeCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-[var(--color-accent)] px-0.5 text-[8px] font-bold leading-none text-white">
+                  {pendingNoticeCount}
+                </span>
+              )}
+            </span>
+          }
+          title={pendingNoticeCount > 0 ? `${pendingNoticeCount} action${pendingNoticeCount === 1 ? "" : "s"} running` : "Clear completed notices"}
+          onClick={clearFinishedNotices}
+        />
         <ToolbarButton
           icon={<Settings className="h-4 w-4" />}
           title="Settings"
           onClick={() => setActiveView("settings")}
         />
       </div>
+      <BranchSwitchDialog
+        branch={branchToSwitch}
+        isClean={isClean ?? true}
+        isPending={checkoutBranch.isPending}
+        onCancel={() => setBranchToSwitch(null)}
+        onConfirm={confirmBranchSwitch}
+      />
+      <BranchContextMenu
+        branch={contextBranch?.branch ?? null}
+        x={contextBranch?.x ?? 0}
+        y={contextBranch?.y ?? 0}
+        onCreateFromBranch={createBranchFrom}
+        onClose={() => setContextBranch(null)}
+      />
     </div>
   );
 }

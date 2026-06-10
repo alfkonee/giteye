@@ -445,3 +445,15 @@ samp {
   background: var(--color-diff-deleted-bg);
   color: var(--color-diff-deleted-text);
 }
+
+@keyframes giteye-notice-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(60%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}

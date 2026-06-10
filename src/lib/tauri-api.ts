@@ -21,6 +21,8 @@ import type {
   PullRequestDiff,
 } from "../types/git";
 
+export type CheckoutBranchStrategy = "move" | "stash";
+
 export const gitApi = {
   openRepository: (path: string) =>
     invoke<RepositorySnapshot>("open_repository", { path }),
@@ -103,11 +105,11 @@ export const gitApi = {
   getCurrentBranch: (repoPath: string) =>
     invoke<string>("get_current_branch", { repoPath }),
 
-  checkoutBranch: (repoPath: string, branchName: string) =>
-    invoke<void>("checkout_branch", { repoPath, branchName }),
+  checkoutBranch: (repoPath: string, branchName: string, strategy: CheckoutBranchStrategy) =>
+    invoke<void>("checkout_branch", { repoPath, branchName, strategy }),
 
-  createBranch: (repoPath: string, branchName: string, checkout: boolean) =>
-    invoke<void>("create_branch", { repoPath, branchName, checkout }),
+  createBranch: (repoPath: string, branchName: string, checkout: boolean, startPoint?: string | null) =>
+    invoke<void>("create_branch", { repoPath, branchName, checkout, startPoint: startPoint ?? null }),
 
   deleteBranch: (repoPath: string, branchName: string) =>
     invoke<void>("delete_branch", { repoPath, branchName }),

@@ -14,8 +14,16 @@ pub fn get_current_branch(repo_path: String) -> Result<String, AppError> {
 }
 
 #[tauri::command]
-pub fn checkout_branch(repo_path: String, branch_name: String) -> Result<(), AppError> {
-    branch_service::checkout_branch(Path::new(&repo_path), &branch_name)
+pub fn checkout_branch(
+    repo_path: String,
+    branch_name: String,
+    strategy: Option<String>,
+) -> Result<(), AppError> {
+    branch_service::checkout_branch(
+        Path::new(&repo_path),
+        &branch_name,
+        strategy.as_deref().unwrap_or("move"),
+    )
 }
 
 #[tauri::command]
@@ -23,8 +31,14 @@ pub fn create_branch(
     repo_path: String,
     branch_name: String,
     checkout: bool,
+    start_point: Option<String>,
 ) -> Result<(), AppError> {
-    branch_service::create_branch(Path::new(&repo_path), &branch_name, checkout)
+    branch_service::create_branch(
+        Path::new(&repo_path),
+        &branch_name,
+        checkout,
+        start_point.as_deref(),
+    )
 }
 
 #[tauri::command]

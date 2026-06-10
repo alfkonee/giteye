@@ -74,6 +74,7 @@ pub fn mark_node_fresh(repo_key: &str, node: RepoStateNode, fingerprint: String)
     }
 }
 
+#[cfg(test)]
 pub fn repo_state_graph(repo_key: &str) -> Option<RepoStateGraph> {
     REPO_STATE_GRAPHS
         .lock()
@@ -109,7 +110,7 @@ pub fn invalidation_plan(reason: RepoStateReason) -> InvalidationPlan {
         RepoStateReason::Remote => InvalidationPlan {
             snapshot: true,
             branch_summary: true,
-            workspace_summary: true,
+            workspace_summary: false,
             github_overview: true,
         },
         RepoStateReason::Rebase => InvalidationPlan {
@@ -142,7 +143,7 @@ mod tests {
         let remote = invalidation_plan(RepoStateReason::Remote);
         assert!(remote.affects(RepoStateNode::Snapshot));
         assert!(remote.affects(RepoStateNode::BranchSummary));
-        assert!(remote.affects(RepoStateNode::WorkspaceSummary));
+        assert!(!remote.affects(RepoStateNode::WorkspaceSummary));
         assert!(remote.affects(RepoStateNode::GithubOverview));
 
         let rebase = invalidation_plan(RepoStateReason::Rebase);

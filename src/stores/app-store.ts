@@ -73,6 +73,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set({
       activeRepoPath: path,
       route: path ? { area: "repository", view: "working-tree", repoPath: path } : { area: "global", view: "repo-hub" },
+      activeView: "working-tree",
       selected: {
         repositoryPath: path,
         branchName: null,

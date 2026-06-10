@@ -75,12 +75,10 @@ pub fn start_repository_watch(
     })
     .map_err(|e| AppError::IoError(e.to_string()))?;
 
-    watch_existing(&mut watcher, &repo, RecursiveMode::Recursive)?;
+    watch_existing(&mut watcher, &repo, RecursiveMode::NonRecursive)?;
 
     if let Some(git_dir) = absolute_git_dir(&repo) {
-        if git_dir != repo && git_dir.exists() {
-            watch_existing(&mut watcher, &git_dir, RecursiveMode::Recursive)?;
-        }
+        watch_git_metadata(&mut watcher, &git_dir)?;
     }
 
     watchers.insert(repo_key, watcher);
@@ -113,6 +111,28 @@ fn watch_existing(
             .watch(path, recursive_mode)
             .map_err(|e| AppError::IoError(e.to_string()))?;
     }
+    Ok(())
+}
+
+fn watch_git_metadata(watcher: &mut RecommendedWatcher, git_dir: &Path) -> Result<(), AppError> {
+    watch_existing(watcher, git_dir, RecursiveMode::NonRecursive)?;
+
+    for file_name in [
+        "HEAD",
+        "FETCH_HEAD",
+        "ORIG_HEAD",
+        "MERGE_HEAD",
+        "REBASE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "packed-refs",
+    ] {
+        watch_existing(watcher, &git_dir.join(file_name), RecursiveMode::NonRecursive)?;
+    }
+
+    for dir_name in ["refs", "rebase-apply", "rebase-merge", "sequencer"] {
+        watch_existing(watcher, &git_dir.join(dir_name), RecursiveMode::Recursive)?;
+    }
+
     Ok(())
 }
 

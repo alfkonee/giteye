@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{mpsc, LazyLock, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SnapshotFingerprint {
@@ -600,14 +600,18 @@ fn parse_status_entry(entries: &[&str], index: usize) -> Option<(GitStatusFile, 
 }
 
 fn status_flags(status: &str) -> (bool, bool) {
-    let chars: Vec<char> = status.chars().collect();
-    let index_status = chars.first().copied().unwrap_or(' ');
-    let worktree_status = chars.get(1).copied().unwrap_or(' ');
+    let mut chars = status.chars();
+    let index_status = chars.next().unwrap_or(' ');
+    let worktree_status = chars.next().unwrap_or(' ');
 
     (
-        index_status != ' ' && index_status != '?' && index_status != '!',
-        worktree_status != ' ' || status == "??",
+        is_changed_status(index_status),
+        status == "??" || is_changed_status(worktree_status),
     )
+}
+
+fn is_changed_status(status: char) -> bool {
+    !matches!(status, ' ' | '.' | '?' | '!')
 }
 
 fn update_summary(summary: &mut GitStatusSummary, file: &GitStatusFile) {
@@ -743,6 +747,42 @@ mod tests {
             .files
             .iter()
             .any(|file| file.path == "untracked.txt" && file.status == "??"));
+    }
+
+    #[test]
+    fn repository_snapshot_separates_index_and_worktree_statuses() {
+        let temp = TestDir::new("status-split");
+        create_source_repo(&temp.path);
+
+        fs::write(temp.path.join("README.md"), "# source\nunstaged\n").expect("modify unstaged file");
+        fs::write(temp.path.join("staged.txt"), "staged\n").expect("write staged file");
+        git(&temp.path, &["add", "staged.txt"]);
+        fs::write(temp.path.join("partial.txt"), "base\n").expect("write partial base");
+        git(&temp.path, &["add", "partial.txt"]);
+        fs::write(temp.path.join("partial.txt"), "base\nunstaged\n").expect("add unstaged partial change");
+
+        let snapshot = get_repository_snapshot(&temp.path).expect("snapshot");
+        let readme = snapshot
+            .files
+            .iter()
+            .find(|file| file.path == "README.md")
+            .expect("unstaged file");
+        let staged = snapshot
+            .files
+            .iter()
+            .find(|file| file.path == "staged.txt")
+            .expect("staged file");
+        let partial = snapshot
+            .files
+            .iter()
+            .find(|file| file.path == "partial.txt")
+            .expect("partial file");
+
+        assert_eq!((readme.staged, readme.unstaged), (false, true));
+        assert_eq!((staged.staged, staged.unstaged), (true, false));
+        assert_eq!((partial.staged, partial.unstaged), (true, true));
+        assert_eq!(snapshot.summary.staged_count, 2);
+        assert_eq!(snapshot.summary.unstaged_count, 2);
     }
 
     #[test]

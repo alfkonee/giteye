@@ -50,7 +50,7 @@ export function CommitHistory() {
     }
 
     const lastVirtualItem = virtualItems[virtualItems.length - 1];
-    if (lastVirtualItem.index >= commits.length - 1) {
+    if (lastVirtualItem.index >= commits.length) {
       setCommitLimit((limit) => limit + COMMIT_LIMIT_INCREMENT);
     }
   }, [commits, hasMoreCommits, isFetching, virtualItems]);
