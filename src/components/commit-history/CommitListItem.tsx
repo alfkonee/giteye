@@ -1,15 +1,23 @@
 import type { CSSProperties } from "react";
-import type { CommitSummary } from "../../types/git";
+import type { Branch, CommitSummary } from "../../types/git";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
-import { GitBranch } from "lucide-react";
+import { Cloud, GitBranch } from "lucide-react";
 import type { CommitGraphRow } from "./commit-graph";
 import { laneX } from "./commit-graph";
 
 interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
+  branches: Branch[];
+}
+
+interface DisplayRef {
+  label: string;
+  isHead: boolean;
+  isRemote: boolean;
+  hasTrackingRemote: boolean;
 }
 
 /**
@@ -17,10 +25,16 @@ interface CommitListItemProps {
  * author, and relative time. Selected rows use the `--color-bg-selected`
  * token for clear highlighting.
  */
-export function CommitListItem({ commit, graph }: CommitListItemProps) {
+export function CommitListItem({
+  commit,
+  graph,
+  branches,
+}: CommitListItemProps) {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
   const isSelected = selectedCommitHash === commit.hash;
+  const displayRefs = buildDisplayRefs(commit.refs, branches);
+  const isHead = displayRefs.some((ref) => ref.isHead);
 
   const style: CSSProperties = {
     gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px`,
@@ -43,48 +57,69 @@ export function CommitListItem({ commit, graph }: CommitListItemProps) {
       aria-selected={isSelected}
       className={cn(
         "grid h-[42px] items-center gap-2 rounded-lg px-2.5 transition-colors select-none",
+        isHead && "font-semibold",
         isSelected
           ? "bg-[var(--color-bg-selected)] text-white shadow-md shadow-[var(--color-accent)]/10 ring-1 ring-inset ring-[var(--color-accent)]/45"
-          : "hover:bg-[var(--color-bg-secondary)]"
+          : isHead
+            ? "bg-[var(--color-bg-secondary)]/70 ring-1 ring-inset ring-[var(--color-border-muted)] hover:bg-[var(--color-bg-secondary)]"
+            : "hover:bg-[var(--color-bg-secondary)]",
       )}
       style={style}
     >
-      <CommitGraph graph={graph} selected={isSelected} refs={commit.refs} />
+      <CommitGraph graph={graph} selected={isSelected} refs={displayRefs} />
 
       <span className="truncate font-mono text-[11px] text-[var(--color-accent)]">
         {truncateHash(commit.shortHash)}
       </span>
 
       <span className="flex min-w-0 items-center gap-2">
-        <span className="truncate text-[12px] font-medium text-[var(--color-text-primary)]">
+        <span
+          className={cn(
+            "truncate text-[12px] text-[var(--color-text-primary)]",
+            isHead ? "font-bold" : "font-medium",
+          )}
+        >
           {commit.message}
         </span>
-        {commit.refs.length > 0 && (
+        {displayRefs.length > 0 && (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
-            {commit.refs.slice(0, 2).map((ref) => (
+            {displayRefs.slice(0, 2).map((ref) => (
               <span
-                key={ref}
+                key={`${ref.label}-${ref.isHead ? "head" : "ref"}`}
                 className={cn(
                   "inline-flex max-w-[110px] items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
                   isSelected
                     ? "border-white/30 bg-white/15 text-white"
-                    : "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
+                    : ref.isRemote
+                      ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
+                      : "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
                 )}
               >
                 <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate">{ref}</span>
+                <span className="truncate">{ref.label}</span>
+                {ref.hasTrackingRemote && (
+                  <Cloud
+                    className="h-2.5 w-2.5 shrink-0"
+                    aria-label="Tracking branch on this commit"
+                  />
+                )}
               </span>
             ))}
-            {commit.refs.length > 2 && (
+            {displayRefs.length > 2 && (
               <span className="text-[10px] text-[var(--color-text-muted)]">
-                +{commit.refs.length - 2}
+                +{displayRefs.length - 2}
               </span>
             )}
           </span>
         )}
       </span>
 
-      <span className="truncate text-right text-[11px] text-[var(--color-text-secondary)]">
+      <span
+        className={cn(
+          "truncate text-right text-[11px] text-[var(--color-text-secondary)]",
+          isHead && "font-semibold",
+        )}
+      >
         {commit.authorName}
       </span>
       <span className="text-right text-[10px] text-[var(--color-text-muted)]">
@@ -94,14 +129,101 @@ export function CommitListItem({ commit, graph }: CommitListItemProps) {
   );
 }
 
-function CommitGraph({ graph, selected, refs }: { graph: CommitGraphRow; selected: boolean; refs: string[] }) {
+function buildDisplayRefs(refs: string[], branches: Branch[]): DisplayRef[] {
+  const localBranches = new Map(
+    branches
+      .filter((branch) => !branch.isRemote)
+      .map((branch) => [branch.shortName, branch]),
+  );
+  const remoteBranches = new Set(
+    branches
+      .filter((branch) => branch.isRemote)
+      .map((branch) => branch.shortName),
+  );
+  const labels = refs
+    .map(parseRefLabel)
+    .filter((ref): ref is { label: string; isHead: boolean } => Boolean(ref));
+  const labelsOnCommit = new Set(labels.map((ref) => ref.label));
+  const consumedRemotes = new Set<string>();
+  const displayRefs: DisplayRef[] = [];
+
+  for (const ref of labels) {
+    if (ref.label.endsWith("/HEAD")) continue;
+    const localBranch = localBranches.get(ref.label);
+    const trackingRemote =
+      localBranch?.upstream && labelsOnCommit.has(localBranch.upstream)
+        ? localBranch.upstream
+        : null;
+
+    if (trackingRemote) {
+      consumedRemotes.add(trackingRemote);
+    }
+
+    if (ref.label === "HEAD" || localBranch || !remoteBranches.has(ref.label)) {
+      displayRefs.push({
+        label: ref.label,
+        isHead: ref.isHead,
+        isRemote: false,
+        hasTrackingRemote: Boolean(trackingRemote),
+      });
+    }
+  }
+
+  for (const ref of labels) {
+    if (ref.label.endsWith("/HEAD") || consumedRemotes.has(ref.label)) continue;
+    if (remoteBranches.has(ref.label)) {
+      displayRefs.push({
+        label: ref.label,
+        isHead: ref.isHead,
+        isRemote: true,
+        hasTrackingRemote: false,
+      });
+    }
+  }
+
+  return uniqueDisplayRefs(displayRefs);
+}
+
+function parseRefLabel(ref: string) {
+  const trimmed = ref.trim();
+  if (!trimmed || trimmed.startsWith("tag: ")) return null;
+  if (trimmed.startsWith("HEAD -> ")) {
+    return { label: trimmed.slice("HEAD -> ".length).trim(), isHead: true };
+  }
+  return { label: trimmed, isHead: trimmed === "HEAD" };
+}
+
+function uniqueDisplayRefs(refs: DisplayRef[]) {
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = `${ref.label}:${ref.isHead}:${ref.isRemote}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function CommitGraph({
+  graph,
+  selected,
+  refs,
+}: {
+  graph: CommitGraphRow;
+  selected: boolean;
+  refs: DisplayRef[];
+}) {
   const centerY = 21;
   const strokeWidth = 1.75;
   const nodeRadius = refs.length > 0 ? 4.25 : 3.5;
 
   return (
     <span className="relative h-full overflow-hidden" aria-hidden="true">
-      <svg className="h-full" width={graph.width} height="42" viewBox={`0 0 ${graph.width} 42`}>
+      <svg
+        className="h-full"
+        width={graph.width}
+        height="42"
+        viewBox={`0 0 ${graph.width} 42`}
+      >
         {graph.passthroughConnections.map((connection) => {
           const fromX = laneX(connection.fromLane);
           const toX = laneX(connection.toLane);
@@ -193,7 +315,9 @@ function CommitGraph({ graph, selected, refs }: { graph: CommitGraphRow; selecte
           cx={laneX(graph.commitLane)}
           cy={centerY}
           r={selected ? 1.75 : 1.5}
-          fill={selected ? "var(--color-bg-selected)" : "var(--color-bg-primary)"}
+          fill={
+            selected ? "var(--color-bg-selected)" : "var(--color-bg-primary)"
+          }
         />
       </svg>
     </span>

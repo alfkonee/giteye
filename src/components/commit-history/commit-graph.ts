@@ -38,7 +38,9 @@ export interface CommitGraphRow {
   width: number;
 }
 
-export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitGraphRow> {
+export function layoutCommitGraph(
+  commits: CommitSummary[],
+): Map<string, CommitGraphRow> {
   const rows = new Map<string, CommitGraphRow>();
   const lanes: LaneState[] = [];
   let maxLaneCount = 1;
@@ -46,6 +48,7 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
 
   for (const commit of commits) {
     let commitLane = lanes.findIndex((lane) => lane.hash === commit.hash);
+    const continuesFromPreviousRow = commitLane !== -1;
     if (commitLane === -1) {
       commitLane = lanes.length;
       lanes.push({
@@ -58,7 +61,8 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
     const lanesBefore = lanes.slice();
     const parents = commit.parents;
     const nextLanes = lanesBefore.slice();
-    const commitColor = lanesBefore[commitLane]?.color ?? colorForLane(commitLane);
+    const commitColor =
+      lanesBefore[commitLane]?.color ?? colorForLane(commitLane);
 
     if (parents.length === 0) {
       nextLanes.splice(commitLane, 1);
@@ -79,7 +83,11 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
         insertionLane = commitLane;
       }
 
-      for (let parentIndex = 1; parentIndex < parents.length; parentIndex += 1) {
+      for (
+        let parentIndex = 1;
+        parentIndex < parents.length;
+        parentIndex += 1
+      ) {
         const parentHash = parents[parentIndex];
 
         if (!nextLanes.some((lane) => lane.hash === parentHash)) {
@@ -102,14 +110,18 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
           lane: lanesAfter.findIndex((lane) => lane.hash === parentHash),
         }))
         .filter((parent) => parent.lane >= 0)
-        .map((parent) => connection(commitLane, parent.lane, lanesAfter[parent.lane].color)),
+        .map((parent) =>
+          connection(commitLane, parent.lane, lanesAfter[parent.lane].color),
+        ),
     );
     const passthroughConnections = compactConnections(
       lanesBefore
         .map((lane, index) => ({
           color: lane.color,
           lane: index,
-          nextLane: lanesAfter.findIndex((nextLane) => nextLane.hash === lane.hash),
+          nextLane: lanesAfter.findIndex(
+            (nextLane) => nextLane.hash === lane.hash,
+          ),
         }))
         .filter((lane) => lane.lane !== commitLane && lane.nextLane >= 0)
         .map((lane) => connection(lane.lane, lane.nextLane, lane.color)),
@@ -117,7 +129,7 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
 
     rows.set(commit.hash, {
       commitLane: visibleLane(commitLane),
-      hasCommitLineBefore: lanesBefore[commitLane]?.hash === commit.hash,
+      hasCommitLineBefore: continuesFromPreviousRow,
       passthroughConnections,
       parentConnections,
       color: commitColor,
@@ -125,12 +137,18 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
     });
 
     lanes.splice(0, lanes.length, ...nextLanes);
-    maxLaneCount = Math.max(maxLaneCount, lanesBefore.length, lanesAfter.length, commitLane + 1);
+    maxLaneCount = Math.max(
+      maxLaneCount,
+      lanesBefore.length,
+      lanesAfter.length,
+      commitLane + 1,
+    );
   }
 
   const graphWidth = Math.max(
     MIN_WIDTH,
-    HORIZONTAL_PADDING * 2 + Math.min(maxLaneCount, MAX_VISIBLE_LANES) * LANE_SPACING,
+    HORIZONTAL_PADDING * 2 +
+      Math.min(maxLaneCount, MAX_VISIBLE_LANES) * LANE_SPACING,
   );
 
   for (const row of rows.values()) {
@@ -140,7 +158,11 @@ export function layoutCommitGraph(commits: CommitSummary[]): Map<string, CommitG
   return rows;
 }
 
-function connection(fromLane: number, toLane: number, color: string): CommitGraphConnection {
+function connection(
+  fromLane: number,
+  toLane: number,
+  color: string,
+): CommitGraphConnection {
   return {
     fromLane: visibleLane(fromLane),
     toLane: visibleLane(toLane),

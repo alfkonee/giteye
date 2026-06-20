@@ -27,8 +27,10 @@ export function CommitHistory() {
     placeholderData: (previousData, previousQuery) =>
       previousQuery?.queryKey[2] === activeRepoPath ? previousData : undefined,
   });
+  const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const parentRef = useRef<HTMLDivElement>(null);
-  const hasMoreCommits = isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
+  const hasMoreCommits =
+    isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
   const graphRows = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
   const graphWidth = graphRows.values().next().value?.width ?? 96;
 
@@ -45,7 +47,12 @@ export function CommitHistory() {
   const virtualItems = virtualizer.getVirtualItems();
 
   useEffect(() => {
-    if (!commits || !hasMoreCommits || isFetching || virtualItems.length === 0) {
+    if (
+      !commits ||
+      !hasMoreCommits ||
+      isFetching ||
+      virtualItems.length === 0
+    ) {
       return;
     }
 
@@ -101,7 +108,9 @@ export function CommitHistory() {
 
       <div
         className="sticky top-0 z-10 grid items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur"
-        style={{ gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px` }}
+        style={{
+          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px`,
+        }}
       >
         <span className="pl-2">Graph</span>
         <span>Hash</span>
@@ -162,7 +171,11 @@ export function CommitHistory() {
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
               >
-                <CommitListItem commit={commit} graph={graph} />
+                <CommitListItem
+                  commit={commit}
+                  graph={graph}
+                  branches={branches ?? []}
+                />
               </div>
             );
           })}

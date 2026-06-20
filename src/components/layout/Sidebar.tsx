@@ -36,35 +36,71 @@ export function Sidebar() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
-  const setSelectedSubmodulePath = useAppStore((s) => s.setSelectedSubmodulePath);
+  const setSelectedSubmodulePath = useAppStore(
+    (s) => s.setSelectedSubmodulePath,
+  );
 
   const queryClient = useQueryClient();
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
-  const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
+  const [contextBranch, setContextBranch] = useState<{
+    branch: Branch;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
-  const { data: branchSummary } = useQuery(gitQueries.branchSummary(activeRepoPath));
-  const { data: workspaceSummary } = useQuery(gitQueries.workspaceSummary(activeRepoPath));
+  const { data: snapshot } = useQuery(
+    gitQueries.repositorySnapshot(activeRepoPath),
+  );
+  const { data: branchSummary } = useQuery(
+    gitQueries.branchSummary(activeRepoPath),
+  );
+  const { data: workspaceSummary } = useQuery(
+    gitQueries.workspaceSummary(activeRepoPath),
+  );
 
   const shouldLoadBranches = Boolean(activeRepoPath);
-  const shouldLoadGithub = activeView === "stacked-prs" || activeView === "review-studio";
+  const shouldLoadGithub =
+    activeView === "stacked-prs" || activeView === "review-studio";
   const shouldLoadWorktrees = activeView === "worktrees";
   const shouldLoadSubmodules = activeView === "submodules";
-  const shouldLoadRebase = activeView === "rebase-conflicts";
 
-  const branchesQuery = useQuery(gitQueries.branches(activeRepoPath, shouldLoadBranches));
-  const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
-  const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
-  const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
-  const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
-  const githubOverviewQuery = useQuery(gitQueries.githubOverview(activeRepoPath, shouldLoadGithub));
-  const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees));
-  const submodulesQuery = useQuery(gitQueries.submodules(activeRepoPath, shouldLoadSubmodules));
-  const rebaseStateQuery = useQuery(gitQueries.rebaseState(activeRepoPath, shouldLoadRebase));
-  const remotesQuery = useQuery(gitQueries.remotes(activeRepoPath, activeView === "remotes"));
-  const stashesQuery = useQuery(gitQueries.stashes(activeRepoPath, activeView === "stashes"));
-  const lfsQuery = useQuery(gitQueries.lfsStatus(activeRepoPath, activeView === "lfs"));
-  const tagsQuery = useQuery(gitQueries.tags(activeRepoPath, activeView === "tags"));
+  const branchesQuery = useQuery(
+    gitQueries.branches(activeRepoPath, shouldLoadBranches),
+  );
+  const checkoutBranch = useMutation(
+    gitMutations.checkoutBranch(queryClient, activeRepoPath),
+  );
+  const createBranch = useMutation(
+    gitMutations.createBranch(queryClient, activeRepoPath),
+  );
+  const fastForwardBranchMutation = useMutation(
+    gitMutations.fastForwardBranch(queryClient, activeRepoPath),
+  );
+  const mergeBranchMutation = useMutation(
+    gitMutations.mergeBranch(queryClient, activeRepoPath),
+  );
+  const githubOverviewQuery = useQuery(
+    gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
+  );
+  const worktreesQuery = useQuery(
+    gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees),
+  );
+  const submodulesQuery = useQuery(
+    gitQueries.submodules(activeRepoPath, shouldLoadSubmodules),
+  );
+
+  const remotesQuery = useQuery(
+    gitQueries.remotes(activeRepoPath, activeView === "remotes"),
+  );
+  const stashesQuery = useQuery(
+    gitQueries.stashes(activeRepoPath, activeView === "stashes"),
+  );
+  const lfsQuery = useQuery(
+    gitQueries.lfsStatus(activeRepoPath, activeView === "lfs"),
+  );
+  const tagsQuery = useQuery(
+    gitQueries.tags(activeRepoPath, activeView === "tags"),
+  );
 
   const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
@@ -72,9 +108,13 @@ export function Sidebar() {
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
   const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
-  const branchCount = branchSummary ? branchSummary.localCount + branchSummary.remoteCount : undefined;
+  const branchCount = branchSummary
+    ? branchSummary.localCount + branchSummary.remoteCount
+    : undefined;
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
-  const conflictCount = rebaseStateQuery.data?.inProgress ? rebaseStateQuery.data.conflicts.length : undefined;
+  const conflictCount =
+    snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
+  const hasConflicts = conflictCount > 0;
 
   useEffect(() => {
     if (!activeRepoPath || !shouldLoadGithub) return;
@@ -112,16 +152,28 @@ export function Sidebar() {
     const name = window.prompt(`New branch name from ${branch.shortName}`);
     const trimmedName = name?.trim();
     if (!trimmedName) return;
-    createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
+    createBranch.mutate({
+      name: trimmedName,
+      checkout: false,
+      startPoint: branch.shortName,
+    });
   };
 
   const fastForwardBranch = (branch: Branch) => {
     if (!branch.upstream) return;
-    fastForwardBranchMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
+    fastForwardBranchMutation.mutate({
+      branchName: branch.shortName,
+      upstream: branch.upstream,
+    });
   };
   const mergeBranch = (branch: Branch) => {
     if (branch.isCurrent) return;
-    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    if (
+      !window.confirm(
+        `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
+      )
+    )
+      return;
     mergeBranchMutation.mutate(branch.shortName);
   };
 
@@ -188,14 +240,16 @@ export function Sidebar() {
           active={activeView === "review-studio"}
           onClick={() => navigate("review-studio")}
         />
-        <SidebarNavItem
-          icon={<AlertTriangle className="h-4 w-4" />}
-          label="Rebase Conflicts"
-          count={conflictCount}
-          active={activeView === "rebase-conflicts"}
-          tone="warning"
-          onClick={() => navigate("rebase-conflicts")}
-        />
+        {hasConflicts && (
+          <SidebarNavItem
+            icon={<AlertTriangle className="h-4 w-4" />}
+            label="Resolve Conflicts"
+            count={conflictCount}
+            active={activeView === "rebase-conflicts"}
+            tone="warning"
+            onClick={() => navigate("rebase-conflicts")}
+          />
+        )}
 
         <SidebarSection title="Repository Workspace" />
         <SidebarNavItem
@@ -227,7 +281,10 @@ export function Sidebar() {
           onClick={() => navigate("submodules")}
         />
 
-        <SidebarSection title="Local Branches" count={branchSummary?.localCount} />
+        <SidebarSection
+          title="Local Branches"
+          count={branchSummary?.localCount}
+        />
         {branchesQuery.isLoading ? (
           <SidebarNote>Loading branches…</SidebarNote>
         ) : branchesQuery.error ? (
@@ -235,35 +292,50 @@ export function Sidebar() {
         ) : localBranches.length === 0 ? (
           <SidebarNote>No branches</SidebarNote>
         ) : (
-          localBranches.slice(0, 8).map((branch) => (
-            <SidebarNavItem
-              key={branch.name}
-              icon={
-                <GitBranch
-                  className={cn(
-                    "h-3.5 w-3.5 shrink-0",
-                    branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
-                  )}
-                />
-              }
-              label={branch.shortName}
-              description={branch.upstream ? trackingLabel(branch) : undefined}
-              active={branch.isCurrent}
-              indent
-              onDoubleClick={() => requestBranchSwitch(branch)}
-              title={branch.isCurrent ? "Current branch" : "Double-click to switch branch"}
-              onContextMenu={(event) => openBranchContextMenu(event, branch)}
-            />
-          ))
+          localBranches
+            .slice(0, 8)
+            .map((branch) => (
+              <SidebarNavItem
+                key={branch.name}
+                icon={
+                  <GitBranch
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      branch.isCurrent
+                        ? "text-[var(--color-accent)]"
+                        : "text-[var(--color-text-muted)]",
+                    )}
+                  />
+                }
+                label={branch.shortName}
+                description={
+                  branch.upstream ? trackingLabel(branch) : undefined
+                }
+                active={branch.isCurrent}
+                indent
+                onDoubleClick={() => requestBranchSwitch(branch)}
+                title={
+                  branch.isCurrent
+                    ? "Current branch"
+                    : "Double-click to switch branch"
+                }
+                onContextMenu={(event) => openBranchContextMenu(event, branch)}
+              />
+            ))
         )}
 
         {shouldLoadBranches && remoteBranches.length > 0 && (
           <>
-            <SidebarSection title="Remote Branches" count={remoteBranches.length} />
+            <SidebarSection
+              title="Remote Branches"
+              count={remoteBranches.length}
+            />
             {remoteBranches.slice(0, 8).map((branch) => (
               <SidebarNavItem
                 key={branch.name}
-                icon={<Globe className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />}
+                icon={
+                  <Globe className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
+                }
                 label={branch.shortName}
                 indent
                 onDoubleClick={() => requestBranchSwitch(branch)}
@@ -274,7 +346,10 @@ export function Sidebar() {
           </>
         )}
 
-        <SidebarSection title="Worktrees" count={workspaceSummary?.worktreeCount} />
+        <SidebarSection
+          title="Worktrees"
+          count={workspaceSummary?.worktreeCount}
+        />
         {worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
         ) : worktreesQuery.error ? (
@@ -286,15 +361,26 @@ export function Sidebar() {
             <SidebarNavItem
               key={worktree.path}
               icon={<Layers className="h-3.5 w-3.5" />}
-              label={worktree.branch ?? (worktree.isDetached ? "Detached HEAD" : basename(worktree.path))}
+              label={
+                worktree.branch ??
+                (worktree.isDetached
+                  ? "Detached HEAD"
+                  : basename(worktree.path))
+              }
               active={activeView === "worktrees" && worktree.isCurrent}
               indent
-              onClick={() => { setSelectedWorktreePath(worktree.path); navigate("worktrees"); }}
+              onClick={() => {
+                setSelectedWorktreePath(worktree.path);
+                navigate("worktrees");
+              }}
             />
           ))
         )}
 
-        <SidebarSection title="Submodules" count={workspaceSummary?.submoduleCount} />
+        <SidebarSection
+          title="Submodules"
+          count={workspaceSummary?.submoduleCount}
+        />
         {submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
         ) : submodulesQuery.error ? (
@@ -309,7 +395,10 @@ export function Sidebar() {
               label={submodule.name || submodule.path}
               active={activeView === "submodules"}
               indent
-              onClick={() => { setSelectedSubmodulePath(submodule.path); navigate("submodules"); }}
+              onClick={() => {
+                setSelectedSubmodulePath(submodule.path);
+                navigate("submodules");
+              }}
             />
           ))
         )}
@@ -368,7 +457,9 @@ export function Sidebar() {
 
         <div className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-[var(--color-text-muted)]">
           <Command className="h-3.5 w-3.5" />
-          <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px]">K</kbd>
+          <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px]">
+            K
+          </kbd>
           <span className="ml-auto">Command Menu</span>
         </div>
         <BranchSwitchDialog
@@ -387,7 +478,6 @@ export function Sidebar() {
           onMerge={mergeBranch}
           onClose={() => setContextBranch(null)}
         />
-
       </div>
     </aside>
   );
@@ -397,7 +487,9 @@ function SidebarSection({ title, count }: { title: string; count?: number }) {
   return (
     <div className="flex items-center px-2.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
       <span>{title}</span>
-      {count !== undefined && count > 0 && <span className="ml-auto tabular-nums">{count}</span>}
+      {count !== undefined && count > 0 && (
+        <span className="ml-auto tabular-nums">{count}</span>
+      )}
     </div>
   );
 }
@@ -444,20 +536,38 @@ function SidebarNavItem({
       {active ? (
         icon
       ) : (
-        <span className={tone === "warning" ? "text-[var(--color-warning)]" : "text-[var(--color-text-muted)]"}>
+        <span
+          className={
+            tone === "warning"
+              ? "text-[var(--color-warning)]"
+              : "text-[var(--color-text-muted)]"
+          }
+        >
           {icon}
         </span>
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate">{label}</span>
         {description && (
-          <span className={cn("block truncate text-[10px]", active ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+          <span
+            className={cn(
+              "block truncate text-[10px]",
+              active ? "text-white/75" : "text-[var(--color-text-muted)]",
+            )}
+          >
             {description}
           </span>
         )}
       </span>
       {count !== undefined && count > 0 && (
-        <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] tabular-nums", active ? "bg-white/20 text-white" : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]")}>
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+            active
+              ? "bg-white/20 text-white"
+              : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
+          )}
+        >
           {count}
         </span>
       )}
@@ -466,9 +576,12 @@ function SidebarNavItem({
 }
 
 function SidebarNote({ children }: { children: ReactNode }) {
-  return <div className="px-7 py-1 text-[12px] italic text-[var(--color-text-muted)]">{children}</div>;
+  return (
+    <div className="px-7 py-1 text-[12px] italic text-[var(--color-text-muted)]">
+      {children}
+    </div>
+  );
 }
-
 
 function trackingLabel(branch: Branch) {
   const divergence = [
@@ -478,8 +591,14 @@ function trackingLabel(branch: Branch) {
     .filter(Boolean)
     .join(" · ");
 
-  return divergence ? `${branch.upstream} · ${divergence}` : `tracks ${branch.upstream}`;
+  return divergence
+    ? `${branch.upstream} · ${divergence}`
+    : `tracks ${branch.upstream}`;
 }
+function isUnmergedStatus(status: string) {
+  return ["DD", "AU", "UD", "UA", "DU", "AA", "UU"].includes(status);
+}
+
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
   const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
