@@ -77,6 +77,27 @@ pub fn mark_file_resolved(repo_path: &Path, file_path: &str) -> Result<(), AppEr
     Ok(())
 }
 
+pub fn checkout_conflict_side(
+    repo_path: &Path,
+    file_path: &str,
+    side: &str,
+) -> Result<(), AppError> {
+    validate_repo_relative_path(file_path)?;
+    let checkout_flag = match side {
+        "ours" => "--ours",
+        "theirs" => "--theirs",
+        _ => {
+            return Err(AppError::GitError(format!(
+                "Unsupported conflict side: {side}"
+            )));
+        }
+    };
+
+    GitCli::run(repo_path, &["checkout", checkout_flag, "--", file_path])?;
+    GitCli::run(repo_path, &["add", "--", file_path])?;
+    Ok(())
+}
+
 pub fn update_rebase_todo(repo_path: &Path, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
     let rebase_paths = find_rebase_dir(repo_path)?.ok_or_else(|| {
         AppError::GitError("No rebase in progress; git-rebase-todo is unavailable".to_string())
@@ -260,10 +281,9 @@ fn append_todo_item(todo: &mut String, item: &RebaseTodoItem) -> Result<(), AppE
     }
 
     let message = item.message.replace(|c| c == '\r' || c == '\n', " ");
-    let message = message.trim();
     if !message.is_empty() {
         todo.push(' ');
-        todo.push_str(message);
+        todo.push_str(&message);
     }
 
     todo.push('\n');
@@ -282,7 +302,9 @@ fn validate_todo_field(value: &str) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{append_todo_item, parse_todo_line, validate_repo_relative_path};
+    use super::{
+        append_todo_item, checkout_conflict_side, parse_todo_line, validate_repo_relative_path,
+    };
     use crate::models::rebase::RebaseTodoItem;
 
     #[test]
@@ -300,6 +322,7 @@ mod tests {
     #[test]
     fn serializes_safe_rebase_todo_items() {
         let mut output = String::new();
+
         append_todo_item(
             &mut output,
             &RebaseTodoItem {
@@ -313,6 +336,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, "squash def456 Combine fixes\n");
+    }
+
+    #[test]
+    fn rejects_unknown_conflict_side() {
+        let err =
+            checkout_conflict_side(std::path::Path::new("."), "src/app.rs", "both").unwrap_err();
+        assert!(err.to_string().contains("Unsupported conflict side"));
     }
 
     #[test]

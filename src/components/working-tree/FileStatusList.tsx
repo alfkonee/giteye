@@ -9,6 +9,7 @@ import { useState } from "react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { cn } from "../../lib/cn";
+import { FileTree } from "../common/FileTree";
 
 interface FileStatusListProps {
   title: string;
@@ -83,14 +84,10 @@ function statusTone(status: FileStatus): string {
   }
 }
 
-function splitPath(path: string): { directory: string; name: string } {
-  const slash = path.lastIndexOf("/");
-  if (slash === -1) return { directory: "", name: path };
-  return { directory: path.slice(0, slash + 1), name: path.slice(slash + 1) };
-}
 
 export function FileStatusList({ title, files, isLoading, repoPath, staged }: FileStatusListProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const queryClient = useQueryClient();
   const stageMutation = useMutation(gitMutations.stageFile(queryClient, repoPath));
@@ -131,6 +128,22 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           {files.length}
         </span>
         <div className="flex-1" />
+        <div className="flex overflow-hidden rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[10px]">
+          <button
+            type="button"
+            onClick={() => setViewMode("tree")}
+            className={cn("px-2 py-0.5", viewMode === "tree" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
+          >
+            Tree
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={cn("px-2 py-0.5", viewMode === "list" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
+          >
+            List
+          </button>
+        </div>
         {files.length > 0 && (
           <button
             onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
@@ -175,51 +188,33 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                       {group.files.length}
                     </span>
                   </div>
-                  <div className="divide-y divide-[var(--color-border-muted)]/70">
-                    {group.files.map((file) => {
-                      const status = parseFileStatus(file.status);
-                      const isSelected =
-                        selectedFilePath === file.path && selectedFileStaged === staged;
-                      const isMutating =
-                        (staged && unstageMutation.isPending) ||
-                        (!staged && stageMutation.isPending);
-                      const { directory, name } = splitPath(file.path);
+                  {viewMode === "tree" ? (
+                    <FileTree
+                      items={group.files}
+                      getPath={(file) => file.path}
+                      className="rounded-none border-0 bg-transparent"
+                      selectedKey={selectedFileStaged === staged ? selectedFilePath : null}
+                      onSelect={handleFileClick}
+                      renderIcon={(file) => (
+                        <StatusBadge status={parseFileStatus(file.status)} className="h-4 w-4 text-[9px]" />
+                      )}
+                      renderSubtext={(file, isSelected) =>
+                        file.oldPath ? (
+                          <span className={cn("block truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                            renamed from {file.oldPath}
+                          </span>
+                        ) : null
+                      }
+                      renderTrailing={(file, isSelected) => {
+                        const status = parseFileStatus(file.status);
+                        const isMutating =
+                          (staged && unstageMutation.isPending) ||
+                          (!staged && stageMutation.isPending);
 
-                      return (
-                        <div
-                          key={file.path}
-                          className={cn(
-                            "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-1.5 px-2 py-0.5 transition-colors",
-                            isSelected
-                              ? "bg-[var(--color-bg-selected)] text-white"
-                              : "hover:bg-[var(--color-bg-hover)]"
-                          )}
-                          onClick={() => handleFileClick(file)}
-                        >
-                          <StatusBadge status={status} className="h-4 w-4 text-[9px]" />
-                          <div className="min-w-0">
-                            <div
-                              className={cn(
-                                "truncate text-[12px] font-medium leading-4",
-                                isSelected ? "text-white" : "text-[var(--color-text-primary)]"
-                              )}
-                            >
-                              {directory && (
-                                <span className={cn("font-normal", isSelected ? "text-white/55" : "text-[var(--color-text-muted)]")}>
-                                  {directory}
-                                </span>
-                              )}
-                              <span>{name}</span>
-                            </div>
-                            {file.oldPath && (
-                              <div className={cn("truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
-                                renamed from {file.oldPath}
-                              </div>
-                            )}
-                          </div>
+                        return (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={(event) => {
+                              event.stopPropagation();
                               handleStageToggle(file);
                             }}
                             disabled={isMutating}
@@ -228,16 +223,82 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               isSelected
                                 ? "text-white hover:bg-white/15"
                                 : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                              statusTone(status)
+                              statusTone(status),
                             )}
                             title={staged ? "Unstage" : "Stage"}
                           >
                             {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                           </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      }}
+                    />
+                  ) : (
+                    <div className="divide-y divide-[var(--color-border-muted)]/70">
+                      {group.files.map((file) => {
+                        const status = parseFileStatus(file.status);
+                        const isSelected =
+                          selectedFilePath === file.path && selectedFileStaged === staged;
+                        const isMutating =
+                          (staged && unstageMutation.isPending) ||
+                          (!staged && stageMutation.isPending);
+                        const slash = file.path.lastIndexOf("/");
+                        const directory = slash === -1 ? "" : file.path.slice(0, slash + 1);
+                        const name = slash === -1 ? file.path : file.path.slice(slash + 1);
+
+                        return (
+                          <div
+                            key={file.path}
+                            className={cn(
+                              "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-1.5 px-2 py-0.5 transition-colors",
+                              isSelected
+                                ? "bg-[var(--color-bg-selected)] text-white"
+                                : "hover:bg-[var(--color-bg-hover)]",
+                            )}
+                            onClick={() => handleFileClick(file)}
+                          >
+                            <StatusBadge status={status} className="h-4 w-4 text-[9px]" />
+                            <div className="min-w-0">
+                              <div
+                                className={cn(
+                                  "truncate text-[12px] font-medium leading-4",
+                                  isSelected ? "text-white" : "text-[var(--color-text-primary)]",
+                                )}
+                              >
+                                {directory && (
+                                  <span className={cn("font-normal", isSelected ? "text-white/55" : "text-[var(--color-text-muted)]")}>
+                                    {directory}
+                                  </span>
+                                )}
+                                <span>{name}</span>
+                              </div>
+                              {file.oldPath && (
+                                <div className={cn("truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                                  renamed from {file.oldPath}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleStageToggle(file);
+                              }}
+                              disabled={isMutating}
+                              className={cn(
+                                "ml-auto rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                isSelected
+                                  ? "text-white hover:bg-white/15"
+                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
+                                statusTone(status),
+                              )}
+                              title={staged ? "Unstage" : "Stage"}
+                            >
+                              {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

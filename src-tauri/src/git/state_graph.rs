@@ -114,9 +114,9 @@ pub fn invalidation_plan(reason: RepoStateReason) -> InvalidationPlan {
             github_overview: true,
         },
         RepoStateReason::Rebase => InvalidationPlan {
-            snapshot: false,
-            branch_summary: false,
-            workspace_summary: false,
+            snapshot: true,
+            branch_summary: true,
+            workspace_summary: true,
             github_overview: false,
         },
     }
@@ -147,9 +147,9 @@ mod tests {
         assert!(remote.affects(RepoStateNode::GithubOverview));
 
         let rebase = invalidation_plan(RepoStateReason::Rebase);
-        assert!(!rebase.affects(RepoStateNode::Snapshot));
-        assert!(!rebase.affects(RepoStateNode::BranchSummary));
-        assert!(!rebase.affects(RepoStateNode::WorkspaceSummary));
+        assert!(rebase.affects(RepoStateNode::Snapshot));
+        assert!(rebase.affects(RepoStateNode::BranchSummary));
+        assert!(rebase.affects(RepoStateNode::WorkspaceSummary));
         assert!(!rebase.affects(RepoStateNode::GithubOverview));
     }
 

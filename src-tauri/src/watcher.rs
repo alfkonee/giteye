@@ -75,7 +75,6 @@ pub fn start_repository_watch(
     })
     .map_err(|e| AppError::IoError(e.to_string()))?;
 
-    watch_existing(&mut watcher, &repo, RecursiveMode::NonRecursive)?;
 
     if let Some(git_dir) = absolute_git_dir(&repo) {
         watch_git_metadata(&mut watcher, &git_dir)?;
@@ -115,8 +114,6 @@ fn watch_existing(
 }
 
 fn watch_git_metadata(watcher: &mut RecommendedWatcher, git_dir: &Path) -> Result<(), AppError> {
-    watch_existing(watcher, git_dir, RecursiveMode::NonRecursive)?;
-
     for file_name in [
         "HEAD",
         "FETCH_HEAD",
@@ -126,7 +123,11 @@ fn watch_git_metadata(watcher: &mut RecommendedWatcher, git_dir: &Path) -> Resul
         "CHERRY_PICK_HEAD",
         "packed-refs",
     ] {
-        watch_existing(watcher, &git_dir.join(file_name), RecursiveMode::NonRecursive)?;
+        watch_existing(
+            watcher,
+            &git_dir.join(file_name),
+            RecursiveMode::NonRecursive,
+        )?;
     }
 
     for dir_name in ["refs", "rebase-apply", "rebase-merge", "sequencer"] {

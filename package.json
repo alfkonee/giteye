@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "qa:seed": "bun scripts/seed-qa-repositories.mjs",
-    "tauri": "tauri dev"
+    "tauri": "tauri dev",
+    "tauri:build": "CI=false tauri build",
+    "build:appimage": "CI=false tauri build --bundles appimage"
   },
   "dependencies": {
     "@pierre/diffs": "^1.2.7",

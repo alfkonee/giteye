@@ -12,6 +12,7 @@ import {
   GitFork,
   GitPullRequest,
   Globe,
+  HardDrive,
   History,
   Layers,
   PanelLeft,
@@ -34,6 +35,8 @@ export function Sidebar() {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
+  const setSelectedSubmodulePath = useAppStore((s) => s.setSelectedSubmodulePath);
 
   const queryClient = useQueryClient();
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
@@ -43,7 +46,7 @@ export function Sidebar() {
   const { data: branchSummary } = useQuery(gitQueries.branchSummary(activeRepoPath));
   const { data: workspaceSummary } = useQuery(gitQueries.workspaceSummary(activeRepoPath));
 
-  const shouldLoadBranches = activeView === "history";
+  const shouldLoadBranches = Boolean(activeRepoPath);
   const shouldLoadGithub = activeView === "stacked-prs" || activeView === "review-studio";
   const shouldLoadWorktrees = activeView === "worktrees";
   const shouldLoadSubmodules = activeView === "submodules";
@@ -52,10 +55,16 @@ export function Sidebar() {
   const branchesQuery = useQuery(gitQueries.branches(activeRepoPath, shouldLoadBranches));
   const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
   const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
+  const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
+  const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
   const githubOverviewQuery = useQuery(gitQueries.githubOverview(activeRepoPath, shouldLoadGithub));
   const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees));
   const submodulesQuery = useQuery(gitQueries.submodules(activeRepoPath, shouldLoadSubmodules));
   const rebaseStateQuery = useQuery(gitQueries.rebaseState(activeRepoPath, shouldLoadRebase));
+  const remotesQuery = useQuery(gitQueries.remotes(activeRepoPath, activeView === "remotes"));
+  const stashesQuery = useQuery(gitQueries.stashes(activeRepoPath, activeView === "stashes"));
+  const lfsQuery = useQuery(gitQueries.lfsStatus(activeRepoPath, activeView === "lfs"));
+  const tagsQuery = useQuery(gitQueries.tags(activeRepoPath, activeView === "tags"));
 
   const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
@@ -104,6 +113,16 @@ export function Sidebar() {
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
+  };
+
+  const fastForwardBranch = (branch: Branch) => {
+    if (!branch.upstream) return;
+    fastForwardBranchMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
+  };
+  const mergeBranch = (branch: Branch) => {
+    if (branch.isCurrent) return;
+    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    mergeBranchMutation.mutate(branch.shortName);
   };
 
   if (sidebarCollapsed) {
@@ -183,8 +202,8 @@ export function Sidebar() {
           icon={<GitBranch className="h-4 w-4" />}
           label="Branches"
           count={branchCount}
-          active={activeView === "history"}
-          onClick={() => navigate("history")}
+          active={activeView === "branches"}
+          onClick={() => navigate("branches")}
         />
         <SidebarNavItem
           icon={<GitPullRequest className="h-4 w-4" />}
@@ -209,8 +228,10 @@ export function Sidebar() {
         />
 
         <SidebarSection title="Local Branches" count={branchSummary?.localCount} />
-        {!shouldLoadBranches ? (
-          <SidebarNote>Open History to load branches</SidebarNote>
+        {branchesQuery.isLoading ? (
+          <SidebarNote>Loading branches…</SidebarNote>
+        ) : branchesQuery.error ? (
+          <SidebarNote>Branches unavailable</SidebarNote>
         ) : localBranches.length === 0 ? (
           <SidebarNote>No branches</SidebarNote>
         ) : (
@@ -226,6 +247,7 @@ export function Sidebar() {
                 />
               }
               label={branch.shortName}
+              description={branch.upstream ? trackingLabel(branch) : undefined}
               active={branch.isCurrent}
               indent
               onDoubleClick={() => requestBranchSwitch(branch)}
@@ -253,13 +275,7 @@ export function Sidebar() {
         )}
 
         <SidebarSection title="Worktrees" count={workspaceSummary?.worktreeCount} />
-        {!shouldLoadWorktrees ? (
-          <SidebarNote>
-            {workspaceSummary?.dirtyWorktreeCount
-              ? `${workspaceSummary.dirtyWorktreeCount} dirty worktree${workspaceSummary.dirtyWorktreeCount === 1 ? "" : "s"}. Open Worktrees to inspect.`
-              : "Open Worktrees to load linked worktrees"}
-          </SidebarNote>
-        ) : worktreesQuery.isLoading ? (
+        {worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
         ) : worktreesQuery.error ? (
           <SidebarNote>Worktrees unavailable</SidebarNote>
@@ -273,19 +289,13 @@ export function Sidebar() {
               label={worktree.branch ?? (worktree.isDetached ? "Detached HEAD" : basename(worktree.path))}
               active={activeView === "worktrees" && worktree.isCurrent}
               indent
-              onClick={() => navigate("worktrees")}
+              onClick={() => { setSelectedWorktreePath(worktree.path); navigate("worktrees"); }}
             />
           ))
         )}
 
         <SidebarSection title="Submodules" count={workspaceSummary?.submoduleCount} />
-        {!shouldLoadSubmodules ? (
-          <SidebarNote>
-            {workspaceSummary?.behindSubmoduleCount
-              ? `${workspaceSummary.behindSubmoduleCount} submodule${workspaceSummary.behindSubmoduleCount === 1 ? "" : "s"} need attention. Open Submodules to inspect.`
-              : "Open Submodules to load submodule state"}
-          </SidebarNote>
-        ) : submodulesQuery.isLoading ? (
+        {submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
         ) : submodulesQuery.error ? (
           <SidebarNote>Submodules unavailable</SidebarNote>
@@ -299,15 +309,40 @@ export function Sidebar() {
               label={submodule.name || submodule.path}
               active={activeView === "submodules"}
               indent
-              onClick={() => navigate("submodules")}
+              onClick={() => { setSelectedSubmodulePath(submodule.path); navigate("submodules"); }}
             />
           ))
         )}
 
         <SidebarSection title="Repository" />
-        <SidebarNavItem icon={<Archive className="h-4 w-4" />} label="Stashes" />
-        <SidebarNavItem icon={<Tag className="h-4 w-4" />} label="Tags" />
-        <SidebarNavItem icon={<Database className="h-4 w-4" />} label="Remotes" />
+        <SidebarNavItem
+          icon={<Archive className="h-4 w-4" />}
+          label="Stashes"
+          count={stashesQuery.data?.length}
+          active={activeView === "stashes"}
+          onClick={() => navigate("stashes")}
+        />
+        <SidebarNavItem
+          icon={<Tag className="h-4 w-4" />}
+          label="Tags"
+          count={tagsQuery.data?.length}
+          active={activeView === "tags"}
+          onClick={() => navigate("tags")}
+        />
+        <SidebarNavItem
+          icon={<HardDrive className="h-4 w-4" />}
+          label="Git LFS"
+          count={lfsQuery.data?.files.length}
+          active={activeView === "lfs"}
+          onClick={() => navigate("lfs")}
+        />
+        <SidebarNavItem
+          icon={<Database className="h-4 w-4" />}
+          label="Remotes"
+          count={remotesQuery.data?.length}
+          active={activeView === "remotes"}
+          onClick={() => navigate("remotes")}
+        />
         <SidebarNavItem
           icon={<Settings className="h-4 w-4" />}
           label="Settings"
@@ -348,6 +383,8 @@ export function Sidebar() {
           x={contextBranch?.x ?? 0}
           y={contextBranch?.y ?? 0}
           onCreateFromBranch={createBranchFrom}
+          onFastForward={fastForwardBranch}
+          onMerge={mergeBranch}
           onClose={() => setContextBranch(null)}
         />
 
@@ -367,6 +404,7 @@ function SidebarSection({ title, count }: { title: string; count?: number }) {
 
 function SidebarNavItem({
   icon,
+  description,
   label,
   active = false,
   indent = false,
@@ -379,6 +417,7 @@ function SidebarNavItem({
 }: {
   icon: ReactNode;
   label: string;
+  description?: string;
   active?: boolean;
   indent?: boolean;
   count?: number;
@@ -409,7 +448,14 @@ function SidebarNavItem({
           {icon}
         </span>
       )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {description && (
+          <span className={cn("block truncate text-[10px]", active ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+            {description}
+          </span>
+        )}
+      </span>
       {count !== undefined && count > 0 && (
         <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] tabular-nums", active ? "bg-white/20 text-white" : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]")}>
           {count}
@@ -423,6 +469,17 @@ function SidebarNote({ children }: { children: ReactNode }) {
   return <div className="px-7 py-1 text-[12px] italic text-[var(--color-text-muted)]">{children}</div>;
 }
 
+
+function trackingLabel(branch: Branch) {
+  const divergence = [
+    branch.ahead ? `${branch.ahead} ahead` : null,
+    branch.behind ? `${branch.behind} behind` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return divergence ? `${branch.upstream} · ${divergence}` : `tracks ${branch.upstream}`;
+}
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
   const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);

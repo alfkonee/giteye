@@ -1,10 +1,15 @@
 pub mod branches;
 pub mod commits;
+pub mod config;
 pub mod diff;
 pub mod github;
+pub mod lfs;
 pub mod rebase;
 pub mod remotes;
 pub mod repository;
+pub mod ssh;
+pub mod stashes;
 pub mod status;
 pub mod submodules;
+pub mod tags;
 pub mod worktrees;

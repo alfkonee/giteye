@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
@@ -6,11 +6,13 @@ import { gitQueries } from "../../lib/git-data";
 import { WorkingTree } from "../working-tree/WorkingTree";
 import { CommitHistory } from "../commit-history/CommitHistory";
 import { CommitDetails } from "../commit-history/CommitDetails";
+import { BranchList } from "../branches/BranchList";
 import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
 import { StackedPrBoard } from "../stacked-prs/StackedPrBoard";
 import { DiffReviewStudio } from "../review-studio/DiffReviewStudio";
 import { WorktreesSubmodules } from "../workspaces/WorktreesSubmodules";
 import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
+import { LfsView, RemotesView, StashesView, TagsView } from "../repository/LocalGitViews";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
@@ -21,10 +23,10 @@ export function PanelLayout() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
+  const diffMode = useAppStore((s) => s.diffMode);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
 
-  const [mainPanelSize, setMainPanelSize] = useState(60);
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
@@ -36,6 +38,16 @@ export function PanelLayout() {
         return <WorkingTree />;
       case "history":
         return <CommitHistory />;
+      case "branches":
+        return <BranchList />;
+      case "remotes":
+        return <RemotesView />;
+      case "stashes":
+        return <StashesView />;
+      case "tags":
+        return <TagsView />;
+      case "lfs":
+        return <LfsView />;
       case "stacked-prs":
         return <StackedPrBoard />;
       case "review-studio":
@@ -68,7 +80,7 @@ export function PanelLayout() {
           isBinary={fileDiff.isBinary}
           isLoading={diffLoading}
           error={diffError?.toString() ?? null}
-          mode="unified"
+          mode={diffMode}
         />
       );
     }
@@ -80,7 +92,7 @@ export function PanelLayout() {
           filePath={selectedFilePath}
           isLoading={true}
           error={null}
-          mode="unified"
+          mode={diffMode}
         />
       );
     }
@@ -92,7 +104,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode]);
 
   const showDetailPane = activeView === "working-tree" || activeView === "history";
 
@@ -107,9 +119,8 @@ export function PanelLayout() {
   return (
     <PanelGroup direction="horizontal" className="h-full bg-[var(--color-bg-primary)]">
       <Panel
-        defaultSize={mainPanelSize}
+        defaultSize={60}
         minSize={30}
-        onResize={setMainPanelSize}
       >
         <div className="h-full overflow-hidden">
           {renderMainContent()}
@@ -166,6 +177,7 @@ function CommitDiffWrapper() {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
+  const diffMode = useAppStore((s) => s.diffMode);
   const { data: commitDiff, isLoading, error } = useQuery(gitQueries.commitDiff(activeRepoPath, selectedCommitHash));
 
   return (
@@ -191,7 +203,7 @@ function CommitDiffWrapper() {
           isBinary={commitDiff?.isBinary}
           isLoading={isLoading}
           error={error?.toString() ?? null}
-          mode="unified"
+          mode={diffMode}
           focusedFilePath={selectedCommitFilePath ?? undefined}
         />
       </div>

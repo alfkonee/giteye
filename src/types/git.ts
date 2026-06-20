@@ -79,11 +79,92 @@ export interface Branch {
   behind: number | null;
 }
 
+export interface GitIdentity {
+  localName: string | null;
+  localEmail: string | null;
+  globalName: string | null;
+  globalEmail: string | null;
+  effectiveName: string | null;
+  effectiveEmail: string | null;
+}
+
+export interface GitCredentialConfig {
+  localHelpers: string[];
+  globalHelpers: string[];
+  effectiveHelpers: string[];
+}
+
+export interface LfsStatus {
+  available: boolean;
+  version: string | null;
+  trackedPatterns: LfsTrackPattern[];
+  files: LfsFile[];
+  error: string | null;
+}
+
+export interface LfsTrackPattern {
+  pattern: string;
+  source: string | null;
+}
+
+export interface LfsFile {
+  oid: string;
+  size: string | null;
+  path: string;
+}
+
+export interface SshStatus {
+  sshDir: string;
+  sshKeygenAvailable: boolean;
+  agentAvailable: boolean;
+  agentError: string | null;
+  keys: SshKey[];
+  agentIdentities: SshAgentIdentity[];
+}
+
+export interface SshKey {
+  name: string;
+  privateKeyPath: string;
+  publicKeyPath: string;
+  keyType: string | null;
+  fingerprint: string | null;
+  comment: string | null;
+  publicKey: string | null;
+  hasPrivateKey: boolean;
+  loadedInAgent: boolean;
+}
+
+export interface SshAgentIdentity {
+  fingerprint: string;
+  keyType: string | null;
+  comment: string | null;
+}
+
 export interface Remote {
   name: string;
   url: string;
   fetchUrl: string | null;
   pushUrl: string | null;
+}
+
+export interface StashEntry {
+  name: string;
+  index: number;
+  branch: string | null;
+  message: string;
+  commitHash: string;
+  shortHash: string;
+  timestamp: string | null;
+}
+
+export interface GitTag {
+  name: string;
+  commitHash: string;
+  shortHash: string;
+  subject: string | null;
+  tagger: string | null;
+  timestamp: string | null;
+  annotated: boolean;
 }
 
 export interface DiffResult {
@@ -179,6 +260,17 @@ export interface GitHubAccount {
   avatarUrl: string | null;
   htmlUrl: string | null;
 }
+export interface LabelSummary {
+  name: string;
+  color: string | null;
+  description: string | null;
+}
+
+export interface ReviewRequestSummary {
+  login: string;
+  kind: string;
+}
+
 
 export interface PullRequestSummary {
   number: number;
@@ -190,6 +282,10 @@ export interface PullRequestSummary {
   baseRefName: string | null;
   isDraft: boolean;
   updatedAt: string | null;
+  labels: LabelSummary[];
+  reviewRequests: ReviewRequestSummary[];
+  reviewDecision: string | null;
+  mergeStateStatus: string | null;
 }
 
 export interface PullRequestFileDiff {
@@ -216,6 +312,9 @@ export interface PullRequestDiff {
   diffText: string;
   files: PullRequestFileDiff[];
   comments: ReviewCommentSummary[];
+  reviews: ReviewSummary[];
+  checkRuns: CheckRunSummary[];
+  activity: ActivityItem[];
 }
 
 export interface CheckRunSummary {
@@ -261,6 +360,11 @@ export type GlobalViewType = "repo-hub";
 export type RepositoryViewType =
   | "working-tree"
   | "history"
+  | "branches"
+  | "remotes"
+  | "stashes"
+  | "tags"
+  | "lfs"
   | "stacked-prs"
   | "review-studio"
   | "worktrees"

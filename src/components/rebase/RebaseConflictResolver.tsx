@@ -1,9 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bot,
   CheckCircle2,
-  ChevronDown,
   FileText,
   GitCommitVertical,
   ListChecks,
@@ -29,6 +28,77 @@ const splitLines = (content: string | null | undefined, emptyMessage: string) =>
 
 const shortHash = (commit: string | null | undefined) => (commit ? commit.slice(0, 7) : "—");
 
+const REBASE_ACTIONS = ["pick", "reword", "edit", "squash", "fixup", "exec", "break", "drop"];
+
+const normalizeSubject = (message: string) =>
+  message
+    .replace(/^(fixup|squash|amend)!\s+/i, "")
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .trim()
+    .toLowerCase();
+
+const autosquashDirective = (message: string) => {
+  const match = /^(fixup|squash|amend)!\s+(.+)$/i.exec(message.trim());
+  if (!match) return null;
+
+  return {
+    action: match[1].toLowerCase() === "squash" ? "squash" : "fixup",
+    target: normalizeSubject(match[2]),
+  };
+};
+
+function autosquashTodo(items: RebaseTodoItem[]) {
+  const decorated = items.map((item, index) => {
+    const directive = autosquashDirective(item.message);
+    return {
+      item: directive ? { ...item, action: directive.action } : item,
+      index,
+      directive,
+      placed: false,
+    };
+  });
+
+  const result: RebaseTodoItem[] = [];
+  for (const entry of decorated) {
+    if (entry.directive) continue;
+
+    entry.placed = true;
+    result.push(entry.item);
+
+    const subject = normalizeSubject(entry.item.message);
+    for (const candidate of decorated) {
+      if (!candidate.placed && candidate.directive?.target === subject) {
+        candidate.placed = true;
+        result.push(candidate.item);
+      }
+    }
+  }
+
+  for (const entry of decorated) {
+    if (!entry.placed) {
+      entry.placed = true;
+      result.push(entry.item);
+    }
+  }
+
+  return result;
+}
+
+function updateTodoItem(items: RebaseTodoItem[], index: number, patch: Partial<Pick<RebaseTodoItem, "action" | "message">>) {
+  return items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
+}
+
+function moveTodoItem(items: RebaseTodoItem[], index: number, direction: -1 | 1) {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= items.length) {
+    return items;
+  }
+
+  const next = [...items];
+  [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+  return next;
+}
+
 function DiffPane({ title, rev, lines, tone }: { title: string; rev: string; lines: string[]; tone: "deleted" | "added" | "result" }) {
   const color = tone === "deleted" ? "var(--color-deleted-bg)" : tone === "added" ? "rgba(88,166,255,0.12)" : "var(--color-added-bg)";
   return (
@@ -48,13 +118,44 @@ function ActionPill({ label, active }: { label: string; active?: boolean }) {
   return <button className={`rounded-md border px-2 py-1 text-xs ${active ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/20 text-[var(--color-accent)]" : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"}`}>{label}</button>;
 }
 
-function TodoRow({ item, index }: { item: RebaseTodoItem; index: number }) {
+function TodoRow({
+  item,
+  index,
+  disabled,
+  canMoveUp,
+  canMoveDown,
+  onActionChange,
+  onMove,
+}: {
+  item: RebaseTodoItem;
+  index: number;
+  disabled?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onActionChange?: (action: string) => void;
+  onMove?: (direction: -1 | 1) => void;
+}) {
   return (
-    <div className={`grid grid-cols-[28px_72px_1fr_68px] items-center border-t border-[var(--color-border-muted)] px-4 py-3 text-xs ${!item.completed ? "bg-[var(--color-bg-selected)]/15" : ""}`}>
+    <div className={`grid grid-cols-[28px_84px_minmax(0,1fr)_54px_72px] items-center gap-2 border-t border-[var(--color-border-muted)] px-4 py-3 text-xs ${!item.completed ? "bg-[var(--color-bg-selected)]/15" : ""}`}>
       <span className="font-mono text-[var(--color-text-muted)]">{index + 1}</span>
-      <button className="rounded border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-left">{item.action} <ChevronDown className="float-right h-3 w-3" /></button>
-      <span className={`truncate px-2 ${item.completed ? "text-[var(--color-text-muted)] line-through" : ""}`}>{item.message}</span>
+      {item.completed ? (
+        <span className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[var(--color-text-muted)]">{item.action}</span>
+      ) : (
+        <select
+          value={item.action}
+          disabled={disabled}
+          onChange={(event) => onActionChange?.(event.target.value)}
+          className="rounded border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {REBASE_ACTIONS.map((action) => <option key={action} value={action}>{action}</option>)}
+        </select>
+      )}
+      <span className={`truncate px-2 ${item.completed ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text-secondary)]"}`}>{item.message}</span>
       <span className="font-mono text-[var(--color-text-muted)]">{shortHash(item.commit)}</span>
+      <span className="flex justify-end gap-1">
+        <button type="button" disabled={disabled || !canMoveUp || item.completed} onClick={() => onMove?.(-1)} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40">↑</button>
+        <button type="button" disabled={disabled || !canMoveDown || item.completed} onClick={() => onMove?.(1)} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40">↓</button>
+      </span>
     </div>
   );
 }
@@ -95,6 +196,7 @@ export function RebaseConflictResolver() {
   const selectedConflictPath = useAppStore((s) => s.selectedConflictPath);
   const setSelectedConflictPath = useAppStore((s) => s.setSelectedConflictPath);
   const firstConflictPath = liveConflictFiles[0]?.path ?? null;
+  const [todoDraft, setTodoDraft] = useState<RebaseTodoItem[]>([]);
 
   useEffect(() => {
     if (!hasLiveRebase) {
@@ -106,6 +208,10 @@ export function RebaseConflictResolver() {
       setSelectedConflictPath(firstConflictPath);
     }
   }, [firstConflictPath, hasLiveRebase, liveConflictFiles, selectedConflictPath, setSelectedConflictPath]);
+
+  useEffect(() => {
+    setTodoDraft(rebaseState?.todo ?? []);
+  }, [rebaseState?.todo]);
   const displayedConflictPath = selectedConflictPath ?? firstConflictPath;
   const conflictContentQuery = useQuery(gitQueries.conflictContent(activeRepoPath, displayedConflictPath));
   const actions = {
@@ -113,9 +219,11 @@ export function RebaseConflictResolver() {
     abortRebase: useMutation(gitMutations.abortRebase(queryClient, activeRepoPath)),
     skipRebase: useMutation(gitMutations.skipRebase(queryClient, activeRepoPath)),
     markFileResolved: useMutation(gitMutations.markFileResolved(queryClient, activeRepoPath)),
+    checkoutConflictSide: useMutation(gitMutations.checkoutConflictSide(queryClient, activeRepoPath)),
     updateTodo: useMutation(gitMutations.updateRebaseTodo(queryClient, activeRepoPath)),
   };
-  const liveTodo = useMemo(() => [...(rebaseState?.done ?? []), ...(rebaseState?.todo ?? [])], [rebaseState?.done, rebaseState?.todo]);
+  const completedTodo = rebaseState?.done ?? [];
+  const liveTodo = useMemo(() => [...completedTodo, ...todoDraft], [completedTodo, todoDraft]);
   const displayedConflicts = liveConflictFiles.map((file) => file.path);
   const conflictContent = conflictContentQuery.data;
   const displayedCurrent = splitLines(conflictContent?.ours, conflictContentQuery.isLoading ? "Loading current version…" : "No current conflict content available.");
@@ -124,10 +232,33 @@ export function RebaseConflictResolver() {
   const totalSteps = rebaseState?.totalSteps ?? liveTodo.length;
   const currentStep = rebaseState?.currentStep ?? rebaseState?.done.length ?? 0;
   const conflictCount = displayedConflicts.length;
-  const isActionPending = actions.continueRebase.isPending || actions.abortRebase.isPending || actions.skipRebase.isPending || actions.markFileResolved.isPending;
+  const isActionPending = actions.continueRebase.isPending || actions.abortRebase.isPending || actions.skipRebase.isPending || actions.markFileResolved.isPending || actions.checkoutConflictSide.isPending || actions.updateTodo.isPending;
   const canMutateRebase = Boolean(activeRepoPath && hasLiveRebase);
   const canMarkResolved = canMutateRebase && Boolean(displayedConflictPath);
   const progressWidth = `${Math.min(100, Math.max(0, (currentStep / Math.max(totalSteps, 1)) * 100))}%`;
+  const canEditTodo = canMutateRebase && !isActionPending && todoDraft.length > 0;
+  const hasAutosquashItems = todoDraft.some((item) => autosquashDirective(item.message));
+
+  const persistTodo = (nextTodo: RebaseTodoItem[]) => {
+    if (!canMutateRebase || actions.updateTodo.isPending) {
+      return;
+    }
+
+    setTodoDraft(nextTodo);
+    actions.updateTodo.mutate(nextTodo);
+  };
+
+  const changeTodoAction = (index: number, action: string) => {
+    persistTodo(updateTodoItem(todoDraft, index, { action }));
+  };
+
+  const moveTodo = (index: number, direction: -1 | 1) => {
+    persistTodo(moveTodoItem(todoDraft, index, direction));
+  };
+
+  const applyAutosquash = () => {
+    persistTodo(autosquashTodo(todoDraft));
+  };
 
   const handleMarkResolved = () => {
     if (!canMarkResolved || !displayedConflictPath) {
@@ -135,6 +266,14 @@ export function RebaseConflictResolver() {
     }
 
     actions.markFileResolved.mutate(displayedConflictPath);
+  };
+
+  const handleCheckoutConflictSide = (side: "ours" | "theirs") => {
+    if (!canMarkResolved || !displayedConflictPath) {
+      return;
+    }
+
+    actions.checkoutConflictSide.mutate({ filePath: displayedConflictPath, side });
   };
 
   const confirmAndAbort = () => {
@@ -173,9 +312,35 @@ export function RebaseConflictResolver() {
         <aside className="flex min-h-0 flex-col gap-3 overflow-hidden">
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
             <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3"><h2 className="font-semibold">Interactive rebase todo</h2><ListChecks className="h-4 w-4 text-[var(--color-text-muted)]" /></div>
-            <div className="px-4 py-3 text-xs text-[var(--color-text-secondary)]">Rebase {liveTodo.length} commits <button className="float-right rounded bg-[var(--color-bg-surface)] px-2 py-1">Autosquash</button></div>
-            {liveTodo.length > 0 ? liveTodo.map((item, index) => <TodoRow key={item.raw || `${item.commit}-${index}`} item={item} index={index} />) : <div className="border-t border-[var(--color-border-muted)] p-4 text-sm text-[var(--color-text-muted)]">No rebase todo items returned.</div>}
-            <div className="border-t border-[var(--color-border-muted)] p-4"><div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3"><div className="text-xs text-[var(--color-text-muted)]">Commit message</div><p className="mt-2 font-mono text-sm">{rebaseState?.todo.find((item) => !item.completed)?.message ?? rebaseState?.todo[0]?.message ?? "Waiting for next rebase step"}</p></div><p className="mt-3 text-xs text-[var(--color-text-muted)]">Live todo data is read from the repository rebase state.</p></div>
+            <div className="flex items-center justify-between px-4 py-3 text-xs text-[var(--color-text-secondary)]">
+              <span>{completedTodo.length} completed · {todoDraft.length} remaining</span>
+              <button
+                type="button"
+                disabled={!canEditTodo || !hasAutosquashItems}
+                onClick={applyAutosquash}
+                className="rounded bg-[var(--color-bg-surface)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actions.updateTodo.isPending ? "Saving…" : "Autosquash"}
+              </button>
+            </div>
+            {actions.updateTodo.error ? <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-xs text-[var(--color-danger)]">{actions.updateTodo.error instanceof Error ? actions.updateTodo.error.message : String(actions.updateTodo.error)}</div> : null}
+            {liveTodo.length > 0 ? liveTodo.map((item, index) => {
+              const draftIndex = index - completedTodo.length;
+              const isDraftItem = draftIndex >= 0;
+              return (
+                <TodoRow
+                  key={item.raw || `${item.commit}-${index}`}
+                  item={item}
+                  index={index}
+                  disabled={!canEditTodo || !isDraftItem}
+                  canMoveUp={isDraftItem && draftIndex > 0}
+                  canMoveDown={isDraftItem && draftIndex < todoDraft.length - 1}
+                  onActionChange={(action) => changeTodoAction(draftIndex, action)}
+                  onMove={(direction) => moveTodo(draftIndex, direction)}
+                />
+              );
+            }) : <div className="border-t border-[var(--color-border-muted)] p-4 text-sm text-[var(--color-text-muted)]">No rebase todo items returned.</div>}
+            <div className="border-t border-[var(--color-border-muted)] p-4"><div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3"><div className="text-xs text-[var(--color-text-muted)]">Next commit</div><p className="mt-2 font-mono text-sm">{todoDraft[0]?.message ?? "Waiting for next rebase step"}</p></div><p className="mt-3 text-xs text-[var(--color-text-muted)]">Action changes, reorders, drops, and autosquash write the live git-rebase-todo file.</p></div>
           </section>
 
           <section className="min-h-0 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
@@ -186,7 +351,7 @@ export function RebaseConflictResolver() {
         </aside>
 
         <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3"><div className="flex items-center gap-2"><FileText className="h-4 w-4" /><span className="font-semibold">{displayedConflictPath ?? "No conflicted file selected"}</span><span className="rounded bg-[color:rgba(210,153,34,0.18)] px-2 py-1 text-xs text-[var(--color-warning)]">{conflictCount} conflict{conflictCount === 1 ? "" : "s"}</span></div><div className="flex items-center gap-2"><ActionPill label="3-way" active /><ActionPill label="Unified" /><ActionPill label="Resolve" /></div></div>
+          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3"><div className="flex items-center gap-2"><FileText className="h-4 w-4" /><span className="font-semibold">{displayedConflictPath ?? "No conflicted file selected"}</span><span className="rounded bg-[color:rgba(210,153,34,0.18)] px-2 py-1 text-xs text-[var(--color-warning)]">{conflictCount} conflict{conflictCount === 1 ? "" : "s"}</span></div><div className="flex items-center gap-2"><button disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("ours")} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use current</button><button disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("theirs")} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use incoming</button><button disabled={!canMarkResolved || isActionPending} onClick={handleMarkResolved} className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Mark resolved</button></div></div>
           {displayedConflictPath ? <div className="grid min-h-0 flex-1 grid-cols-3 overflow-auto"><DiffPane title="Current (HEAD)" rev={shortHash(rebaseState?.origHead)} lines={displayedCurrent} tone="deleted" /><DiffPane title={`Incoming (${rebaseState?.headName ?? "rebased commit"})`} rev={shortHash(rebaseState?.onto)} lines={displayedIncoming} tone="added" /><DiffPane title="Result (edited)" rev="" lines={displayedResult} tone="result" /></div> : <div className="grid min-h-0 flex-1 place-items-center p-6 text-sm text-[var(--color-text-muted)]">No conflict content to display.</div>}
           <section className="grid border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] md:grid-cols-[1.1fr_0.9fr]">
             <div className="border-r border-[var(--color-border)] p-3"><div className="mb-3 flex gap-4 text-sm"><b>Conflict workflow</b><span className="text-[var(--color-text-secondary)]">Commit Message</span></div><div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-warning)]"><AlertTriangle className="h-4 w-4" /> Review the result pane, mark resolved, then continue.</div>{[["Inspect current changes", "Compare the HEAD side of the conflict", true], ["Inspect incoming changes", "Compare the rebased commit side", false], ["Edit result in your editor", "Save the resolved file before continuing", false]].map(([title, body, active]) => <div key={title as string} className={`mb-2 flex items-center gap-3 rounded-lg border p-3 text-sm ${active ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)]"}`}><CheckCircle2 className={active ? "h-4 w-4 text-[var(--color-accent)]" : "h-4 w-4 text-[var(--color-text-muted)]"} /><div><div>{title}</div><div className="text-xs text-[var(--color-text-muted)]">{body}</div></div></div>)}</div>

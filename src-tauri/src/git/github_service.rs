@@ -1,8 +1,9 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::github::{
-    ActivityItem, CheckRunSummary, GitHubAccount, PullRequestDiff, PullRequestFileDiff,
-    PullRequestSummary, RepositoryGithubOverview, ReviewCommentSummary, ReviewSummary,
+    ActivityItem, CheckRunSummary, GitHubAccount, LabelSummary, PullRequestDiff,
+    PullRequestFileDiff, PullRequestSummary, RepositoryGithubOverview, ReviewCommentSummary,
+    ReviewRequestSummary, ReviewSummary,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -103,7 +104,8 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
                 &repo_path_buf,
                 &owner_for_checks,
                 &repo_for_checks,
-                &request_context,
+                None,
+                Some(&request_context),
             )
         }
     });
@@ -128,10 +130,14 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     if !github_request_active(&request_context) {
         return overview;
     }
-
     if let Some(first_pr) = overview.pull_requests.first() {
-        overview.reviews =
-            fetch_reviews(repo_path, &owner, &repo, first_pr.number, &request_context);
+        overview.reviews = fetch_reviews(
+            repo_path,
+            &owner,
+            &repo,
+            first_pr.number,
+            Some(&request_context),
+        );
     }
 
     store_github_overview(cache_key, overview.clone());
@@ -201,6 +207,9 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
     )?;
     let files = fetch_pull_request_files(repo_path, &owner, &repo, number);
     let comments = fetch_review_comments(repo_path, &owner, &repo, number);
+    let reviews = fetch_reviews(repo_path, &owner, &repo, number, None);
+    let check_runs = fetch_check_runs(repo_path, &owner, &repo, Some(number), None);
+    let activity = fetch_pull_request_activity(repo_path, &owner, &repo, number);
     let pr = fetch_pull_request(repo_path, &owner, &repo, number);
 
     Ok(PullRequestDiff {
@@ -210,6 +219,9 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
         diff_text,
         files,
         comments,
+        reviews,
+        check_runs,
+        activity,
     })
 }
 
@@ -231,6 +243,223 @@ pub fn update_pull_request_branch(repo_path: &Path, number: u64) -> Result<(), A
     run_required_process(
         "gh",
         &["pr", "update-branch", &number_string],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    Ok(())
+}
+
+pub fn request_pull_request_review(
+    repo_path: &Path,
+    number: u64,
+    reviewers: &[String],
+    teams: &[String],
+) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    if reviewers.is_empty() && teams.is_empty() {
+        return Err(AppError::GitError(
+            "At least one reviewer or team is required".to_string(),
+        ));
+    }
+
+    let number_string = number.to_string();
+    let mut args = vec!["pr", "edit", number_string.as_str()];
+    let reviewer_flags: Vec<String> = reviewers
+        .iter()
+        .chain(teams.iter())
+        .map(|reviewer| reviewer.trim().to_string())
+        .filter(|reviewer| !reviewer.is_empty())
+        .collect();
+
+    if reviewer_flags.is_empty() {
+        return Err(AppError::GitError(
+            "At least one reviewer or team is required".to_string(),
+        ));
+    }
+
+    for reviewer in &reviewer_flags {
+        args.push("--add-reviewer");
+        args.push(reviewer.as_str());
+    }
+
+    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    Ok(())
+}
+
+pub fn submit_pull_request_review(
+    repo_path: &Path,
+    number: u64,
+    event: &str,
+    body: Option<&str>,
+) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let number_string = number.to_string();
+    let body = body.map(str::trim).filter(|body| !body.is_empty());
+    let review_flag = match event {
+        "approve" => "--approve",
+        "request_changes" => "--request-changes",
+        "comment" => "--comment",
+        _ => {
+            return Err(AppError::GitError(format!(
+                "Unsupported pull request review event: {event}"
+            )));
+        }
+    };
+
+    if review_flag != "--approve" && body.is_none() {
+        return Err(AppError::GitError(
+            "Review body is required for comments and change requests".to_string(),
+        ));
+    }
+
+    let mut args = vec!["pr", "review", number_string.as_str(), review_flag];
+    if let Some(body) = body {
+        args.push("--body");
+        args.push(body);
+    }
+
+    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    Ok(())
+}
+
+pub fn submit_pull_request_line_comment(
+    repo_path: &Path,
+    number: u64,
+    path: &str,
+    line: u64,
+    side: &str,
+    body: &str,
+) -> Result<(), AppError> {
+    let (owner, repo) = github_repository(repo_path)?;
+    let path = path.trim();
+    let body = body.trim();
+    if path.is_empty() {
+        return Err(AppError::GitError(
+            "Pull request comment path is required".to_string(),
+        ));
+    }
+    if line == 0 {
+        return Err(AppError::GitError(
+            "Pull request comment line must be greater than zero".to_string(),
+        ));
+    }
+    if body.is_empty() {
+        return Err(AppError::GitError(
+            "Pull request line comment body is required".to_string(),
+        ));
+    }
+    let side = normalize_review_comment_side(side)?;
+    let head_oid = fetch_pull_request_head_oid(repo_path, &owner, &repo, number)?;
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/comments");
+    let line_field = format!("line={line}");
+    let body_field = format!("body={body}");
+    let commit_field = format!("commit_id={head_oid}");
+    let path_field = format!("path={path}");
+    let side_field = format!("side={side}");
+    let args = [
+        "api",
+        "-X",
+        "POST",
+        endpoint.as_str(),
+        "-f",
+        body_field.as_str(),
+        "-f",
+        commit_field.as_str(),
+        "-f",
+        path_field.as_str(),
+        "-F",
+        line_field.as_str(),
+        "-f",
+        side_field.as_str(),
+    ];
+
+    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    Ok(())
+}
+
+fn normalize_review_comment_side(side: &str) -> Result<&'static str, AppError> {
+    match side {
+        "LEFT" | "left" => Ok("LEFT"),
+        "RIGHT" | "right" => Ok("RIGHT"),
+        _ => Err(AppError::GitError(format!(
+            "Unsupported pull request comment side: {side}"
+        ))),
+    }
+}
+
+fn fetch_pull_request_head_oid(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<String, AppError> {
+    let repository = format!("{owner}/{repo}");
+    let number_string = number.to_string();
+    let output = run_required_process(
+        "gh",
+        &[
+            "pr",
+            "view",
+            &number_string,
+            "--repo",
+            &repository,
+            "--json",
+            "headRefOid",
+        ],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    let value: Value = serde_json::from_str(&output)
+        .map_err(|err| AppError::SerializationError(err.to_string()))?;
+    json_string(&value, "headRefOid")
+        .ok_or_else(|| AppError::GitError(format!("Head commit was not returned for PR #{number}")))
+}
+
+pub fn add_pull_request_label(
+    repo_path: &Path,
+    number: u64,
+    labels: &[String],
+) -> Result<(), AppError> {
+    edit_pull_request_labels(repo_path, number, "--add-label", labels)
+}
+
+pub fn remove_pull_request_label(
+    repo_path: &Path,
+    number: u64,
+    labels: &[String],
+) -> Result<(), AppError> {
+    edit_pull_request_labels(repo_path, number, "--remove-label", labels)
+}
+
+fn edit_pull_request_labels(
+    repo_path: &Path,
+    number: u64,
+    flag: &str,
+    labels: &[String],
+) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let label_list = labels
+        .iter()
+        .map(|label| label.trim())
+        .filter(|label| !label.is_empty())
+        .collect::<Vec<_>>()
+        .join(",");
+    if label_list.is_empty() {
+        return Err(AppError::GitError(
+            "At least one label is required".to_string(),
+        ));
+    }
+
+    let number_string = number.to_string();
+    run_required_process(
+        "gh",
+        &[
+            "pr",
+            "edit",
+            number_string.as_str(),
+            flag,
+            label_list.as_str(),
+        ],
         repo_path,
         GH_TIMEOUT,
     )?;
@@ -365,6 +594,10 @@ fn fetch_pull_requests(
         base_ref_name: Option<String>,
         is_draft: Option<bool>,
         updated_at: Option<String>,
+        labels: Option<Vec<GhLabel>>,
+        review_requests: Option<Vec<GhReviewRequest>>,
+        review_decision: Option<String>,
+        merge_state_status: Option<String>,
     }
 
     let repository = format!("{owner}/{repo}");
@@ -376,9 +609,9 @@ fn fetch_pull_requests(
             "--repo",
             &repository,
             "--limit",
-            "10",
+            "20",
             "--json",
-            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt",
+            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
         ],
         repo_path,
         GH_TIMEOUT,
@@ -399,6 +632,10 @@ fn fetch_pull_requests(
             base_ref_name: pr.base_ref_name,
             is_draft: pr.is_draft.unwrap_or(false),
             updated_at: pr.updated_at,
+            labels: map_labels(pr.labels),
+            review_requests: map_review_requests(pr.review_requests),
+            review_decision: pr.review_decision,
+            merge_state_status: pr.merge_state_status,
         })
         .collect()
 }
@@ -421,6 +658,10 @@ fn fetch_pull_request(
         base_ref_name: Option<String>,
         is_draft: Option<bool>,
         updated_at: Option<String>,
+        labels: Option<Vec<GhLabel>>,
+        review_requests: Option<Vec<GhReviewRequest>>,
+        review_decision: Option<String>,
+        merge_state_status: Option<String>,
     }
 
     let repository = format!("{owner}/{repo}");
@@ -434,7 +675,7 @@ fn fetch_pull_request(
             "--repo",
             &repository,
             "--json",
-            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt",
+            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
         ],
         repo_path,
         GH_TIMEOUT,
@@ -451,6 +692,10 @@ fn fetch_pull_request(
         base_ref_name: pr.base_ref_name,
         is_draft: pr.is_draft.unwrap_or(false),
         updated_at: pr.updated_at,
+        labels: map_labels(pr.labels),
+        review_requests: map_review_requests(pr.review_requests),
+        review_decision: pr.review_decision,
+        merge_state_status: pr.merge_state_status,
     })
 }
 
@@ -522,34 +767,37 @@ fn fetch_check_runs(
     repo_path: &Path,
     owner: &str,
     repo: &str,
-    request_context: &GithubRequestContext,
+    number: Option<u64>,
+    request_context: Option<&GithubRequestContext>,
 ) -> Vec<CheckRunSummary> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct GhCheckRun {
         name: Option<String>,
         state: Option<String>,
-        conclusion: Option<String>,
         link: Option<String>,
         started_at: Option<String>,
         completed_at: Option<String>,
     }
 
     let repository = format!("{owner}/{repo}");
-    let output = run_process_for_request(
-        "gh",
-        &[
-            "pr",
-            "checks",
-            "--repo",
-            &repository,
-            "--json",
-            "name,state,conclusion,link,startedAt,completedAt",
-        ],
-        repo_path,
-        GH_TIMEOUT,
-        request_context,
-    );
+    let number_string = number.map(|number| number.to_string());
+    let mut args = vec!["pr", "checks"];
+    if let Some(number) = number_string.as_deref() {
+        args.push(number);
+    }
+    args.extend([
+        "--repo",
+        repository.as_str(),
+        "--json",
+        "name,state,link,startedAt,completedAt",
+    ]);
+
+    let output = if let Some(request_context) = request_context {
+        run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+    } else {
+        run_process("gh", &args, repo_path, GH_TIMEOUT)
+    };
 
     output
         .and_then(|json| serde_json::from_str::<Vec<GhCheckRun>>(&json).ok())
@@ -558,7 +806,7 @@ fn fetch_check_runs(
         .map(|check| CheckRunSummary {
             name: check.name.unwrap_or_default(),
             state: check.state,
-            conclusion: check.conclusion,
+            conclusion: None,
             url: check.link,
             started_at: check.started_at,
             completed_at: check.completed_at,
@@ -571,7 +819,7 @@ fn fetch_reviews(
     owner: &str,
     repo: &str,
     number: u64,
-    request_context: &GithubRequestContext,
+    request_context: Option<&GithubRequestContext>,
 ) -> Vec<ReviewSummary> {
     #[derive(Deserialize)]
     struct GhReview {
@@ -582,13 +830,12 @@ fn fetch_reviews(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/reviews");
-    let output = run_process_for_request(
-        "gh",
-        &["api", &endpoint],
-        repo_path,
-        GH_TIMEOUT,
-        request_context,
-    );
+    let args = ["api", endpoint.as_str()];
+    let output = if let Some(request_context) = request_context {
+        run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+    } else {
+        run_process("gh", &args, repo_path, GH_TIMEOUT)
+    };
 
     output
         .and_then(|json| serde_json::from_str::<Vec<GhReview>>(&json).ok())
@@ -634,6 +881,53 @@ fn fetch_activity(
         })
         .collect()
 }
+fn fetch_pull_request_activity(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Vec<ActivityItem> {
+    let endpoint = format!("repos/{owner}/{repo}/issues/{number}/timeline?per_page=50");
+    let output = run_process(
+        "gh",
+        &[
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &endpoint,
+        ],
+        repo_path,
+        GH_TIMEOUT,
+    );
+
+    output
+        .and_then(|json| serde_json::from_str::<Vec<Value>>(&json).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(index, event)| ActivityItem {
+            id: json_string(&event, "id").unwrap_or_else(|| index.to_string()),
+            kind: json_string(&event, "event").unwrap_or_else(|| {
+                json_string(&event, "state").unwrap_or_else(|| "timeline".to_string())
+            }),
+            actor: event
+                .get("actor")
+                .or_else(|| event.get("user"))
+                .and_then(|actor| json_string(actor, "login")),
+            title: timeline_title(&event),
+            url: json_string(&event, "html_url"),
+            created_at: json_string(&event, "created_at")
+                .or_else(|| json_string(&event, "submitted_at")),
+        })
+        .collect()
+}
+
+fn timeline_title(event: &Value) -> Option<String> {
+    json_string(event, "body")
+        .or_else(|| json_string(event, "commit_id"))
+        .or_else(|| json_string(event, "event"))
+        .or_else(|| json_string(event, "state"))
+}
 
 fn activity_title(event: &Value) -> Option<String> {
     event
@@ -669,6 +963,54 @@ fn json_string(value: &Value, key: &str) -> Option<String> {
 #[derive(Deserialize)]
 struct GhAuthor {
     login: Option<String>,
+}
+#[derive(Deserialize)]
+struct GhLabel {
+    name: Option<String>,
+    color: Option<String>,
+    description: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhReviewRequest {
+    login: Option<String>,
+    slug: Option<String>,
+    #[serde(rename = "__typename")]
+    typename: Option<String>,
+    name: Option<String>,
+}
+
+fn map_labels(labels: Option<Vec<GhLabel>>) -> Vec<LabelSummary> {
+    labels
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|label| {
+            Some(LabelSummary {
+                name: label.name?,
+                color: label.color,
+                description: label.description,
+            })
+        })
+        .collect()
+}
+
+fn map_review_requests(requests: Option<Vec<GhReviewRequest>>) -> Vec<ReviewRequestSummary> {
+    requests
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|request| {
+            let login = request
+                .login
+                .or(request.slug)
+                .or(request.name)
+                .filter(|login| !login.is_empty())?;
+            Some(ReviewRequestSummary {
+                login,
+                kind: request.typename.unwrap_or_else(|| "Reviewer".to_string()),
+            })
+        })
+        .collect()
 }
 
 fn run_required_process(
@@ -713,7 +1055,6 @@ fn run_required_process(
         }
     }
 }
-
 fn run_process(
     program: &str,
     args: &[&str],
@@ -734,6 +1075,7 @@ fn run_process(
         match child.try_wait() {
             Ok(Some(_)) => {
                 let output = child.wait_with_output().ok()?;
+
                 if !output.status.success() {
                     return None;
                 }
@@ -802,7 +1144,7 @@ fn canonical_repo_key(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_github_remote;
+    use super::{normalize_review_comment_side, parse_github_remote};
 
     #[test]
     fn parses_github_remote_urls() {
@@ -822,5 +1164,12 @@ mod tests {
             parse_github_remote("https://example.com/owner/repo.git"),
             None
         );
+    }
+
+    #[test]
+    fn normalizes_review_comment_side() {
+        assert_eq!(normalize_review_comment_side("RIGHT").unwrap(), "RIGHT");
+        assert_eq!(normalize_review_comment_side("left").unwrap(), "LEFT");
+        assert!(normalize_review_comment_side("BOTH").is_err());
     }
 }

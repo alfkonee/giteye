@@ -2,28 +2,42 @@ import { useEffect, useMemo, useRef } from "react";
 import { cn } from "../../lib/cn";
 import { FileCode2 } from "lucide-react";
 
+
+export interface DiffLineSelection {
+  filePath: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+}
 interface UnifiedDiffFallbackProps {
   diffText: string;
   filePath: string;
   mode: "unified" | "split";
   focusedFilePath?: string;
+  onLineSelect?: (selection: DiffLineSelection) => void;
+  selectedLine?: DiffLineSelection | null;
 }
 
 interface DiffLine {
   type: "add" | "remove" | "context" | "header" | "hunk";
   content: string;
+  filePath?: string;
   lineNumber?: number;
   oldLineNumber?: number;
+  side?: "LEFT" | "RIGHT";
 }
 
 function parseDiff(diffText: string): DiffLine[] {
   const lines: DiffLine[] = [];
   let oldLine = 0;
   let newLine = 0;
+  let currentFilePath: string | undefined;
 
   for (const line of diffText.split("\n")) {
-    if (
-      line.startsWith("diff --git") ||
+    if (line.startsWith("diff --git")) {
+      const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      currentFilePath = match ? normalizeDiffPath(match[2]) : currentFilePath;
+      lines.push({ type: "header", content: line, filePath: currentFilePath });
+    } else if (
       line.startsWith("index ") ||
       line.startsWith("---") ||
       line.startsWith("+++") ||
@@ -35,26 +49,28 @@ function parseDiff(diffText: string): DiffLine[] {
       line.startsWith("rename ") ||
       line.startsWith("copy ")
     ) {
-      lines.push({ type: "header", content: line });
+      lines.push({ type: "header", content: line, filePath: currentFilePath });
     } else if (line.startsWith("@@")) {
       const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
       if (match) {
         oldLine = parseInt(match[1], 10);
         newLine = parseInt(match[2], 10);
       }
-      lines.push({ type: "hunk", content: line });
+      lines.push({ type: "hunk", content: line, filePath: currentFilePath });
     } else if (line.startsWith("+")) {
-      lines.push({ type: "add", content: line, lineNumber: newLine });
+      lines.push({ type: "add", content: line, filePath: currentFilePath, lineNumber: newLine, side: "RIGHT" });
       newLine++;
     } else if (line.startsWith("-")) {
-      lines.push({ type: "remove", content: line, oldLineNumber: oldLine });
+      lines.push({ type: "remove", content: line, filePath: currentFilePath, oldLineNumber: oldLine, side: "LEFT" });
       oldLine++;
     } else {
       lines.push({
         type: "context",
         content: line,
+        filePath: currentFilePath,
         lineNumber: newLine,
         oldLineNumber: oldLine,
+        side: "RIGHT",
       });
       oldLine++;
       newLine++;
@@ -86,6 +102,8 @@ export function UnifiedDiffFallback({
   filePath,
   mode: _mode,
   focusedFilePath,
+  onLineSelect,
+  selectedLine,
 }: UnifiedDiffFallbackProps) {
   const focusedRowRef = useRef<HTMLDivElement | null>(null);
   const lines = useMemo(() => parseDiff(diffText), [diffText]);
@@ -135,12 +153,24 @@ export function UnifiedDiffFallback({
         <div className="min-w-max overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] font-mono text-[12px] leading-5 shadow-inner">
           {lines.map((line, i) => {
             const isFocusedFileHeader = diffHeaderMatchesFile(line.content, focusedFilePath);
+            const selectableLine = line.side === "LEFT" ? line.oldLineNumber : line.lineNumber;
+            const canSelectLine = Boolean(onLineSelect && line.filePath && line.side && selectableLine);
+            const isSelectedLine = Boolean(
+              selectedLine &&
+                line.filePath === selectedLine.filePath &&
+                line.side === selectedLine.side &&
+                selectableLine === selectedLine.line,
+            );
 
             return (
             <div
               key={i}
               ref={isFocusedFileHeader ? focusedRowRef : undefined}
-              className={cn("flex whitespace-pre", rowClass[line.type], isFocusedFileHeader && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/18")}
+              role={canSelectLine ? "button" : undefined}
+              tabIndex={canSelectLine ? 0 : undefined}
+              onClick={canSelectLine ? () => onLineSelect?.({ filePath: line.filePath!, line: selectableLine!, side: line.side! }) : undefined}
+              onKeyDown={canSelectLine ? (event) => { if (event.key === "Enter") onLineSelect?.({ filePath: line.filePath!, line: selectableLine!, side: line.side! }); } : undefined}
+              className={cn("flex whitespace-pre", rowClass[line.type], canSelectLine && "cursor-pointer hover:ring-1 hover:ring-inset hover:ring-[var(--color-accent)]/60", isSelectedLine && "ring-2 ring-inset ring-[var(--color-accent)]", isFocusedFileHeader && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/18")}
             >
               <span
                 className={cn(

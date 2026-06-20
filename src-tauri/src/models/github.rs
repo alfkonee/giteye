@@ -8,6 +8,20 @@ pub struct GitHubAccount {
     pub avatar_url: Option<String>,
     pub html_url: Option<String>,
 }
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelSummary {
+    pub name: String,
+    pub color: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewRequestSummary {
+    pub login: String,
+    pub kind: String,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +35,10 @@ pub struct PullRequestSummary {
     pub base_ref_name: Option<String>,
     pub is_draft: bool,
     pub updated_at: Option<String>,
+    pub labels: Vec<LabelSummary>,
+    pub review_requests: Vec<ReviewRequestSummary>,
+    pub review_decision: Option<String>,
+    pub merge_state_status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -41,6 +59,9 @@ pub struct PullRequestDiff {
     pub diff_text: String,
     pub files: Vec<PullRequestFileDiff>,
     pub comments: Vec<ReviewCommentSummary>,
+    pub reviews: Vec<ReviewSummary>,
+    pub check_runs: Vec<CheckRunSummary>,
+    pub activity: Vec<ActivityItem>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

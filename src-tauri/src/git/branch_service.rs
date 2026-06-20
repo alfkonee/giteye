@@ -69,7 +69,6 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
     Ok(branches)
 }
 
-
 pub fn get_current_branch(repo_path: &Path) -> Result<String, AppError> {
     GitCli::run(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"]).map(|s| s.trim().to_string())
 }
@@ -77,7 +76,10 @@ pub fn get_current_branch(repo_path: &Path) -> Result<String, AppError> {
 pub fn checkout_branch(repo_path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
     if strategy == "stash" && has_worktree_changes(repo_path)? {
         let message = format!("GitEye: before switching to {name}");
-        GitCli::run(repo_path, &["stash", "push", "--include-untracked", "-m", &message])?;
+        GitCli::run(
+            repo_path,
+            &["stash", "push", "--include-untracked", "-m", &message],
+        )?;
     }
 
     switch_branch(repo_path, name)?;
@@ -99,6 +101,49 @@ pub fn create_branch(
     if checkout {
         GitCli::run(repo_path, &["switch", name])?;
     }
+    Ok(())
+}
+
+pub fn fast_forward_branch(repo_path: &Path, name: &str, upstream: &str) -> Result<(), AppError> {
+    if upstream.is_empty() {
+        return Err(AppError::GitError(format!(
+            "Branch {name} does not have a tracked upstream"
+        )));
+    }
+
+    GitCli::run(repo_path, &["merge-base", "--is-ancestor", name, upstream])?;
+
+    if get_current_branch(repo_path)? == name {
+        GitCli::run(repo_path, &["merge", "--ff-only", upstream])?;
+    } else {
+        GitCli::run(repo_path, &["branch", "-f", name, upstream])?;
+    }
+
+    Ok(())
+}
+
+pub fn merge_branch(repo_path: &Path, source: &str) -> Result<(), AppError> {
+    let source = source.trim();
+    if source.is_empty() {
+        return Err(AppError::GitError(
+            "Merge source branch is required".to_string(),
+        ));
+    }
+
+    let current = get_current_branch(repo_path)?;
+    if current == source {
+        return Err(AppError::GitError(format!(
+            "Cannot merge branch {source} into itself"
+        )));
+    }
+
+    if has_worktree_changes(repo_path)? {
+        return Err(AppError::GitError(
+            "Working tree must be clean before merging branches".to_string(),
+        ));
+    }
+
+    GitCli::run(repo_path, &["merge", "--no-edit", source])?;
     Ok(())
 }
 
@@ -138,4 +183,151 @@ fn local_branch_exists(repo_path: &Path, name: &str) -> bool {
 fn remote_branch_exists(repo_path: &Path, name: &str) -> bool {
     let ref_name = format!("refs/remotes/{name}");
     GitCli::run(repo_path, &["show-ref", "--verify", "--quiet", &ref_name]).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("giteye-branch-{name}-{nonce}"));
+            fs::create_dir_all(&path).expect("create test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn git(cwd: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn create_source_repo(path: &Path) {
+        fs::create_dir_all(path).expect("create source dir");
+        git(path, &["init", "-b", "main"]);
+        git(path, &["config", "user.name", "GitEye Test"]);
+        git(path, &["config", "user.email", "test@giteye.local"]);
+        fs::write(path.join("README.md"), "# source\n").expect("write source file");
+        git(path, &["add", "README.md"]);
+        git(path, &["commit", "-m", "Initial commit"]);
+    }
+
+    #[test]
+    fn merge_branch_merges_source_into_current_branch() {
+        let temp = TestDir::new("merge-branch");
+        create_source_repo(&temp.path);
+
+        git(&temp.path, &["switch", "-c", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature file");
+        git(&temp.path, &["add", "feature.txt"]);
+        git(&temp.path, &["commit", "-m", "Feature"]);
+
+        git(&temp.path, &["switch", "main"]);
+        fs::write(temp.path.join("main.txt"), "main\n").expect("write main file");
+        git(&temp.path, &["add", "main.txt"]);
+        git(&temp.path, &["commit", "-m", "Main"]);
+
+        merge_branch(&temp.path, "feature").expect("merge feature");
+
+        assert!(temp.path.join("feature.txt").exists());
+        assert_eq!(
+            git(&temp.path, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
+    }
+
+    #[test]
+    fn merge_branch_rejects_dirty_worktree() {
+        let temp = TestDir::new("merge-dirty");
+        create_source_repo(&temp.path);
+        git(&temp.path, &["switch", "-c", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature file");
+        git(&temp.path, &["add", "feature.txt"]);
+        git(&temp.path, &["commit", "-m", "Feature"]);
+        git(&temp.path, &["switch", "main"]);
+        fs::write(temp.path.join("dirty.txt"), "dirty\n").expect("write dirty file");
+
+        let error = merge_branch(&temp.path, "feature").expect_err("dirty worktree rejected");
+
+        assert!(format!("{error}").contains("Working tree must be clean"));
+    }
+
+    #[test]
+    fn fast_forward_current_branch_to_upstream() {
+        let temp = TestDir::new("fast-forward");
+        let seed = temp.path.join("seed");
+        let remote = temp.path.join("remote.git");
+        let work = temp.path.join("work");
+        create_source_repo(&seed);
+
+        git(
+            &seed,
+            &[
+                "clone",
+                "--bare",
+                ".",
+                remote.to_str().expect("remote path"),
+            ],
+        );
+        git(
+            &temp.path,
+            &[
+                "clone",
+                remote.to_str().expect("remote path"),
+                work.to_str().expect("work path"),
+            ],
+        );
+        git(&work, &["config", "user.name", "GitEye Test"]);
+        git(&work, &["config", "user.email", "test@giteye.local"]);
+
+        git(
+            &seed,
+            &[
+                "remote",
+                "add",
+                "origin",
+                remote.to_str().expect("remote path"),
+            ],
+        );
+        fs::write(seed.join("README.md"), "# source\nremote\n").expect("write remote change");
+        git(&seed, &["add", "README.md"]);
+        git(&seed, &["commit", "-m", "Remote update"]);
+        git(&seed, &["push", "origin", "main"]);
+        git(&work, &["fetch", "origin"]);
+
+        let upstream = git(&work, &["rev-parse", "origin/main"]);
+        assert_ne!(git(&work, &["rev-parse", "HEAD"]), upstream);
+
+        fast_forward_branch(&work, "main", "origin/main").expect("fast-forward branch");
+
+        assert_eq!(git(&work, &["rev-parse", "HEAD"]), upstream);
+    }
 }

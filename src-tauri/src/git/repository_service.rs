@@ -754,12 +754,14 @@ mod tests {
         let temp = TestDir::new("status-split");
         create_source_repo(&temp.path);
 
-        fs::write(temp.path.join("README.md"), "# source\nunstaged\n").expect("modify unstaged file");
+        fs::write(temp.path.join("README.md"), "# source\nunstaged\n")
+            .expect("modify unstaged file");
         fs::write(temp.path.join("staged.txt"), "staged\n").expect("write staged file");
         git(&temp.path, &["add", "staged.txt"]);
         fs::write(temp.path.join("partial.txt"), "base\n").expect("write partial base");
         git(&temp.path, &["add", "partial.txt"]);
-        fs::write(temp.path.join("partial.txt"), "base\nunstaged\n").expect("add unstaged partial change");
+        fs::write(temp.path.join("partial.txt"), "base\nunstaged\n")
+            .expect("add unstaged partial change");
 
         let snapshot = get_repository_snapshot(&temp.path).expect("snapshot");
         let readme = snapshot

@@ -37,6 +37,15 @@ pub fn mark_file_resolved(repo_path: String, file_path: String) -> Result<(), Ap
 }
 
 #[tauri::command]
+pub fn checkout_conflict_side(
+    repo_path: String,
+    file_path: String,
+    side: String,
+) -> Result<(), AppError> {
+    rebase_service::checkout_conflict_side(Path::new(&repo_path), &file_path, &side)
+}
+
+#[tauri::command]
 pub fn update_rebase_todo(repo_path: String, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
     rebase_service::update_rebase_todo(Path::new(&repo_path), items)
 }

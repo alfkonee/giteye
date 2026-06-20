@@ -22,12 +22,6 @@ export function GitStateWatcher() {
 
     void gitApi.startRepositoryWatch(activeRepoPath);
 
-    const fallbackInterval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void invalidateGitStateByReason(queryClient, activeRepoPath, "worktree");
-      }
-    }, 2_500);
-
     void listen<GitStateChangedPayload>("git-state-changed", (event) => {
       if (event.payload.repoPath !== activeRepoPath) return;
       void invalidateGitStateByReason(queryClient, activeRepoPath, event.payload.reason);
@@ -41,7 +35,6 @@ export function GitStateWatcher() {
 
     return () => {
       disposed = true;
-      window.clearInterval(fallbackInterval);
       unlisten?.();
       void gitApi.stopRepositoryWatch(activeRepoPath);
     };

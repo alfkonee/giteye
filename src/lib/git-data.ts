@@ -17,6 +17,52 @@ export interface CreateBranchRequest {
   startPoint?: string | null;
 }
 
+export interface FastForwardBranchRequest {
+  branchName: string;
+  upstream: string;
+}
+
+export interface CreateStashRequest {
+  message?: string;
+  includeUntracked: boolean;
+}
+
+export interface CreateTagRequest {
+  name: string;
+  target?: string;
+  message?: string;
+}
+export interface RequestPullRequestReviewRequest {
+  number: number;
+  reviewers: string[];
+  teams?: string[];
+}
+
+export interface SubmitPullRequestReviewRequest {
+  number: number;
+  event: "approve" | "request_changes" | "comment";
+  body?: string;
+}
+
+export interface SubmitPullRequestLineCommentRequest {
+  number: number;
+  path: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  body: string;
+}
+export interface EditPullRequestLabelsRequest {
+  number: number;
+  labels: string[];
+}
+
+export interface GenerateSshKeyRequest {
+  name: string;
+  comment: string | null;
+}
+
+
+
 
 
 export const gitKeys = {
@@ -39,7 +85,13 @@ export const gitKeys = {
   branchSummary: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "branch-summary"] as const,
   workspaceSummary: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "workspace-summary"] as const,
   branches: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "branches"] as const,
+  gitIdentity: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "git-identity"] as const,
+  gitCredentialConfig: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "git-credential-config"] as const,
+  lfsStatus: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "lfs-status"] as const,
+  sshStatus: () => [...gitKeys.all, "ssh-status"] as const,
   remotes: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "remotes"] as const,
+  stashes: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "stashes"] as const,
+  tags: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "tags"] as const,
   worktrees: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "worktrees"] as const,
   submodules: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "submodules"] as const,
   rebaseState: (repoPath: string | null | undefined) => [...gitKeys.repository(repoPath), "rebase-state"] as const,
@@ -79,18 +131,20 @@ export function invalidateGitStateByReason(
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: [...gitKeys.repository(repoPath), "file-diff"] }),
     );
+    invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.stashes(repoPath) }));
   }
 
-  if (reason === "refs" || reason === "remote") {
+  if (reason === "refs" || reason === "remote" || reason === "rebase") {
     invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.branchSummary(repoPath) }));
     invalidations.push(queryClient.invalidateQueries({ queryKey: [...gitKeys.repository(repoPath), "commits"] }));
     invalidations.push(queryClient.invalidateQueries({ queryKey: [...gitKeys.repository(repoPath), "commit-details"] }));
     invalidations.push(queryClient.invalidateQueries({ queryKey: [...gitKeys.repository(repoPath), "commit-diff"] }));
     invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.branches(repoPath) }));
     invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.remotes(repoPath) }));
+    invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.tags(repoPath) }));
   }
 
-  if (reason === "worktree") {
+  if (reason === "worktree" || reason === "rebase") {
     invalidations.push(queryClient.invalidateQueries({ queryKey: gitKeys.workspaceSummary(repoPath) }));
   }
 
@@ -278,6 +332,20 @@ export const gitQueries = {
       enabled: enabledRepo(repoPath) && enabled,
     }),
 
+  stashes: (repoPath: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.stashes(repoPath),
+      queryFn: () => gitApi.listStashes(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+
+  tags: (repoPath: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.tags(repoPath),
+      queryFn: () => gitApi.listTags(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+
   worktrees: (repoPath: string | null, enabled = true) =>
     queryOptions({
       queryKey: gitKeys.worktrees(repoPath),
@@ -306,6 +374,33 @@ export const gitQueries = {
       queryFn: () => gitApi.getConflictContent(repoPath!, filePath!),
       enabled: enabledRepo(repoPath) && Boolean(filePath) && enabled,
     }),
+
+  gitIdentity: (repoPath: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.gitIdentity(repoPath),
+      queryFn: () => gitApi.getGitIdentity(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+
+  gitCredentialConfig: (repoPath: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.gitCredentialConfig(repoPath),
+      queryFn: () => gitApi.getGitCredentialConfig(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+  lfsStatus: (repoPath: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.lfsStatus(repoPath),
+      queryFn: () => gitApi.getLfsStatus(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+
+  sshStatus: () =>
+    queryOptions({
+      queryKey: gitKeys.sshStatus(),
+      queryFn: () => gitApi.getSshStatus(),
+    }),
+
 
   githubOverview: (repoPath: string | null, enabled = true) =>
     queryOptions({
@@ -463,6 +558,111 @@ export const gitMutations = {
       onError: (error, _variables, context) => failGitActionNotice(context, error),
     }),
 
+  fastForwardBranch: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ branchName, upstream }: FastForwardBranchRequest) =>
+        gitApi.fastForwardBranch(repoPath!, branchName, upstream),
+      onMutate: ({ branchName, upstream }) =>
+        startGitActionNotice("Fast-forwarding branch", `${branchName} from ${upstream}`, repoPath),
+      onSuccess: async (_data, { branchName }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `${branchName} fast-forwarded and repository views refreshed.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  mergeBranch: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (source: string) => gitApi.mergeBranch(repoPath!, source),
+      onMutate: (source) => startGitActionNotice("Merging branch", `${source} into current branch`, repoPath),
+      onSuccess: async (_data, source, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `${source} merged into the current branch.`);
+      },
+      onError: (error, _source, context) => failGitActionNotice(context, error),
+    }),
+
+  setGitIdentity: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, email }: { name: string | null; email: string | null }) =>
+        gitApi.setGitIdentity(repoPath!, name, email),
+      onMutate: ({ name, email }) =>
+        startGitActionNotice("Saving Git identity", [name, email].filter(Boolean).join(" · ") || "Clearing local identity", repoPath),
+      onSuccess: async (identity, _variables, context) => {
+        queryClient.setQueryData(gitKeys.gitIdentity(repoPath), identity);
+        finishGitActionNotice(context, "Git identity saved.");
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  setGitCredentialHelper: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (helper: string | null) => gitApi.setGitCredentialHelper(repoPath!, helper),
+      onMutate: (helper) => startGitActionNotice("Saving credential helper", helper || "Clearing local helper", repoPath),
+      onSuccess: (config, _helper, context) => {
+        queryClient.setQueryData(gitKeys.gitCredentialConfig(repoPath), config);
+        finishGitActionNotice(context, "Credential helper saved.");
+      },
+      onError: (error, _helper, context) => failGitActionNotice(context, error),
+    }),
+
+  installLfs: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: () => gitApi.installLfs(repoPath!),
+      onMutate: () => startGitActionNotice("Installing Git LFS", "Configuring local repository hooks", repoPath),
+      onSuccess: async (_data, _variables, context) => {
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsStatus(repoPath) });
+        finishGitActionNotice(context, "Git LFS installed for this repository.");
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  trackLfsPattern: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (pattern: string) => gitApi.trackLfsPattern(repoPath!, pattern),
+      onMutate: (pattern) => startGitActionNotice("Tracking Git LFS pattern", pattern, repoPath),
+      onSuccess: async (_data, _pattern, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsStatus(repoPath) });
+        finishGitActionNotice(context, "Git LFS tracking updated.");
+      },
+      onError: (error, _pattern, context) => failGitActionNotice(context, error),
+    }),
+
+  untrackLfsPattern: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (pattern: string) => gitApi.untrackLfsPattern(repoPath!, pattern),
+      onMutate: (pattern) => startGitActionNotice("Untracking Git LFS pattern", pattern, repoPath),
+      onSuccess: async (_data, _pattern, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsStatus(repoPath) });
+        finishGitActionNotice(context, "Git LFS tracking updated.");
+      },
+      onError: (error, _pattern, context) => failGitActionNotice(context, error),
+    }),
+
+  generateSshKey: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: ({ name, comment }: GenerateSshKeyRequest) => gitApi.generateSshKey(name, comment),
+      onMutate: ({ name }) => startGitActionNotice("Generating SSH key", name, null),
+      onSuccess: (status, _variables, context) => {
+        queryClient.setQueryData(gitKeys.sshStatus(), status);
+        finishGitActionNotice(context, "SSH key generated.");
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  addSshKeyToAgent: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (name: string) => gitApi.addSshKeyToAgent(name),
+      onMutate: (name) => startGitActionNotice("Adding SSH key to agent", name, null),
+      onSuccess: (status, _name, context) => {
+        queryClient.setQueryData(gitKeys.sshStatus(), status);
+        finishGitActionNotice(context, "SSH agent updated.");
+      },
+      onError: (error, _name, context) => failGitActionNotice(context, error),
+    }),
+
   deleteBranch: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (branchName: string) => gitApi.deleteBranch(repoPath!, branchName),
@@ -507,6 +707,74 @@ export const gitMutations = {
         finishGitActionNotice(context, "Push complete and affected Git views refreshed.");
       },
       onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  createStash: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ message, includeUntracked }: CreateStashRequest) =>
+        gitApi.createStash(repoPath!, message, includeUntracked),
+      onMutate: ({ message }) => startGitActionNotice("Creating stash", message?.trim() || "Saving local changes…", repoPath),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        finishGitActionNotice(context, "Stash created and working tree refreshed.");
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  applyStash: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (stashName: string) => gitApi.applyStash(repoPath!, stashName),
+      onMutate: (stashName) => startGitActionNotice("Applying stash", stashName, repoPath),
+      onSuccess: async (_data, _stashName, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        finishGitActionNotice(context, "Stash applied and working tree refreshed.");
+      },
+      onError: (error, _stashName, context) => failGitActionNotice(context, error),
+    }),
+
+  popStash: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (stashName: string) => gitApi.popStash(repoPath!, stashName),
+      onMutate: (stashName) => startGitActionNotice("Popping stash", stashName, repoPath),
+      onSuccess: async (_data, _stashName, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        finishGitActionNotice(context, "Stash popped and working tree refreshed.");
+      },
+      onError: (error, _stashName, context) => failGitActionNotice(context, error),
+    }),
+
+  dropStash: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (stashName: string) => gitApi.dropStash(repoPath!, stashName),
+      onMutate: (stashName) => startGitActionNotice("Dropping stash", stashName, repoPath),
+      onSuccess: async (_data, _stashName, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "worktree");
+        finishGitActionNotice(context, "Stash dropped and stash list refreshed.");
+      },
+      onError: (error, _stashName, context) => failGitActionNotice(context, error),
+    }),
+
+  createTag: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, target, message }: CreateTagRequest) =>
+        gitApi.createTag(repoPath!, name, target, message),
+      onMutate: ({ name, target }) => startGitActionNotice("Creating tag", target ? `${name} at ${target}` : name, repoPath),
+      onSuccess: async (_data, { name }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "refs");
+        finishGitActionNotice(context, `${name} created and refs refreshed.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  deleteTag: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (name: string) => gitApi.deleteTag(repoPath!, name),
+      onMutate: (name) => startGitActionNotice("Deleting tag", name, repoPath),
+      onSuccess: async (_data, name, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "refs");
+        finishGitActionNotice(context, `${name} deleted and refs refreshed.`);
+      },
+      onError: (error, _name, context) => failGitActionNotice(context, error),
     }),
 
   createWorktree: (queryClient: QueryClient, repoPath: string | null) =>
@@ -630,6 +898,18 @@ export const gitMutations = {
       onError: (error, _filePath, context) => failGitActionNotice(context, error),
     }),
 
+  checkoutConflictSide: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ filePath, side }: { filePath: string; side: "ours" | "theirs" }) =>
+        gitApi.checkoutConflictSide(repoPath!, filePath, side),
+      onMutate: ({ filePath, side }) => startGitActionNotice(side === "ours" ? "Using current side" : "Using incoming side", filePath, repoPath),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["rebase", "worktree"]);
+        finishGitActionNotice(context, "Conflict side applied, staged, and repository views refreshed.");
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
   updateRebaseTodo: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (items: RebaseTodoItem[]) => gitApi.updateRebaseTodo(repoPath!, items),
@@ -661,6 +941,68 @@ export const gitMutations = {
         finishGitActionNotice(context, `PR #${number} updated and repository views refreshed.`);
       },
       onError: (error, _number, context) => failGitActionNotice(context, error),
+    }),
+
+  requestPullRequestReview: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ number, reviewers, teams = [] }: RequestPullRequestReviewRequest) =>
+        gitApi.requestPullRequestReview(repoPath!, number, reviewers, teams),
+      onMutate: ({ number, reviewers, teams = [] }) =>
+        startGitActionNotice("Requesting pull request review", `PR #${number} · ${reviewers.length + teams.length} reviewer${reviewers.length + teams.length === 1 ? "" : "s"}`, repoPath),
+      onSuccess: async (_data, { number }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(context, `Review requested for PR #${number}.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  submitPullRequestReview: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ number, event, body }: SubmitPullRequestReviewRequest) =>
+        gitApi.submitPullRequestReview(repoPath!, number, event, body),
+      onMutate: ({ number, event }) => startGitActionNotice("Submitting pull request review", `PR #${number} · ${event}`, repoPath),
+      onSuccess: async (_data, { number }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(context, `Review submitted for PR #${number}.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  submitPullRequestLineComment: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ number, path, line, side, body }: SubmitPullRequestLineCommentRequest) =>
+        gitApi.submitPullRequestLineComment(repoPath!, number, path, line, side, body),
+      onMutate: ({ number, path, line }) =>
+        startGitActionNotice("Submitting pull request line comment", `PR #${number} · ${path}:${line}`, repoPath),
+      onSuccess: async (_data, { number }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(context, `Line comment submitted for PR #${number}.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  addPullRequestLabel: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ number, labels }: EditPullRequestLabelsRequest) =>
+        gitApi.addPullRequestLabel(repoPath!, number, labels),
+      onMutate: ({ number, labels }) => startGitActionNotice("Adding pull request labels", `PR #${number} · ${labels.join(", ")}`, repoPath),
+      onSuccess: async (_data, { number }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(context, `Labels added to PR #${number}.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
+    }),
+
+  removePullRequestLabel: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ number, labels }: EditPullRequestLabelsRequest) =>
+        gitApi.removePullRequestLabel(repoPath!, number, labels),
+      onMutate: ({ number, labels }) => startGitActionNotice("Removing pull request labels", `PR #${number} · ${labels.join(", ")}`, repoPath),
+      onSuccess: async (_data, { number }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(context, `Labels removed from PR #${number}.`);
+      },
+      onError: (error, _variables, context) => failGitActionNotice(context, error),
     }),
 
   mergePullRequest: (queryClient: QueryClient, repoPath: string | null) =>

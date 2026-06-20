@@ -3,7 +3,7 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
-import { GitBranch, Plus, Trash2, Check } from "lucide-react";
+import { GitBranch, GitMerge, Plus, Trash2, Check } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { BranchSwitchDialog } from "./BranchSwitchDialog";
 import { BranchContextMenu } from "./BranchContextMenu";
@@ -18,6 +18,8 @@ export function BranchList() {
   const checkoutMutation = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
   const createMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const deleteMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
+  const fastForwardMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
+  const mergeMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -26,8 +28,9 @@ export function BranchList() {
 
   const localBranches = branches?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branches?.filter((b) => b.isRemote) ?? [];
-  const branchMutationError = checkoutMutation.error ?? createMutation.error ?? deleteMutation.error;
-  const branchMutationPending = checkoutMutation.isPending || createMutation.isPending || deleteMutation.isPending;
+  const branchMutationError = checkoutMutation.error ?? createMutation.error ?? deleteMutation.error ?? fastForwardMutation.error ?? mergeMutation.error;
+  const branchMutationPending =
+    checkoutMutation.isPending || createMutation.isPending || deleteMutation.isPending || fastForwardMutation.isPending || mergeMutation.isPending;
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
 
   const handleCreate = () => {
@@ -67,6 +70,16 @@ export function BranchList() {
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createMutation.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
+  };
+
+  const fastForwardBranch = (branch: Branch) => {
+    if (!branch.upstream) return;
+    fastForwardMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
+  };
+  const mergeBranch = (branch: Branch) => {
+    if (branch.isCurrent) return;
+    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    mergeMutation.mutate(branch.shortName);
   };
 
   if (isLoading) {
@@ -125,11 +138,32 @@ export function BranchList() {
             <GitBranch
               className={cn("w-3.5 h-3.5 shrink-0", branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]")}
             />
-            <span className={cn("text-xs truncate flex-1", branch.isCurrent ? "text-[var(--color-text-primary)] font-medium" : "text-[var(--color-text-secondary)]")}>
-              {branch.shortName}
+            <span className="min-w-0 flex-1">
+              <span className={cn("block truncate text-xs", branch.isCurrent ? "text-[var(--color-text-primary)] font-medium" : "text-[var(--color-text-secondary)]")}>
+                {branch.shortName}
+              </span>
+              {branch.upstream && (
+                <span className="block truncate text-[10px] text-[var(--color-text-muted)]">
+                  tracks {branch.upstream}
+                  {branch.ahead ? ` · ${branch.ahead} ahead` : ""}
+                  {branch.behind ? ` · ${branch.behind} behind` : ""}
+                </span>
+              )}
             </span>
             {branch.isCurrent && (
               <Check className="w-3.5 h-3.5 text-[var(--color-accent)] shrink-0" />
+            )}
+            {!branch.isCurrent && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  mergeBranch(branch);
+                }}
+                className="p-0.5 rounded opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-all"
+                title="Merge into current branch"
+              >
+                <GitMerge className="w-3 h-3" />
+              </button>
             )}
             <button
               onClick={(e) => {
@@ -177,6 +211,8 @@ export function BranchList() {
         x={contextBranch?.x ?? 0}
         y={contextBranch?.y ?? 0}
         onCreateFromBranch={createBranchFrom}
+        onFastForward={fastForwardBranch}
+        onMerge={mergeBranch}
         onClose={() => setContextBranch(null)}
       />
     </div>

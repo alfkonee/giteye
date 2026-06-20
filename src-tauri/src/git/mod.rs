@@ -1,12 +1,17 @@
 pub mod branch_service;
 pub mod cli;
 pub mod commit_service;
+pub mod config_service;
 pub mod diff_service;
 pub mod github_service;
+pub mod lfs_service;
 pub mod rebase_service;
 pub mod remote_service;
 pub mod repository_service;
+pub mod ssh_service;
+pub mod stash_service;
 pub mod state_graph;
 pub mod status_service;
 pub mod submodule_service;
+pub mod tag_service;
 pub mod worktree_service;

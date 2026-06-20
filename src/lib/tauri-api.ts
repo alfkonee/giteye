@@ -9,6 +9,8 @@ import type {
   CommitDetails,
   Branch,
   Remote,
+  StashEntry,
+  GitTag,
   DiffResult,
   RecentRepo,
   FavoriteRepo,
@@ -17,6 +19,10 @@ import type {
   RebaseState,
   ConflictContent,
   RebaseTodoItem,
+  GitIdentity,
+  GitCredentialConfig,
+  LfsStatus,
+  SshStatus,
   RepositoryGithubOverview,
   PullRequestDiff,
 } from "../types/git";
@@ -111,8 +117,47 @@ export const gitApi = {
   createBranch: (repoPath: string, branchName: string, checkout: boolean, startPoint?: string | null) =>
     invoke<void>("create_branch", { repoPath, branchName, checkout, startPoint: startPoint ?? null }),
 
+  fastForwardBranch: (repoPath: string, branchName: string, upstream: string) =>
+    invoke<void>("fast_forward_branch", { repoPath, branchName, upstream }),
+
+  mergeBranch: (repoPath: string, source: string) =>
+    invoke<void>("merge_branch", { repoPath, source }),
+
   deleteBranch: (repoPath: string, branchName: string) =>
     invoke<void>("delete_branch", { repoPath, branchName }),
+
+  getGitIdentity: (repoPath: string) =>
+    invoke<GitIdentity>("get_git_identity", { repoPath }),
+
+  setGitIdentity: (repoPath: string, name: string | null, email: string | null) =>
+    invoke<GitIdentity>("set_git_identity", { repoPath, name, email }),
+
+  getGitCredentialConfig: (repoPath: string) =>
+    invoke<GitCredentialConfig>("get_git_credential_config", { repoPath }),
+
+  setGitCredentialHelper: (repoPath: string, helper: string | null) =>
+    invoke<GitCredentialConfig>("set_git_credential_helper", { repoPath, helper }),
+
+  getLfsStatus: (repoPath: string) =>
+    invoke<LfsStatus>("get_lfs_status", { repoPath }),
+
+  installLfs: (repoPath: string) =>
+    invoke<void>("install_lfs", { repoPath }),
+
+  trackLfsPattern: (repoPath: string, pattern: string) =>
+    invoke<void>("track_lfs_pattern", { repoPath, pattern }),
+
+  untrackLfsPattern: (repoPath: string, pattern: string) =>
+    invoke<void>("untrack_lfs_pattern", { repoPath, pattern }),
+
+  getSshStatus: () =>
+    invoke<SshStatus>("get_ssh_status"),
+
+  generateSshKey: (name: string, comment: string | null) =>
+    invoke<SshStatus>("generate_ssh_key", { name, comment }),
+
+  addSshKeyToAgent: (name: string) =>
+    invoke<SshStatus>("add_ssh_key_to_agent", { name }),
 
   // Remotes
   listRemotes: (repoPath: string) =>
@@ -126,6 +171,32 @@ export const gitApi = {
 
   push: (repoPath: string, remote?: string, branch?: string) =>
     invoke<void>("push", { repoPath, remote: remote ?? null, branch: branch ?? null }),
+
+  // Stashes
+  listStashes: (repoPath: string) =>
+    invoke<StashEntry[]>("list_stashes", { repoPath }),
+
+  createStash: (repoPath: string, message?: string, includeUntracked = true) =>
+    invoke<void>("create_stash", { repoPath, message: message ?? null, includeUntracked }),
+
+  applyStash: (repoPath: string, stashName: string) =>
+    invoke<void>("apply_stash", { repoPath, stashName }),
+
+  popStash: (repoPath: string, stashName: string) =>
+    invoke<void>("pop_stash", { repoPath, stashName }),
+
+  dropStash: (repoPath: string, stashName: string) =>
+    invoke<void>("drop_stash", { repoPath, stashName }),
+
+  // Tags
+  listTags: (repoPath: string) =>
+    invoke<GitTag[]>("list_tags", { repoPath }),
+
+  createTag: (repoPath: string, name: string, target?: string, message?: string) =>
+    invoke<void>("create_tag", { repoPath, name, target: target ?? null, message: message ?? null }),
+
+  deleteTag: (repoPath: string, name: string) =>
+    invoke<void>("delete_tag", { repoPath, name }),
 
   // Diff
   getFileDiff: (repoPath: string, filePath: string, staged: boolean) =>
@@ -182,6 +253,9 @@ export const gitApi = {
   markFileResolved: (repoPath: string, filePath: string) =>
     invoke<void>("mark_file_resolved", { repoPath, filePath }),
 
+  checkoutConflictSide: (repoPath: string, filePath: string, side: "ours" | "theirs") =>
+    invoke<void>("checkout_conflict_side", { repoPath, filePath, side }),
+
   updateRebaseTodo: (repoPath: string, items: RebaseTodoItem[]) =>
     invoke<void>("update_rebase_todo", { repoPath, items }),
 
@@ -197,6 +271,21 @@ export const gitApi = {
 
   updatePullRequestBranch: (repoPath: string, number: number) =>
     invoke<void>("update_pull_request_branch", { repoPath, number }),
+
+  requestPullRequestReview: (repoPath: string, number: number, reviewers: string[], teams: string[] = []) =>
+    invoke<void>("request_pull_request_review", { repoPath, number, reviewers, teams }),
+
+  submitPullRequestReview: (repoPath: string, number: number, event: "approve" | "request_changes" | "comment", body?: string) =>
+    invoke<void>("submit_pull_request_review", { repoPath, number, event, body: body ?? null }),
+
+  submitPullRequestLineComment: (repoPath: string, number: number, path: string, line: number, side: "LEFT" | "RIGHT", body: string) =>
+    invoke<void>("submit_pull_request_line_comment", { repoPath, number, path, line, side, body }),
+
+  addPullRequestLabel: (repoPath: string, number: number, labels: string[]) =>
+    invoke<void>("add_pull_request_label", { repoPath, number, labels }),
+
+  removePullRequestLabel: (repoPath: string, number: number, labels: string[]) =>
+    invoke<void>("remove_pull_request_label", { repoPath, number, labels }),
 
   mergePullRequest: (repoPath: string, number: number, method: "merge" | "rebase" | "squash") =>
     invoke<void>("merge_pull_request", { repoPath, number, method }),

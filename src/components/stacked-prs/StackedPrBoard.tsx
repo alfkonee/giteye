@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
-import type { ActivityItem, PullRequestSummary, ReviewSummary } from "../../types/git";
+import type { ActivityItem, LabelSummary, PullRequestSummary, ReviewRequestSummary, ReviewSummary } from "../../types/git";
 
 interface StackPrRow {
   number: number;
@@ -29,6 +29,11 @@ interface StackPrRow {
   author: string;
   base: string;
   updatedAt: string;
+  url: string | null;
+  labels: LabelSummary[];
+  reviewRequests: ReviewRequestSummary[];
+  reviewDecision: string | null;
+  mergeStateStatus: string | null;
 }
 
 interface ReviewerRow {
@@ -74,18 +79,37 @@ const reviewStatusColor = (state: string) => {
   return "var(--color-text-muted)";
 };
 
-const mapPullRequest = (pr: PullRequestSummary, index: number): StackPrRow => ({
+const mapPullRequest = (pr: PullRequestSummary): StackPrRow => ({
   number: pr.number,
   title: pr.title,
   branch: pr.headRefName ?? `PR #${pr.number}`,
   body: pr.baseRefName ? `${pr.author ?? "GitHub"} wants to merge into ${pr.baseRefName}.` : `${pr.author ?? "GitHub"} opened this pull request.`,
-  active: index === 0,
-  badge: index === 0 ? "Selected" : undefined,
   state: pr.isDraft ? "draft" : pr.state,
   author: pr.author ?? "GitHub",
   base: pr.baseRefName ?? "—",
   updatedAt: formatRelative(pr.updatedAt),
+  url: pr.url,
+  labels: pr.labels,
+  reviewRequests: pr.reviewRequests,
+  reviewDecision: pr.reviewDecision,
+  mergeStateStatus: pr.mergeStateStatus,
 });
+
+function deriveLandingOrder(prs: StackPrRow[]) {
+  const remaining = new Map(prs.map((pr) => [pr.branch, pr]));
+  const ordered: StackPrRow[] = [];
+
+  while (remaining.size > 0) {
+    const next = [...remaining.values()].find((pr) => !remaining.has(pr.base));
+    if (!next) {
+      return [];
+    }
+    ordered.push(next);
+    remaining.delete(next.branch);
+  }
+
+  return ordered;
+}
 
 const mapReview = (review: ReviewSummary): ReviewerRow => ({
   name: review.author ?? "GitHub reviewer",
@@ -128,6 +152,8 @@ function EmptyState({ message }: { message: string }) {
 
 export function StackedPrBoard() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const selectedPullRequestId = useAppStore((s) => s.selectedPullRequestId);
+  const setSelectedPullRequestId = useAppStore((s) => s.setSelectedPullRequestId);
   const queryClient = useQueryClient();
   const { data: githubOverview, isError, refetch: refetchGithubOverview } = useQuery(gitQueries.githubOverview(activeRepoPath));
 
@@ -146,13 +172,29 @@ export function StackedPrBoard() {
   const liveReviews = githubOverview?.reviews ?? [];
   const liveActivity = githubOverview?.activity ?? [];
   const liveChecks = githubOverview?.checkRuns ?? [];
-  const stack = livePrs.map(mapPullRequest);
+  const selectedPrNumber = selectedPullRequestId ? Number(selectedPullRequestId) : null;
+  const defaultPrNumber = livePrs[0]?.number ?? null;
+  const activePrNumber = livePrs.some((pr) => pr.number === selectedPrNumber) ? selectedPrNumber : defaultPrNumber;
+  const stack = livePrs.map((pr) => {
+    const row = mapPullRequest(pr);
+    const active = row.number === activePrNumber;
+    return { ...row, active, badge: active ? "Selected" : undefined };
+  });
+  const openStackPrs = stack.filter((pr) => pr.state.toLowerCase() === "open");
+  const stackLandingOrder = deriveLandingOrder(openStackPrs);
+  const canLandStack = stackLandingOrder.length > 1 && stackLandingOrder.length === openStackPrs.length;
+  const stackLandingBlocked = openStackPrs.length > 1 && stackLandingOrder.length !== openStackPrs.length;
   const reviewers = liveReviews.slice(0, 6).map(mapReview);
   const timeline = liveActivity.slice(0, 6).map(mapActivity);
   const passingChecks = liveChecks.filter((check) => (check.conclusion ?? check.state ?? "").toLowerCase() === "success").length;
   const checksLabel = liveChecks.length > 0 ? `${passingChecks} / ${liveChecks.length} passing` : "No checks reported";
   const reviewApprovals = reviewers.filter((reviewer) => reviewer.status.toLowerCase().includes("approved")).length;
-  const activePr = stack[0] ?? null;
+  const activePr = stack.find((pr) => pr.active) ?? stack[0] ?? null;
+  useEffect(() => {
+    if (activePr && selectedPullRequestId !== String(activePr.number)) {
+      setSelectedPullRequestId(String(activePr.number));
+    }
+  }, [activePr, selectedPullRequestId, setSelectedPullRequestId]);
   const providerDetail = !activeRepoPath
     ? "Open a repository to load GitHub pull requests."
     : isError
@@ -175,9 +217,19 @@ export function StackedPrBoard() {
   const handleUpdateBranch = () => {
     if (activePr) prActions.updateBranch.mutate(activePr.number);
   };
-  const handleLandStack = () => {
+  const handleMergeSelected = () => {
     if (activePr && window.confirm(`Squash-merge PR #${activePr.number} and delete its branch?`)) {
       prActions.merge.mutate({ number: activePr.number, method: "squash" });
+    }
+  };
+  const handleLandStack = async () => {
+    if (!canLandStack) return;
+    const order = stackLandingOrder.map((pr) => `#${pr.number}`).join(" → ");
+    if (!window.confirm(`Squash-merge ${stackLandingOrder.length} pull requests in dependency order (${order})?`)) {
+      return;
+    }
+    for (const pr of stackLandingOrder) {
+      await prActions.merge.mutateAsync({ number: pr.number, method: "squash" });
     }
   };
 
@@ -203,8 +255,11 @@ export function StackedPrBoard() {
           <button disabled={!activePr || prActionPending} onClick={handleCheckout} className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">
             <GitBranch className="h-4 w-4" /> Checkout PR
           </button>
-          <button disabled={!activePr || prActionPending} onClick={handleLandStack} className="inline-flex items-center gap-2 rounded-md bg-[var(--color-success)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
-            <CheckCircle2 className="h-4 w-4" /> Land Stack
+          <button disabled={!activePr || prActionPending} onClick={handleMergeSelected} className="inline-flex items-center gap-2 rounded-md bg-[var(--color-success)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+            <CheckCircle2 className="h-4 w-4" /> Squash Merge PR
+          </button>
+          <button disabled={!canLandStack || prActionPending} onClick={() => void handleLandStack()} title={stackLandingBlocked ? "Cannot derive a linear stack from PR head/base branches." : undefined} className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+            <Layers3 className="h-4 w-4" /> Land Stack
           </button>
           {prActionError ? <span className="max-w-[280px] truncate text-xs text-[var(--color-danger)]">{String(prActionError)}</span> : null}
         </div>
@@ -229,7 +284,11 @@ export function StackedPrBoard() {
               {stack.map((pr) => (
                 <article
                   key={pr.number}
-                  className={`relative ml-8 rounded-lg border bg-[var(--color-bg-tertiary)] p-4 shadow-sm ${
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedPullRequestId(String(pr.number))}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedPullRequestId(String(pr.number)); }}
+                  className={`relative ml-8 cursor-pointer rounded-lg border bg-[var(--color-bg-tertiary)] p-4 shadow-sm transition-colors hover:bg-[var(--color-bg-hover)] ${
                     pr.active ? "border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/40" : "border-[var(--color-border)]"
                   }`}
                 >
@@ -271,13 +330,16 @@ export function StackedPrBoard() {
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <div className="flex items-center gap-6 text-sm"><b>Stack Summary</b><span className="text-[var(--color-text-secondary)]">{stack.length} PRs</span><span>{openCount} open</span><span>{draftCount} draft</span></div>
               <div className="mt-5 grid grid-cols-2 gap-6"><div className="flex items-center gap-3"><CircleDot className="h-7 w-7 text-[var(--color-success)]" /> Checks: {checksLabel}</div><div className="flex items-center gap-3"><CircleDot className="h-7 w-7 text-[var(--color-success)]" /> Review: {reviewApprovals} approvals</div></div>
+              <div className="mt-4 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-xs text-[var(--color-text-secondary)]">
+                Landing order: {canLandStack ? <span className="font-mono text-[var(--color-text-primary)]">{stackLandingOrder.map((pr) => `#${pr.number}`).join(" → ")}</span> : stackLandingBlocked ? <span className="text-[var(--color-warning)]">head/base branches do not form a linear stack</span> : <span className="text-[var(--color-text-muted)]">need at least two open non-draft PRs</span>}
+              </div>
             </div>
           </section>
 
           <section className="grid min-h-0 grid-cols-[260px_1fr] gap-3 overflow-hidden">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <h3 className="mb-3 font-semibold">PR List</h3>
-              {stack.length > 0 ? stack.map((pr) => <div key={pr.number} className="flex items-center gap-3 py-1.5 text-sm"><GitCommitVertical className="h-4 w-4 text-purple-400" /><span className="rounded bg-[color:rgba(88,166,255,0.14)] px-1.5 text-[var(--color-accent)]">{pr.number}</span><span className="truncate">{pr.title}</span></div>) : <EmptyState message="No pull requests available." />}
+              {stack.length > 0 ? stack.map((pr) => <button key={pr.number} type="button" onClick={() => setSelectedPullRequestId(String(pr.number))} className={`flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm ${pr.active ? "bg-[var(--color-bg-selected)]/15 text-[var(--color-accent)]" : "hover:bg-[var(--color-bg-hover)]"}`}><GitCommitVertical className="h-4 w-4 text-purple-400" /><span className="rounded bg-[color:rgba(88,166,255,0.14)] px-1.5 text-[var(--color-accent)]">{pr.number}</span><span className="truncate">{pr.title}</span></button>) : <EmptyState message="No pull requests available." />}
               <div className="mt-2 pl-7 text-sm text-[var(--color-text-secondary)]">Base: {activePr?.base ?? "—"}</div>
             </div>
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
@@ -298,10 +360,11 @@ export function StackedPrBoard() {
               <div className="mt-5 flex gap-5 border-b border-[var(--color-border)] text-sm"><span className="border-b-2 border-[var(--color-accent)] pb-2 text-[var(--color-accent)]">Details</span><span>PRs {stack.length}</span><span>Checks {liveChecks.length}</span></div>
               <div className="mt-4 flex items-center justify-between"><h4 className="font-semibold">Reviewers</h4><Users className="h-4 w-4 text-[var(--color-text-muted)]" /></div>
               <div className="mt-3 space-y-3">{reviewers.length > 0 ? reviewers.map((reviewer) => <div key={`${reviewer.name}-${reviewer.status}`} className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><Avatar label={initials(reviewer.name)} /> {reviewer.name}</span><span style={{ color: reviewer.color }}>{reviewer.status}</span></div>) : <EmptyState message="No reviews returned by GitHub." />}</div>
-              <h4 className="mt-6 font-semibold">Labels</h4><div className="mt-3 text-sm text-[var(--color-text-muted)]"><Tag className="mr-2 inline h-4 w-4" />Labels are unavailable in the current GitHub overview.</div>
+              <h4 className="mt-6 font-semibold">Labels</h4><div className="mt-3">{activePr.labels.length > 0 ? <div className="flex flex-wrap gap-2">{activePr.labels.map((label) => <span key={label.name} title={label.description ?? undefined} className="rounded-full border px-2 py-1 text-xs" style={{ borderColor: label.color ? `#${label.color}` : undefined, color: label.color ? `#${label.color}` : undefined }}>{label.name}</span>)}</div> : <div className="text-sm text-[var(--color-text-muted)]"><Tag className="mr-2 inline h-4 w-4" />No labels returned by GitHub.</div>}</div>
+              {activePr.reviewRequests.length > 0 ? <><h4 className="mt-6 font-semibold">Requested reviewers</h4><div className="mt-3 space-y-2">{activePr.reviewRequests.map((reviewer) => <div key={`${reviewer.kind}-${reviewer.login}`} className="flex items-center justify-between text-sm"><span>{reviewer.login}</span><span className="text-xs text-[var(--color-text-muted)]">{reviewer.kind}</span></div>)}</div></> : null}
               <h4 className="mt-6 font-semibold">Timeline</h4><div className="mt-3 space-y-3">{timeline.length > 0 ? timeline.map((item, index) => <div key={`${item.label}-${index}`} className="flex items-start gap-3 text-sm"><ShieldCheck className={`mt-0.5 h-4 w-4 ${item.success ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]"}`} /><span>{item.label}</span><span className="ml-auto text-xs text-[var(--color-text-muted)]">{item.age}</span></div>) : <EmptyState message="No timeline activity returned by GitHub." />}</div>
-              <button className="mt-5 w-full rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)]">View full timeline</button>
-              <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)]"><MoreHorizontal className="h-4 w-4" /> More actions</button>
+              <button disabled={!activePr.url} onClick={() => activePr.url && window.open(activePr.url, "_blank")} className="mt-5 w-full rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Open PR timeline on GitHub</button>
+              <button onClick={() => void refetchGithubOverview()} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)]"><MoreHorizontal className="h-4 w-4" /> Refresh PR metadata</button>
             </>
           ) : (
             <EmptyState message="No pull request selected." />

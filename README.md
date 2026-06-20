@@ -36,21 +36,25 @@ src/                          src-tauri/src/
 │   └── providers.tsx         │   ├── status.rs
 ├── components/               │   ├── commits.rs
 │   ├── layout/               │   ├── branches.rs
-│   │   ├── AppShell.tsx      │   ├── remotes.rs
-│   │   ├── Toolbar.tsx       │   └── diff.rs
-│   │   ├── Sidebar.tsx       ├── git/
-│   │   └── PanelLayout.tsx   │   ├── cli.rs
-│   ├── repository/           │   ├── repository_service.rs
-│   ├── working-tree/         │   ├── status_service.rs
-│   ├── commit-history/       │   ├── commit_service.rs
-│   ├── diff-viewer/          │   ├── branch_service.rs
-│   ├── branches/             │   ├── remote_service.rs
-│   ├── settings/             │   └── diff_service.rs
-│   └── common/               ├── models/
-├── hooks/                    ├── errors.rs
-├── stores/                   ├── state.rs
-├── types/                    ├── storage.rs
-└── lib/                      ├── lib.rs
+│   │   ├── Toolbar.tsx       │   ├── remotes.rs
+│   │   ├── Sidebar.tsx       │   ├── stashes.rs
+│   │   └── PanelLayout.tsx   │   ├── tags.rs
+│   ├── repository/           │   └── diff.rs
+│   ├── working-tree/         ├── git/
+│   ├── commit-history/       │   ├── cli.rs
+│   ├── diff-viewer/          │   ├── repository_service.rs
+│   ├── branches/             │   ├── status_service.rs
+│   ├── workspaces/           │   ├── commit_service.rs
+│   ├── settings/             │   ├── branch_service.rs
+│   └── common/               │   ├── remote_service.rs
+├── hooks/                    │   ├── stash_service.rs
+├── stores/                   │   ├── tag_service.rs
+├── types/                    │   └── diff_service.rs
+└── lib/                      ├── models/
+                              ├── errors.rs
+                              ├── storage.rs
+                              ├── watcher.rs
+                              ├── lib.rs
                               └── main.rs
 ```
 
@@ -60,24 +64,32 @@ src/                          src-tauri/src/
 
 ### Git Operations
 - **Repository**: Open local repo, repo info (branch, clean/dirty, HEAD), recent repos
-- **Status**: Full status via `git status --porcelain=v1`, staged/unstaged file lists
+- **Status**: Full status via `git status --porcelain=v2`, staged/unstaged file lists
 - **Working Tree**: Stage/unstage individual files, stage all, unstage all
 - **Commit**: Commit with message (Ctrl+Enter)
-- **Branches**: List branches, checkout, create, delete (with confirmation)
+- **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation)
 - **Commits**: History with virtualization, commit details, changed file list
-- **Remotes**: List, fetch, pull, push (stubbed — see limitations)
-- **Diff**: File diff (working tree and staged), commit diff, binary detection
+- **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view
+- **Stashes**: Create, apply, pop, and drop local stashes, including untracked files
+- **Tags**: List local tags, create lightweight/annotated tags, delete local tags
+- **Git LFS**: Detect LFS availability/version, list tracked patterns/files, install local hooks, track/untrack patterns
+- **SSH keys**: Inspect `~/.ssh` public keys, generate Ed25519 keys, copy public keys, and add local private keys to `ssh-agent`
+- **Credential helper config**: Inspect effective/global/local `credential.helper`, set or clear local helper, and reject shell-command helpers
+- **Diff**: File diff (working tree and staged), commit diff, binary detection, unified/split mode toggle
+- **Rebase/conflicts**: Inspect active rebase state, edit remaining todo actions/order, autosquash fixup/squash commits, accept current/incoming side, mark files resolved, continue/skip/abort
+- **GitHub PR review**: Load live PRs, labels, review requests, selected-PR checks/reviews/timeline, filtered PR diffs/comments, inline diff line comments, stack landing order/action, label add/remove prompts, review request prompts, and approve/comment/request-changes actions through `gh`
 
 ### UI
 - Dark-first developer aesthetic (Catppuccin Mocha-inspired palette)
 - Welcome screen with recent repositories
 - Resizable 3-panel layout (sidebar | main content | detail pane)
-- Collapsible sidebar with branch list
-- Toolbar showing repo name, branch, clean/dirty status
+- Collapsible sidebar with branch list plus dedicated Branches, Remotes, Stashes, Tags, Git LFS, Worktrees, Submodules, and Rebase views
+- Toolbar showing repo name, branch, clean/dirty status, remote status shortcut, and diff mode toggle
+- Toolbar command search executes local navigation, refresh, remote sync, and diff-mode actions
 - Commit history with TanStack Virtual for large lists
 - Diff viewer with syntax-colored unified diff fallback
 - File status badges (M/A/D/R/C/!/??/!!/T)
-- Settings placeholder (theme, identity, git path)
+- Settings wire theme, diff mode, per-repository Git author identity, credential helper config, and local SSH key management; Git path remains informational
 - Loading, error, and empty states throughout
 
 ### @pierre/diffs Integration
@@ -92,24 +104,11 @@ src/                          src-tauri/src/
 
 | Feature | Status |
 |---|---|
-| GitHub/GitLab/Bitbucket integrations | Phase 2+ |
-| Pull request / merge request views | Phase 2+ |
-| Merge workflows | Phase 2+ |
-| Rebase workflows | Phase 2+ |
-| Conflict resolution UI | Phase 2+ |
-| Stash management | Phase 2+ |
-| Tag management | Phase 2+ |
+| GitLab/Bitbucket integrations | Phase 2+ |
 | AI-assisted commit messages | Phase 2+ |
-| Credential manager | Phase 2+ |
-| SSH key manager | Phase 2+ |
 | Command palette (cmdk) | Phase 2+ |
-| Side-by-side diff | `@pierre/diffs` integration |
-| Full commit graph | Future |
-| Worktrees | Future |
-| Submodules | Future |
-| Git LFS | Future |
 | CI status | Future |
-| Theme switching (light/dark) | Settings placeholder only |
+| Theme switching (light/dark) | Implemented in app state |
 | Async/cancellable Git operations | Synchronous in Phase 1 |
 
 ---
@@ -139,8 +138,16 @@ bun run tauri dev
 ### Build Desktop App
 
 ```bash
-bun run tauri build
+bun run tauri:build
 ```
+
+### Build Linux AppImage
+
+```bash
+bun run build:appimage
+```
+
+The AppImage is written to `src-tauri/target/release/bundle/appimage/`. The GitHub Actions workflow at `.github/workflows/appimage.yml` builds on Ubuntu 22.04 for a conservative glibc baseline, uploads the AppImage artifact for manual runs, and attaches it to GitHub releases when a `v*` or `app-v*` tag is pushed.
 
 ### Typecheck & Lint
 
@@ -169,10 +176,10 @@ cd src-tauri && cargo check && cargo fmt --check
 ## Known Limitations (Phase 1)
 
 - **No async Git operations**: Long-running commands (clone, large diffs) block the UI. Tauri 2 supports async commands — this is a deliberate Phase 1 simplification.
-- **No credential handling**: `fetch`, `pull`, and `push` to authenticated remotes require credentials configured in Git (SSH agent, credential helper). Native GitEye credential prompts are not yet implemented.
+- **Limited credential handling**: SSH key management and `credential.helper` configuration are wired, but GitEye does not display, store, or prompt for credential secrets.
 - **Diff renderer uses fallback**: `@pierre/diffs` is installed but not yet wired in. The current diff view is a custom unified renderer without Shiki syntax highlighting. See `docs/architecture/library-decisions.md` for integration plan.
 - **No file watcher**: Git status doesn't auto-refresh on file system changes. Use the refresh button.
-- **Settings are placeholders**: Theme, identity, and Git path settings are read-only UI. Persistence to `settings.json` is planned.
+- **Settings persistence scope**: Theme and diff mode persist in app state; repository identity writes to local Git config. Native app-level settings export/import is not implemented.
 
 ---
 

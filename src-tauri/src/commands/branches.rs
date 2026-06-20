@@ -42,6 +42,20 @@ pub fn create_branch(
 }
 
 #[tauri::command]
+pub fn fast_forward_branch(
+    repo_path: String,
+    branch_name: String,
+    upstream: String,
+) -> Result<(), AppError> {
+    branch_service::fast_forward_branch(Path::new(&repo_path), &branch_name, &upstream)
+}
+
+#[tauri::command]
+pub fn merge_branch(repo_path: String, source: String) -> Result<(), AppError> {
+    branch_service::merge_branch(Path::new(&repo_path), &source)
+}
+
+#[tauri::command]
 pub fn delete_branch(repo_path: String, branch_name: String) -> Result<(), AppError> {
     branch_service::delete_branch(Path::new(&repo_path), &branch_name)
 }

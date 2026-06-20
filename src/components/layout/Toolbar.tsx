@@ -39,10 +39,19 @@ type RepositorySwitchItem = {
   isFavorite: boolean;
 };
 
+type CommandItem = {
+  label: string;
+  detail: string;
+  disabled?: boolean;
+  run: () => void;
+};
+
 export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const diffMode = useAppStore((s) => s.diffMode);
+  const setDiffMode = useAppStore((s) => s.setDiffMode);
   const queryClient = useQueryClient();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
@@ -59,6 +68,8 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const { data: favoriteRepos } = useQuery(gitQueries.favoriteRepositories());
   const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
   const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
+  const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
+  const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
   const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const setFavorite = useMutation(gitMutations.setRepositoryFavorite(queryClient));
   const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
@@ -76,6 +87,43 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
     () => buildRepositorySwitchItems(recentRepos ?? [], favoriteRepos ?? [], repoSearch),
     [favoriteRepos, recentRepos, repoSearch],
   );
+
+  const commandItems = useMemo<CommandItem[]>(() => {
+    const navigate = (view: Parameters<typeof setActiveView>[0]) => () => setActiveView(view);
+    const disabled = !activeRepoPath;
+    return [
+      { label: "Open Working Tree", detail: "Show staged and unstaged changes", disabled, run: navigate("working-tree") },
+      { label: "Open History", detail: "Show commit history", disabled, run: navigate("history") },
+      { label: "Open Branches", detail: "Manage local and remote branches", disabled, run: navigate("branches") },
+      { label: "Open Remotes", detail: "Fetch, pull, and push remotes", disabled, run: navigate("remotes") },
+      { label: "Open Stashes", detail: "Create and apply stashes", disabled, run: navigate("stashes") },
+      { label: "Open Git LFS", detail: "Manage large-file tracking patterns", disabled, run: navigate("lfs") },
+      { label: "Open Tags", detail: "Create and delete local tags", disabled, run: navigate("tags") },
+      { label: "Open Worktrees", detail: "Manage linked worktrees", disabled, run: navigate("worktrees") },
+      { label: "Open Submodules", detail: "Sync and update submodules", disabled, run: navigate("submodules") },
+      { label: "Open Rebase Resolver", detail: "Inspect rebase todo and conflicts", disabled, run: navigate("rebase-conflicts") },
+      { label: "Open Settings", detail: "Application settings", run: navigate("settings") },
+      { label: "Refresh Repository", detail: "Invalidate live Git data", disabled, run: () => void invalidateGitState(queryClient, activeRepoPath) },
+      { label: "Fetch Remotes", detail: "git fetch", disabled: disabled || isRemoteOperationPending, run: () => fetchMutation.mutate(undefined) },
+      { label: "Pull Current Branch", detail: "git pull", disabled: disabled || isRemoteOperationPending, run: () => pullMutation.mutate({}) },
+      { label: "Push Current Branch", detail: "git push", disabled: disabled || isRemoteOperationPending, run: () => pushMutation.mutate({}) },
+      { label: "Toggle Diff Mode", detail: diffMode === "split" ? "Switch to unified diff" : "Switch to split diff", disabled, run: () => setDiffMode(diffMode === "split" ? "unified" : "split") },
+    ];
+  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode]);
+
+  const visibleCommands = useMemo(() => {
+    const query = commandValue.trim().toLowerCase();
+    if (!query) return [];
+    return commandItems
+      .filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [commandItems, commandValue]);
+
+  const runCommand = (command: CommandItem) => {
+    if (command.disabled) return;
+    command.run();
+    setCommandValue("");
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -137,6 +185,16 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
+  };
+
+  const fastForwardBranch = (branch: Branch) => {
+    if (!branch.upstream) return;
+    fastForwardBranchMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
+  };
+  const mergeBranch = (branch: Branch) => {
+    if (branch.isCurrent) return;
+    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    mergeBranchMutation.mutate(branch.shortName);
   };
 
   return (
@@ -251,8 +309,15 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                     )}
                   >
                     <GitBranch className={cn("h-4 w-4 shrink-0", branch.isCurrent ? "text-white" : "text-[var(--color-text-muted)]")} />
-                    <span className="truncate">{branch.shortName}</span>
-                    {branch.isCurrent && <span className="ml-auto text-[11px] opacity-80">current</span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{branch.shortName}</span>
+                      {branch.upstream && (
+                        <span className={cn("block truncate text-[10px]", branch.isCurrent ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+                          {trackingLabel(branch)}
+                        </span>
+                      )}
+                    </span>
+                    {branch.isCurrent && <span className="text-[11px] opacity-80">current</span>}
                   </button>
                 ))}
                 {remoteBranches.length > 0 && (
@@ -320,9 +385,35 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
             type="text"
             value={commandValue}
             onChange={(event) => setCommandValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && visibleCommands[0]) {
+                event.preventDefault();
+                runCommand(visibleCommands[0]);
+              }
+              if (event.key === "Escape") {
+                setCommandValue("");
+              }
+            }}
             placeholder="Search files, branches, commands..."
             className="h-7 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-8 pr-2.5 text-[13px] text-[var(--color-text-primary)] shadow-[var(--shadow-panel)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
           />
+          {visibleCommands.length > 0 && (
+            <div className="absolute left-0 right-0 top-9 z-50 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+              {visibleCommands.map((command) => (
+                <button
+                  key={command.label}
+                  type="button"
+                  disabled={command.disabled}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => runCommand(command)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="truncate">{command.label}</span>
+                  <span className="truncate text-xs text-[var(--color-text-muted)]">{command.detail}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -356,7 +447,14 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           onClick={() => void invalidateGitState(queryClient, activeRepoPath)}
           disabled={!activeRepoPath}
         />
-        <ToolbarButton icon={<Cloud className="h-4 w-4" />} title="Remote status" />
+        <ToolbarButton icon={<Cloud className="h-4 w-4" />} title="Remote status" onClick={() => setActiveView("remotes")} disabled={!activeRepoPath} />
+        <ToolbarButton
+          icon={<GitMerge className="h-4 w-4" />}
+          label={diffMode === "split" ? "Split" : "Unified"}
+          title="Toggle diff layout"
+          onClick={() => setDiffMode(diffMode === "split" ? "unified" : "split")}
+          disabled={!activeRepoPath}
+        />
         <ToolbarButton
           icon={
             <span className="relative">
@@ -389,11 +487,24 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         x={contextBranch?.x ?? 0}
         y={contextBranch?.y ?? 0}
         onCreateFromBranch={createBranchFrom}
+        onFastForward={fastForwardBranch}
+        onMerge={mergeBranch}
         onClose={() => setContextBranch(null)}
       />
     </div>
   );
 }
+function trackingLabel(branch: Branch) {
+  const divergence = [
+    branch.ahead ? `${branch.ahead} ahead` : null,
+    branch.behind ? `${branch.behind} behind` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return divergence ? `${branch.upstream} · ${divergence}` : `tracks ${branch.upstream}`;
+}
+
 
 function buildRepositorySwitchItems(
   recentRepos: RecentRepo[],
