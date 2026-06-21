@@ -31,7 +31,8 @@ pub use lfs::{LfsFile, LfsStatus, LfsTrackPattern};
 pub use patch::{PatchApplyOperation, PatchApplyRequest};
 pub use remote::Remote;
 pub use repository::{
-    BranchSummary, GitStatusSummary, RepositoryInfo, RepositorySnapshot, WorkspaceSummary,
+    BranchSummary, GitStatusSummary, RepositoryInfo, RepositoryParent, RepositorySnapshot,
+    WorkspaceSummary,
 };
 pub use ssh::{SshAgentIdentity, SshKey, SshStatus};
 pub use stash::StashEntry;

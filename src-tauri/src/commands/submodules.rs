@@ -14,6 +14,23 @@ pub fn update_submodule(repo_path: String, path: String, recursive: bool) -> Res
 }
 
 #[tauri::command]
+pub fn add_submodule(
+    repo_path: String,
+    url: String,
+    path: String,
+    branch: Option<String>,
+    name: Option<String>,
+) -> Result<(), AppError> {
+    submodule_service::add_submodule(
+        Path::new(&repo_path),
+        &url,
+        &path,
+        branch.as_deref(),
+        name.as_deref(),
+    )
+}
+
+#[tauri::command]
 pub fn sync_submodules(repo_path: String, recursive: bool) -> Result<(), AppError> {
     submodule_service::sync_submodules(Path::new(&repo_path), recursive)
 }

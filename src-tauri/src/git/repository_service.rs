@@ -5,8 +5,8 @@ use crate::git::{
     submodule_service, worktree_service,
 };
 use crate::models::{
-    BranchSummary, GitStatusFile, GitStatusSummary, RepositoryInfo, RepositorySnapshot,
-    WorkspaceSummary,
+    BranchSummary, GitStatusFile, GitStatusSummary, RepositoryInfo, RepositoryParent,
+    RepositorySnapshot, WorkspaceSummary,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -81,6 +81,7 @@ fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError
     let mut head_commit = None;
     let mut ahead = 0;
     let mut behind = 0;
+    let submodule_parent = detect_submodule_parent(path);
     let mut files = Vec::new();
     let mut summary = GitStatusSummary::default();
 
@@ -138,12 +139,40 @@ fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError
         head_commit,
         ahead,
         behind,
+        submodule_parent,
     };
 
     Ok(RepositorySnapshot {
         repository_info,
         files,
         summary,
+    })
+}
+
+fn detect_submodule_parent(path: &Path) -> Option<RepositoryParent> {
+    let parent_output =
+        GitCli::run(path, &["rev-parse", "--show-superproject-working-tree"]).ok()?;
+    let parent_path = PathBuf::from(parent_output.trim());
+    if parent_path.as_os_str().is_empty() {
+        return None;
+    }
+
+    let parent_path = parent_path.canonicalize().ok().unwrap_or(parent_path);
+    let repo_path = path
+        .canonicalize()
+        .ok()
+        .unwrap_or_else(|| path.to_path_buf());
+    let submodule_path = repo_path
+        .strip_prefix(&parent_path)
+        .ok()
+        .filter(|relative| !relative.as_os_str().is_empty())
+        .map(|relative| relative.to_string_lossy().to_string())
+        .unwrap_or_else(|| GitCli::repo_name_from_path(path));
+
+    Some(RepositoryParent {
+        name: GitCli::repo_name_from_path(&parent_path),
+        path: parent_path.to_string_lossy().to_string(),
+        submodule_path,
     })
 }
 
@@ -698,6 +727,47 @@ mod tests {
         assert!(info.head_commit.is_none());
         assert_eq!(info.ahead, 0);
         assert_eq!(info.behind, 0);
+    }
+
+    #[test]
+    fn repository_snapshot_reports_submodule_parent() {
+        let temp = TestDir::new("submodule-parent");
+        let source = temp.path.join("source");
+        let parent = temp.path.join("parent");
+        fs::create_dir_all(&source).expect("create source");
+        fs::create_dir_all(&parent).expect("create parent");
+        create_source_repo(&source);
+        create_source_repo(&parent);
+
+        git(
+            &parent,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                source.to_str().expect("source path"),
+                "modules/source",
+            ],
+        );
+        git(&parent, &["commit", "-am", "Add source submodule"]);
+
+        let submodule_path = parent.join("modules/source");
+        let snapshot = get_repository_snapshot(&submodule_path).expect("snapshot");
+        let parent_info = snapshot
+            .repository_info
+            .submodule_parent
+            .expect("submodule parent");
+
+        assert_eq!(parent_info.name, "parent");
+        assert_eq!(
+            parent_info.path,
+            parent
+                .canonicalize()
+                .expect("canonical parent")
+                .to_string_lossy()
+        );
+        assert_eq!(parent_info.submodule_path, "modules/source");
     }
 
     #[test]

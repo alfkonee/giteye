@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryParent {
+    pub path: String,
+    pub name: String,
+    pub submodule_path: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryInfo {
     pub path: String,
     pub name: String,
@@ -11,6 +19,7 @@ pub struct RepositoryInfo {
     pub head_commit: Option<String>,
     pub ahead: u32,
     pub behind: u32,
+    pub submodule_parent: Option<RepositoryParent>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

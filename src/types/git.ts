@@ -1,3 +1,9 @@
+export interface RepositoryParent {
+  path: string;
+  name: string;
+  submodulePath: string;
+}
+
 export interface RepositoryInfo {
   path: string;
   name: string;
@@ -6,6 +12,7 @@ export interface RepositoryInfo {
   headCommit: string | null;
   ahead: number;
   behind: number;
+  submoduleParent: RepositoryParent | null;
 }
 
 export interface GitStatusSummary {

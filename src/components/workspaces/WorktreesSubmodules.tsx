@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -56,6 +56,19 @@ type SubmoduleRow = {
   isInitialized: boolean;
   hasChanges: boolean;
   foreachStatus: SubmoduleForeachStatus | null;
+};
+
+type AddSubmoduleForm = {
+  url: string;
+  path: string;
+  branch: string;
+  name: string;
+};
+
+type CreateWorktreeForm = {
+  path: string;
+  branch: string;
+  createBranch: boolean;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -244,6 +257,24 @@ function ActionButton({
   );
 }
 
+const WORKTREE_GRID =
+  "grid-cols-[minmax(10rem,1.1fr)_minmax(15rem,1.5fr)_minmax(10rem,1.1fr)_minmax(7.5rem,0.8fr)_minmax(5rem,0.65fr)_minmax(6rem,0.7fr)_minmax(18rem,1.25fr)]";
+const SUBMODULE_GRID =
+  "grid-cols-[minmax(10rem,1fr)_minmax(14rem,1.25fr)_minmax(6rem,0.65fr)_minmax(6rem,0.65fr)_minmax(4rem,0.45fr)_minmax(9rem,0.85fr)_minmax(5.5rem,0.55fr)_minmax(8rem,0.8fr)_minmax(16rem,1.15fr)]";
+
+const EMPTY_ADD_SUBMODULE_FORM: AddSubmoduleForm = {
+  url: "",
+  path: "",
+  branch: "",
+  name: "",
+};
+
+const EMPTY_CREATE_WORKTREE_FORM: CreateWorktreeForm = {
+  path: "",
+  branch: "",
+  createBranch: false,
+};
+
 export function WorktreesSubmodules() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
@@ -262,6 +293,7 @@ export function WorktreesSubmodules() {
     ),
   );
   const updateSubmodule = useMutation(gitMutations.updateSubmodule(queryClient, activeRepoPath));
+  const addSubmodule = useMutation(gitMutations.addSubmodule(queryClient, activeRepoPath));
   const syncSubmodules = useMutation(gitMutations.syncSubmodules(queryClient, activeRepoPath));
   const bumpSubmodule = useMutation(gitMutations.bumpSubmodule(queryClient, activeRepoPath));
   const submoduleInitUpdate = useMutation(gitMutations.submoduleInitUpdate(queryClient, activeRepoPath));
@@ -283,6 +315,13 @@ export function WorktreesSubmodules() {
   const [prunePreviewPaths, setPrunePreviewPaths] = useState<string[]>([]);
   const [repairPreviewPath, setRepairPreviewPath] = useState<string | null>(null);
   const [repairPreviewLines, setRepairPreviewLines] = useState<string[]>([]);
+  const [isAddSubmoduleOpen, setIsAddSubmoduleOpen] = useState(false);
+  const [addSubmoduleForm, setAddSubmoduleForm] = useState<AddSubmoduleForm>(
+    EMPTY_ADD_SUBMODULE_FORM,
+  );
+  const [isCreateWorktreeOpen, setIsCreateWorktreeOpen] = useState(false);
+  const [createWorktreeForm, setCreateWorktreeForm] =
+    useState<CreateWorktreeForm>(EMPTY_CREATE_WORKTREE_FORM);
 
   const foreachStatusByPath = new Map((foreachStatusQuery.data ?? []).map((row) => [row.path, row]));
   const allWorktreeRows = activeRepoPath ? (worktreesQuery.data ?? []).map((worktree) => toWorktreeRow(worktree, activeRepoPath)) : [];
@@ -299,22 +338,46 @@ export function WorktreesSubmodules() {
   const submoduleHealth = allSubmoduleRows.length === 0 ? "None" : outdatedSubmodules ? `${outdatedSubmodules} behind` : "Up to date";
   const worktreeHealth = allWorktreeRows.length === 0 ? "None" : `${allWorktreeRows.length} active`;
   const summaryText = allSubmoduleRows.length === 0 ? "no submodules" : outdatedSubmodules ? `${outdatedSubmodules} need updates` : "submodules up to date";
-  const isSubmoduleMutating = updateSubmodule.isPending || syncSubmodules.isPending || bumpSubmodule.isPending || submoduleInitUpdate.isPending || submoduleSetBranch.isPending;
-  const mutationError = updateSubmodule.error ?? syncSubmodules.error ?? bumpSubmodule.error ?? submoduleInitUpdate.error ?? submoduleSetBranch.error ?? foreachStatusQuery.error;
+  const isSubmoduleMutating = addSubmodule.isPending || updateSubmodule.isPending || syncSubmodules.isPending || bumpSubmodule.isPending || submoduleInitUpdate.isPending || submoduleSetBranch.isPending;
+  const mutationError = addSubmodule.error ?? updateSubmodule.error ?? syncSubmodules.error ?? bumpSubmodule.error ?? submoduleInitUpdate.error ?? submoduleSetBranch.error ?? foreachStatusQuery.error;
   const canMutateSubmodules = submoduleRows.length > 0 && !isSubmoduleMutating;
   const isWorktreeMutating = createWorktree.isPending || removeWorktree.isPending || pruneWorktrees.isPending || moveWorktree.isPending || lockWorktree.isPending || unlockWorktree.isPending || repairWorktree.isPending;
   const worktreeError = actionError ?? formatMutationError(createWorktree.error ?? removeWorktree.error ?? openRepository.error ?? pruneWorktrees.error ?? pruneWorktreesDryRun.error ?? moveWorktree.error ?? lockWorktree.error ?? unlockWorktree.error ?? repairWorktree.error ?? repairWorktreeDryRun.error);
 
-  const handleCreateWorktree = () => {
-    if (!activeRepoPath) return;
-    const worktreePath = window.prompt("Path for the new worktree");
-    if (!worktreePath?.trim()) return;
-
-    const branchInput = window.prompt("Branch or commit for the worktree (leave blank for default)");
-    const branch = branchInput?.trim() || null;
-    const createBranch = branch ? window.confirm(`Create branch '${branch}' if it does not exist?`) : false;
+  const openCreateWorktreeDialog = () => {
     setActionError(null);
-    createWorktree.mutate({ path: worktreePath.trim(), branch, createBranch });
+    setCreateWorktreeForm(EMPTY_CREATE_WORKTREE_FORM);
+    setIsCreateWorktreeOpen(true);
+  };
+
+  const closeCreateWorktreeDialog = () => {
+    if (createWorktree.isPending) return;
+    setIsCreateWorktreeOpen(false);
+  };
+
+  const handleCreateWorktree = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeRepoPath) return;
+    const path = createWorktreeForm.path.trim();
+    if (!path) {
+      setActionError("Worktree path is required.");
+      return;
+    }
+    const branch = createWorktreeForm.branch.trim() || null;
+    setActionError(null);
+    createWorktree.mutate(
+      {
+        path,
+        branch,
+        createBranch: Boolean(branch && createWorktreeForm.createBranch),
+      },
+      {
+        onSuccess: () => {
+          setCreateWorktreeForm(EMPTY_CREATE_WORKTREE_FORM);
+          setIsCreateWorktreeOpen(false);
+        },
+      },
+    );
   };
 
   const handleOpenWorktree = (worktreePath: string) => {
@@ -411,6 +474,43 @@ export function WorktreesSubmodules() {
     });
   };
 
+  const openAddSubmoduleDialog = () => {
+    setActionError(null);
+    setAddSubmoduleForm(EMPTY_ADD_SUBMODULE_FORM);
+    setIsAddSubmoduleOpen(true);
+  };
+
+  const closeAddSubmoduleDialog = () => {
+    if (addSubmodule.isPending) return;
+    setIsAddSubmoduleOpen(false);
+  };
+
+  const handleAddSubmodule = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeRepoPath) return;
+    const url = addSubmoduleForm.url.trim();
+    const path = addSubmoduleForm.path.trim();
+    if (!url || !path) {
+      setActionError("Submodule URL and relative path are required.");
+      return;
+    }
+    setActionError(null);
+    addSubmodule.mutate(
+      {
+        url,
+        path,
+        branch: addSubmoduleForm.branch.trim() || null,
+        name: addSubmoduleForm.name.trim() || null,
+      },
+      {
+        onSuccess: () => {
+          setAddSubmoduleForm(EMPTY_ADD_SUBMODULE_FORM);
+          setIsAddSubmoduleOpen(false);
+        },
+      },
+    );
+  };
+
   const handleSubmoduleInitUpdate = (path: string | null, remoteDefault: boolean) => {
     const target = path ?? "all submodules";
     const defaultText = remoteDefault ? " Choose OK to follow configured branch tracking." : "";
@@ -448,8 +548,8 @@ export function WorktreesSubmodules() {
   };
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-[minmax(760px,1fr)_320px] gap-3 bg-[var(--color-bg-primary)] p-3 text-[var(--color-text-primary)]">
-      <main className="flex min-h-0 flex-col gap-3 overflow-hidden">
+    <section className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3 bg-[var(--color-bg-primary)] p-3 text-[var(--color-text-primary)]">
+      <main className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
         <header className="flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-5 py-4 shadow-[var(--shadow-panel)]">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Submodules &amp; Worktrees</h1>
@@ -462,7 +562,7 @@ export function WorktreesSubmodules() {
           </div>
         </header>
 
-        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+        <section className="flex min-h-[280px] flex-none flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
           <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
             <div className="flex items-baseline gap-3">
               <h2 className="text-lg font-semibold">Worktrees</h2>
@@ -474,7 +574,7 @@ export function WorktreesSubmodules() {
                 <Search className="h-4 w-4" />
                 <input value={worktreeFilter} onChange={(event) => setWorktreeFilter(event.target.value)} placeholder="Filter" className="min-w-0 flex-1 bg-transparent text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]" />
               </label>
-              <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isWorktreeMutating} onClick={handleCreateWorktree}>{createWorktree.isPending ? "Creating…" : "Create Worktree"}</button>
+              <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isWorktreeMutating} onClick={openCreateWorktreeDialog}>{createWorktree.isPending ? "Creating…" : "Create Worktree"}</button>
               <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || pruneWorktreesDryRun.isPending} onClick={handlePreviewPrune}>Preview prune</button>
               <button className="rounded-md border border-[var(--color-border)] p-2 disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || pruneWorktrees.isPending} onClick={handlePruneWorktrees} title="Prune stale worktrees"><RefreshCw className={`h-4 w-4 ${pruneWorktrees.isPending ? "animate-spin" : ""}`} /></button>
             </div>
@@ -484,17 +584,18 @@ export function WorktreesSubmodules() {
               <strong>Prune preview:</strong> {prunePreviewPaths.length} stale worktree record{prunePreviewPaths.length === 1 ? "" : "s"} detected. Confirm prune to remove metadata.
             </div>
           ) : null}
-          <div className="grid grid-cols-[1.1fr_1.5fr_1.1fr_0.8fr_0.65fr_0.7fr_1.25fr] border-b border-[var(--color-border-muted)] px-4 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]"><span>Name</span><span>Path</span><span>Branch / HEAD</span><span>Status</span><span>A/B</span><span>Updated</span><span className="text-right">Actions</span></div>
+          <div className="max-h-[260px] min-h-[160px] overflow-auto">
+            <div className={`sticky top-0 z-10 grid min-w-[1280px] ${WORKTREE_GRID} border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-4 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]`}><span>Name</span><span>Path</span><span>Branch / HEAD</span><span>Status</span><span>A/B</span><span>Updated</span><span className="text-right">Actions</span></div>
           {worktreeRows.length > 0 ? (
             worktreeRows.map((row) => (
-              <div key={row.key} className={`grid cursor-pointer grid-cols-[1.1fr_1.5fr_1.1fr_0.8fr_0.65fr_0.7fr_1.25fr] items-center border-b border-[var(--color-border-muted)] px-4 py-3 text-sm last:border-b-0 ${selectedWorktree?.key === row.key ? "bg-[var(--color-bg-hover)]" : "hover:bg-[var(--color-bg-surface)]"}`} onClick={() => setSelectedWorktreePath(row.path)}>
+              <div key={row.key} className={`grid min-w-[1280px] cursor-pointer ${WORKTREE_GRID} items-center border-b border-[var(--color-border-muted)] px-4 py-3 text-sm last:border-b-0 ${selectedWorktree?.key === row.key ? "bg-[var(--color-bg-hover)]" : "hover:bg-[var(--color-bg-surface)]"}`} onClick={() => setSelectedWorktreePath(row.path)}>
                 <span className="inline-flex min-w-0 items-center gap-2 font-medium"><FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" /><span className="truncate">{row.name}</span></span>
                 <span className="truncate text-[var(--color-text-secondary)]">{row.path}</span>
                 <span className="min-w-0"><span className="truncate">{row.branch}</span><br /><span className="font-mono text-xs text-[var(--color-text-muted)]">{row.head}</span></span>
                 <span className={row.status === "Dirty" || row.status === "Locked" || row.prunable ? "text-[var(--color-warning)]" : "text-[var(--color-success)]"}><StatusDot status={row.status} /> <span className="ml-1">{row.prunable ? "Prunable" : row.status}</span></span>
                 <span>{row.aheadBehind}</span>
                 <span className="text-[var(--color-text-secondary)]">{row.updated}</span>
-                <span className="flex flex-wrap justify-end gap-1">
+                <span className="flex shrink-0 flex-nowrap justify-end gap-1 whitespace-nowrap">
                   <ActionButton tone="accent" disabled={openRepository.isPending} onClick={(event) => { event.stopPropagation(); handleOpenWorktree(row.path); }}><TerminalSquare className="mr-1 inline h-3 w-3" />{row.action}</ActionButton>
                   <ActionButton disabled={isWorktreeMutating} onClick={(event) => { event.stopPropagation(); handleMoveWorktree(row); }}>Move</ActionButton>
                   {row.isLocked ? (
@@ -511,10 +612,11 @@ export function WorktreesSubmodules() {
           ) : (
             <EmptyState message={activeRepoPath ? "No worktrees returned by the repository." : "Open a repository to load worktrees."} />
           )}
+          </div>
           <p className="px-5 py-5 text-xs text-[var(--color-text-muted)]">{worktreeError ?? `Tip: ${detachedWorktrees} detached · ${lockedWorktrees} locked · preview prune before removing stale metadata.`}</p>
         </section>
 
-        <section className="min-h-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+        <section className="flex min-h-[360px] flex-none flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
           <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
             <div className="flex items-baseline gap-3">
               <h2 className="text-lg font-semibold">Submodules</h2>
@@ -526,15 +628,17 @@ export function WorktreesSubmodules() {
                 <Search className="h-4 w-4" />
                 <input value={submoduleFilter} onChange={(event) => setSubmoduleFilter(event.target.value)} placeholder="Filter" className="min-w-0 flex-1 bg-transparent text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]" />
               </label>
+              <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isSubmoduleMutating} onClick={openAddSubmoduleDialog}>{addSubmodule.isPending ? "Adding…" : "Add Submodule"}</button>
               <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => handleSubmoduleInitUpdate(null, true)}>Init/update recursive</button>
               <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => { if (window.confirm("Sync all submodule URLs recursively?")) syncSubmodules.mutate({ recursive: true }); }}>Sync recursive</button>
               <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || foreachStatusQuery.isFetching} onClick={() => { void foreachStatusQuery.refetch(); }}>Refresh foreach</button>
             </div>
           </div>
-          <div className="grid grid-cols-[1fr_1.25fr_0.75fr_0.75fr_0.55fr_0.85fr_0.55fr_0.95fr_1.15fr] border-b border-[var(--color-border-muted)] px-4 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]"><span>Submodule</span><span>Remote</span><span>Pinned</span><span>Current</span><span>A/B</span><span>Branch</span><span>Recursive</span><span>Status</span><span className="text-right">Actions</span></div>
+          <div className="max-h-[320px] min-h-[220px] overflow-auto">
+            <div className={`sticky top-0 z-10 grid min-w-[1180px] ${SUBMODULE_GRID} border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-4 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]`}><span>Submodule</span><span>Remote</span><span>Pinned</span><span>Current</span><span>A/B</span><span>Branch</span><span>Recursive</span><span>Status</span><span className="text-right">Actions</span></div>
           {submoduleRows.length > 0 ? (
             submoduleRows.map((row) => (
-              <div key={row.key} className={`grid cursor-pointer grid-cols-[1fr_1.25fr_0.75fr_0.75fr_0.55fr_0.85fr_0.55fr_0.95fr_1.15fr] items-center border-b border-[var(--color-border-muted)] px-4 py-3 text-sm last:border-b-0 ${selectedSubmodule?.key === row.key ? "bg-[var(--color-bg-hover)]" : "hover:bg-[var(--color-bg-surface)]"}`} onClick={() => setSelectedSubmodulePath(row.path)}>
+              <div key={row.key} className={`grid min-w-[1180px] cursor-pointer ${SUBMODULE_GRID} items-center border-b border-[var(--color-border-muted)] px-4 py-3 text-sm last:border-b-0 ${selectedSubmodule?.key === row.key ? "bg-[var(--color-bg-hover)]" : "hover:bg-[var(--color-bg-surface)]"}`} onClick={() => setSelectedSubmodulePath(row.path)}>
                 <span className="inline-flex min-w-0 items-center gap-2 font-medium"><HardDrive className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" /><span className="truncate">{row.name}</span></span>
                 <span className="truncate text-[var(--color-text-secondary)]">{row.url}</span>
                 <span className="font-mono text-xs">{row.pinnedCommit}{row.pinnedVersion ? ` v${row.pinnedVersion}` : ""}</span>
@@ -543,7 +647,7 @@ export function WorktreesSubmodules() {
                 <span>{row.branch}<br /><span className={row.behind === 0 ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}>{row.behind === 0 ? "Tracking" : `Behind ${row.behind}`}</span></span>
                 <span>{row.recursive}</span>
                 <span className={row.status === "Up to date" ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}><StatusDot status={row.status} /> <span className="ml-1">{row.status}</span></span>
-                <span className="flex flex-wrap justify-end gap-1">
+                <span className="flex shrink-0 flex-nowrap justify-end gap-1 whitespace-nowrap">
                   <ActionButton disabled={isSubmoduleMutating} onClick={(event) => { event.stopPropagation(); handleSubmoduleInitUpdate(row.path, !row.isInitialized); }}>{row.isInitialized ? "Update" : "Init"}</ActionButton>
                   <ActionButton disabled={isSubmoduleMutating} onClick={(event) => { event.stopPropagation(); handleSetSubmoduleBranch(row); }}>Track</ActionButton>
                   <ActionButton disabled={isSubmoduleMutating || row.behind <= 0} onClick={(event) => { event.stopPropagation(); handleBumpSubmodule(row); }}>Bump</ActionButton>
@@ -554,6 +658,7 @@ export function WorktreesSubmodules() {
           ) : (
             <EmptyState message={activeRepoPath ? "No submodules returned by the repository." : "Open a repository to load submodules."} />
           )}
+          </div>
           {foreachStatusQuery.data && foreachStatusQuery.data.length > 0 ? (
             <div className="border-t border-[var(--color-border)] p-3">
               <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
@@ -641,6 +746,241 @@ export function WorktreesSubmodules() {
         {selectedSubmodule && selectedSubmodule.behind > 0 ? <section className="rounded-xl border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.08)] p-4 text-sm text-[var(--color-warning)]"><AlertCircle className="mr-2 inline h-4 w-4" /> {selectedSubmodule.name} is {selectedSubmodule.behind} commits behind its tracked branch.</section> : null}
         <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 text-sm text-[var(--color-text-secondary)]"><Clock3 className="mr-2 inline h-4 w-4" /><Code2 className="mr-2 inline h-4 w-4" />{worktreeRows.length} worktrees · {submoduleRows.length} submodules · {summaryText}</section>
       </aside>
+      {isCreateWorktreeOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-6 backdrop-blur-sm">
+          <form
+            onSubmit={handleCreateWorktree}
+            className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-2xl"
+          >
+            <div className="border-b border-[var(--color-border-muted)] px-6 py-5">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-accent)]">
+                Git worktree add
+              </p>
+              <h2 className="mt-1 text-xl font-semibold">Create worktree</h2>
+              <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                Add another working directory for an existing branch, commit, or a new branch.
+              </p>
+            </div>
+            <div className="grid gap-4 px-6 py-5">
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium">Worktree path</span>
+                <input
+                  autoFocus
+                  value={createWorktreeForm.path}
+                  onChange={(event) =>
+                    setCreateWorktreeForm((form) => ({
+                      ...form,
+                      path: event.target.value,
+                    }))
+                  }
+                  placeholder="../feature-worktree"
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                />
+              </label>
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium">Branch or commit</span>
+                <input
+                  value={createWorktreeForm.branch}
+                  onChange={(event) =>
+                    setCreateWorktreeForm((form) => ({
+                      ...form,
+                      branch: event.target.value,
+                    }))
+                  }
+                  placeholder="feature/my-work (optional)"
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-sm text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={createWorktreeForm.createBranch}
+                  disabled={!createWorktreeForm.branch.trim()}
+                  onChange={(event) =>
+                    setCreateWorktreeForm((form) => ({
+                      ...form,
+                      createBranch: event.target.checked,
+                    }))
+                  }
+                />
+                Create branch if it does not exist
+              </label>
+              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-xs text-[var(--color-text-secondary)]">
+                <div className="font-semibold text-[var(--color-text-primary)]">
+                  Command preview
+                </div>
+                <code className="mt-2 block break-all">
+                  git worktree add{" "}
+                  {createWorktreeForm.createBranch &&
+                  createWorktreeForm.branch.trim()
+                    ? `-b ${createWorktreeForm.branch.trim()} `
+                    : ""}
+                  {createWorktreeForm.path.trim() || "<path>"}
+                  {!createWorktreeForm.createBranch &&
+                  createWorktreeForm.branch.trim()
+                    ? ` ${createWorktreeForm.branch.trim()}`
+                    : ""}
+                </code>
+              </div>
+              {actionError ? (
+                <div className="rounded-lg border border-[color:rgba(248,81,73,0.35)] bg-[color:rgba(248,81,73,0.08)] p-3 text-sm text-[var(--color-danger)]">
+                  {actionError}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between border-t border-[var(--color-border-muted)] px-6 py-4">
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Path is required. Branch or commit is optional.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={closeCreateWorktreeDialog}
+                  disabled={createWorktree.isPending}
+                  className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    createWorktree.isPending || !createWorktreeForm.path.trim()
+                  }
+                  className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {createWorktree.isPending ? "Creating…" : "Create worktree"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {isAddSubmoduleOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-6 backdrop-blur-sm">
+          <form
+            onSubmit={handleAddSubmodule}
+            className="w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-2xl"
+          >
+            <div className="border-b border-[var(--color-border-muted)] px-6 py-5">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-accent)]">
+                Git submodule add
+              </p>
+              <h2 className="mt-1 text-xl font-semibold">Add submodule</h2>
+              <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+                Link another repository into this workspace and commit the generated .gitmodules entry.
+              </p>
+            </div>
+            <div className="grid gap-4 px-6 py-5">
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium">Repository URL</span>
+                <input
+                  autoFocus
+                  value={addSubmoduleForm.url}
+                  onChange={(event) =>
+                    setAddSubmoduleForm((form) => ({
+                      ...form,
+                      url: event.target.value,
+                    }))
+                  }
+                  placeholder="https://github.com/org/repo.git"
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="grid gap-2 text-sm">
+                  <span className="font-medium">Relative path</span>
+                  <input
+                    value={addSubmoduleForm.path}
+                    onChange={(event) =>
+                      setAddSubmoduleForm((form) => ({
+                        ...form,
+                        path: event.target.value,
+                      }))
+                    }
+                    placeholder="libs/ui-kit"
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="font-medium">Branch to track</span>
+                  <input
+                    value={addSubmoduleForm.branch}
+                    onChange={(event) =>
+                      setAddSubmoduleForm((form) => ({
+                        ...form,
+                        branch: event.target.value,
+                      }))
+                    }
+                    placeholder="main (optional)"
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-2 text-sm">
+                <span className="font-medium">Display name</span>
+                <input
+                  value={addSubmoduleForm.name}
+                  onChange={(event) =>
+                    setAddSubmoduleForm((form) => ({
+                      ...form,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="ui-kit (optional)"
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-2 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
+                />
+              </label>
+              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-xs text-[var(--color-text-secondary)]">
+                <div className="font-semibold text-[var(--color-text-primary)]">
+                  Command preview
+                </div>
+                <code className="mt-2 block break-all">
+                  git submodule add
+                  {addSubmoduleForm.branch.trim()
+                    ? ` --branch ${addSubmoduleForm.branch.trim()}`
+                    : ""}
+                  {addSubmoduleForm.name.trim()
+                    ? ` --name ${addSubmoduleForm.name.trim()}`
+                    : ""}{" "}
+                  -- {addSubmoduleForm.url.trim() || "<repository-url>"}{" "}
+                  {addSubmoduleForm.path.trim() || "<relative-path>"}
+                </code>
+              </div>
+              {actionError ? (
+                <div className="rounded-lg border border-[color:rgba(248,81,73,0.35)] bg-[color:rgba(248,81,73,0.08)] p-3 text-sm text-[var(--color-danger)]">
+                  {actionError}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between border-t border-[var(--color-border-muted)] px-6 py-4">
+              <p className="text-xs text-[var(--color-text-muted)]">
+                URL and path are required. Branch and display name are optional.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={closeAddSubmoduleDialog}
+                  disabled={addSubmodule.isPending}
+                  className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    addSubmodule.isPending ||
+                    !addSubmoduleForm.url.trim() ||
+                    !addSubmoduleForm.path.trim()
+                  }
+                  className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {addSubmodule.isPending ? "Adding…" : "Add submodule"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </section>
   );
 }

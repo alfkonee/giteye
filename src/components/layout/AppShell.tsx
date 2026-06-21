@@ -6,7 +6,7 @@ import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
 import { Circle, GitBranch } from "lucide-react";
-import type { ViewType } from "../../types/git";
+import type { RepositoryParent, ViewType } from "../../types/git";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -26,6 +26,7 @@ export function AppShell() {
         repoName={repoInfo?.name ?? fallbackRepoName}
         currentBranch={repoInfo?.currentBranch}
         isClean={repoInfo?.isClean}
+        submoduleParent={repoInfo?.submoduleParent ?? null}
       />
       {error ? (
         <div className="border-b border-[var(--color-border)] p-3">
@@ -42,6 +43,7 @@ export function AppShell() {
         repoName={repoInfo?.name ?? fallbackRepoName}
         branchName={repoInfo?.currentBranch}
         isClean={repoInfo?.isClean}
+        submoduleParent={repoInfo?.submoduleParent ?? null}
         activeView={activeView}
         isRebasing={Boolean(rebaseState?.inProgress)}
       />
@@ -55,11 +57,13 @@ function StatusBar({
   isClean,
   activeView,
   isRebasing,
+  submoduleParent,
 }: {
   repoName?: string;
   branchName?: string;
   isClean?: boolean;
   activeView: ViewType;
+  submoduleParent?: RepositoryParent | null;
   isRebasing: boolean;
 }) {
   return (
@@ -71,6 +75,16 @@ function StatusBar({
           <span className="truncate">{branchName}</span>
         </span>
       )}
+      {submoduleParent ? (
+        <span
+          className="flex min-w-0 items-center gap-1.5 text-[var(--color-accent)]"
+          title={`Submodule ${submoduleParent.submodulePath} of ${submoduleParent.path}`}
+        >
+          <span className="truncate">
+            Submodule {submoduleParent.submodulePath} of {submoduleParent.name}
+          </span>
+        </span>
+      ) : null}
       {isClean !== undefined && (
         <span className={isClean ? "flex items-center gap-1.5 text-[var(--color-success)]" : "flex items-center gap-1.5 text-[var(--color-warning)]"}>
           <Circle className="h-2 w-2 fill-current" />
