@@ -104,7 +104,7 @@ export function CommitHistory() {
               History
             </h2>
             <p className="text-[11px] text-[var(--color-text-muted)]">
-              {commits.length} commits in this branch view
+              {commits.length} commits across all branches
             </p>
           </div>
           <button
