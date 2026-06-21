@@ -39,6 +39,36 @@ pub fn create_stash(
     Ok(())
 }
 
+pub fn create_stash_for_paths(
+    repo_path: &Path,
+    message: Option<&str>,
+    include_untracked: bool,
+    paths: &[String],
+) -> Result<(), AppError> {
+    if paths.is_empty() {
+        return create_stash(repo_path, message, include_untracked);
+    }
+
+    let trimmed_message = message.map(str::trim).filter(|value| !value.is_empty());
+    let mut args = vec!["stash".to_string(), "push".to_string()];
+
+    if include_untracked {
+        args.push("--include-untracked".to_string());
+    }
+
+    if let Some(value) = trimmed_message {
+        args.push("--message".to_string());
+        args.push(value.to_string());
+    }
+
+    args.push("--".to_string());
+    args.extend(paths.iter().cloned());
+
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    GitCli::run(repo_path, &arg_refs)?;
+    Ok(())
+}
+
 pub fn apply_stash(repo_path: &Path, stash_name: &str) -> Result<(), AppError> {
     GitCli::run(repo_path, &["stash", "apply", "--index", stash_name])?;
     Ok(())
@@ -49,9 +79,31 @@ pub fn pop_stash(repo_path: &Path, stash_name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+pub fn preview_stash(repo_path: &Path, stash_name: &str) -> Result<Vec<String>, AppError> {
+    let output = GitCli::run(
+        repo_path,
+        &["stash", "show", "--stat", "--include-untracked", stash_name],
+    )?;
+    let lines = non_empty_lines(&output);
+    if lines.is_empty() {
+        Ok(vec![format!("Stash {stash_name} contains no file changes")])
+    } else {
+        Ok(lines)
+    }
+}
+
 pub fn drop_stash(repo_path: &Path, stash_name: &str) -> Result<(), AppError> {
     GitCli::run(repo_path, &["stash", "drop", stash_name])?;
     Ok(())
+}
+
+fn non_empty_lines(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn parse_stash_line(line: &str) -> Option<StashEntry> {
@@ -191,6 +243,10 @@ mod tests {
         assert_eq!(stashes.len(), 1);
         assert_eq!(stashes[0].name, "stash@{0}");
         assert_eq!(stashes[0].message, "checkpoint");
+
+        let preview = preview_stash(&repo.path, &stashes[0].name).expect("preview stash");
+        assert!(preview.iter().any(|line| line.contains("tracked.txt")));
+        assert!(preview.iter().any(|line| line.contains("new.txt")));
 
         drop_stash(&repo.path, &stashes[0].name).expect("drop stash");
         assert!(list_stashes(&repo.path).expect("list stashes").is_empty());

@@ -18,6 +18,21 @@ pub fn create_stash(
 }
 
 #[tauri::command]
+pub fn create_stash_for_paths(
+    repo_path: String,
+    message: Option<String>,
+    include_untracked: bool,
+    paths: Vec<String>,
+) -> Result<(), AppError> {
+    stash_service::create_stash_for_paths(
+        Path::new(&repo_path),
+        message.as_deref(),
+        include_untracked,
+        &paths,
+    )
+}
+
+#[tauri::command]
 pub fn apply_stash(repo_path: String, stash_name: String) -> Result<(), AppError> {
     stash_service::apply_stash(Path::new(&repo_path), &stash_name)
 }
@@ -25,6 +40,11 @@ pub fn apply_stash(repo_path: String, stash_name: String) -> Result<(), AppError
 #[tauri::command]
 pub fn pop_stash(repo_path: String, stash_name: String) -> Result<(), AppError> {
     stash_service::pop_stash(Path::new(&repo_path), &stash_name)
+}
+
+#[tauri::command]
+pub fn preview_stash(repo_path: String, stash_name: String) -> Result<Vec<String>, AppError> {
+    stash_service::preview_stash(Path::new(&repo_path), &stash_name)
 }
 
 #[tauri::command]

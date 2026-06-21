@@ -104,6 +104,33 @@ pub fn create_branch(
     Ok(())
 }
 
+pub fn rename_branch(repo_path: &Path, old_name: &str, new_name: &str) -> Result<(), AppError> {
+    let old_name = required_git_arg(old_name, "current branch name")?;
+    let new_name = required_git_arg(new_name, "new branch name")?;
+    GitCli::run(repo_path, &["branch", "-m", old_name, new_name])?;
+    Ok(())
+}
+
+pub fn set_branch_upstream(
+    repo_path: &Path,
+    name: &str,
+    upstream: Option<&str>,
+) -> Result<(), AppError> {
+    let name = required_git_arg(name, "branch name")?;
+    if let Some(upstream) = upstream.map(str::trim).filter(|value| !value.is_empty()) {
+        if upstream.starts_with('-') {
+            return Err(AppError::GitError(
+                "branch upstream must not start with '-'".to_string(),
+            ));
+        }
+        let upstream_arg = format!("--set-upstream-to={upstream}");
+        GitCli::run(repo_path, &["branch", &upstream_arg, name])?;
+    } else {
+        GitCli::run(repo_path, &["branch", "--unset-upstream", name])?;
+    }
+    Ok(())
+}
+
 pub fn fast_forward_branch(repo_path: &Path, name: &str, upstream: &str) -> Result<(), AppError> {
     if upstream.is_empty() {
         return Err(AppError::GitError(format!(
@@ -123,10 +150,20 @@ pub fn fast_forward_branch(repo_path: &Path, name: &str, upstream: &str) -> Resu
 }
 
 pub fn merge_branch(repo_path: &Path, source: &str) -> Result<(), AppError> {
-    let source = source.trim();
-    if source.is_empty() {
+    merge_with_options(repo_path, source, false, false, None)
+}
+
+pub fn merge_with_options(
+    repo_path: &Path,
+    source: &str,
+    no_ff: bool,
+    squash: bool,
+    strategy_option: Option<&str>,
+) -> Result<(), AppError> {
+    let source = required_git_arg(source, "merge source")?;
+    if no_ff && squash {
         return Err(AppError::GitError(
-            "Merge source branch is required".to_string(),
+            "Cannot combine --no-ff and --squash merge options".to_string(),
         ));
     }
 
@@ -143,13 +180,74 @@ pub fn merge_branch(repo_path: &Path, source: &str) -> Result<(), AppError> {
         ));
     }
 
-    GitCli::run(repo_path, &["merge", "--no-edit", source])?;
+    let mut args = vec!["merge".to_string()];
+    if no_ff {
+        args.push("--no-ff".to_string());
+    }
+    if squash {
+        args.push("--squash".to_string());
+    } else {
+        args.push("--no-edit".to_string());
+    }
+    if let Some(option) = strategy_option
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let option = validate_merge_strategy_option(option)?;
+        args.push("-X".to_string());
+        args.push(option.to_string());
+    }
+    args.push(source.to_string());
+
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    GitCli::run(repo_path, &argv)?;
     Ok(())
 }
 
 pub fn delete_branch(repo_path: &Path, name: &str) -> Result<(), AppError> {
     GitCli::run(repo_path, &["branch", "-d", name])?;
     Ok(())
+}
+
+fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::GitError(format!("{label} is required")));
+    }
+    if value.starts_with('-') {
+        return Err(AppError::GitError(format!(
+            "{label} must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
+
+fn validate_merge_strategy_option(option: &str) -> Result<&str, AppError> {
+    let option = option.trim();
+    let is_safe = matches!(
+        option,
+        "ours"
+            | "theirs"
+            | "ignore-space-change"
+            | "ignore-all-space"
+            | "ignore-space-at-eol"
+            | "ignore-cr-at-eol"
+            | "renormalize"
+            | "no-renormalize"
+            | "patience"
+            | "diff-algorithm=patience"
+            | "diff-algorithm=minimal"
+            | "diff-algorithm=histogram"
+            | "diff-algorithm=myers"
+    );
+
+    if is_safe {
+        Ok(option)
+    } else {
+        Err(AppError::GitError(format!(
+            "Unsupported merge strategy option: {option}"
+        )))
+    }
 }
 
 fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
@@ -281,6 +379,31 @@ mod tests {
     }
 
     #[test]
+    fn merge_with_options_creates_no_ff_merge_commit() {
+        let temp = TestDir::new("merge-no-ff");
+        create_source_repo(&temp.path);
+
+        git(&temp.path, &["switch", "-c", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature file");
+        git(&temp.path, &["add", "feature.txt"]);
+        git(&temp.path, &["commit", "-m", "Feature"]);
+
+        git(&temp.path, &["switch", "main"]);
+        merge_with_options(&temp.path, "feature", true, false, None).expect("merge feature");
+
+        let parents = git(&temp.path, &["rev-list", "--parents", "-n", "1", "HEAD"]);
+        assert_eq!(parents.split_whitespace().count(), 3);
+    }
+
+    #[test]
+    fn merge_with_options_rejects_unsafe_strategy_options() {
+        let error = validate_merge_strategy_option("--upload-pack=/tmp/nope")
+            .expect_err("unsafe option rejected");
+        assert!(format!("{error}").contains("Unsupported merge strategy option"));
+        assert_eq!(validate_merge_strategy_option("theirs").unwrap(), "theirs");
+    }
+
+    #[test]
     fn fast_forward_current_branch_to_upstream() {
         let temp = TestDir::new("fast-forward");
         let seed = temp.path.join("seed");
@@ -329,5 +452,43 @@ mod tests {
         fast_forward_branch(&work, "main", "origin/main").expect("fast-forward branch");
 
         assert_eq!(git(&work, &["rev-parse", "HEAD"]), upstream);
+    }
+
+    #[test]
+    fn renames_branch_and_updates_upstream() {
+        let temp = TestDir::new("rename-upstream");
+        let seed = temp.path.join("seed");
+        let remote = temp.path.join("remote.git");
+        let work = temp.path.join("work");
+        create_source_repo(&seed);
+        git(
+            &seed,
+            &[
+                "clone",
+                "--bare",
+                ".",
+                remote.to_str().expect("remote path"),
+            ],
+        );
+        git(
+            &temp.path,
+            &[
+                "clone",
+                remote.to_str().expect("remote path"),
+                work.to_str().expect("work path"),
+            ],
+        );
+
+        rename_branch(&work, "main", "trunk").expect("rename branch");
+        set_branch_upstream(&work, "trunk", Some("origin/main")).expect("set upstream");
+
+        assert_eq!(git(&work, &["rev-parse", "--abbrev-ref", "HEAD"]), "trunk");
+        assert_eq!(
+            git(&work, &["rev-parse", "--abbrev-ref", "trunk@{upstream}"]),
+            "origin/main"
+        );
+
+        set_branch_upstream(&work, "trunk", None).expect("unset upstream");
+        assert!(GitCli::run(&work, &["rev-parse", "--abbrev-ref", "trunk@{upstream}"]).is_err());
     }
 }

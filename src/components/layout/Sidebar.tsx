@@ -18,7 +18,9 @@ import {
   PanelLeft,
   PanelLeftClose,
   Settings,
+  Search,
   Tag,
+  Wrench,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
@@ -79,6 +81,9 @@ export function Sidebar() {
   const mergeBranchMutation = useMutation(
     gitMutations.mergeBranch(queryClient, activeRepoPath),
   );
+  const deleteBranchMutation = useMutation(
+    gitMutations.deleteBranch(queryClient, activeRepoPath),
+  );
   const githubOverviewQuery = useQuery(
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
@@ -101,6 +106,9 @@ export function Sidebar() {
   const tagsQuery = useQuery(
     gitQueries.tags(activeRepoPath, activeView === "tags"),
   );
+  const rebaseQuery = useQuery(
+    gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
+  );
 
   const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
@@ -115,6 +123,7 @@ export function Sidebar() {
   const conflictCount =
     snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
   const hasConflicts = conflictCount > 0;
+  const hasActiveRebase = Boolean(rebaseQuery.data?.inProgress);
 
   useEffect(() => {
     if (!activeRepoPath || !shouldLoadGithub) return;
@@ -175,6 +184,15 @@ export function Sidebar() {
     )
       return;
     mergeBranchMutation.mutate(branch.shortName);
+  };
+
+  const deleteBranch = (branch: Branch) => {
+    if (branch.isCurrent || branch.isRemote) return;
+    if (
+      !window.confirm(`Delete local branch "${branch.shortName}"?`)
+    )
+      return;
+    deleteBranchMutation.mutate(branch.shortName);
   };
 
   if (sidebarCollapsed) {
@@ -240,16 +258,14 @@ export function Sidebar() {
           active={activeView === "review-studio"}
           onClick={() => navigate("review-studio")}
         />
-        {hasConflicts && (
-          <SidebarNavItem
-            icon={<AlertTriangle className="h-4 w-4" />}
-            label="Resolve Conflicts"
-            count={conflictCount}
-            active={activeView === "rebase-conflicts"}
-            tone="warning"
-            onClick={() => navigate("rebase-conflicts")}
-          />
-        )}
+        <SidebarNavItem
+          icon={<AlertTriangle className="h-4 w-4" />}
+          label="Merge & Rebase"
+          count={hasConflicts ? conflictCount : undefined}
+          active={activeView === "rebase-conflicts"}
+          tone={hasConflicts || hasActiveRebase ? "warning" : "default"}
+          onClick={() => navigate("rebase-conflicts")}
+        />
 
         <SidebarSection title="Repository Workspace" />
         <SidebarNavItem
@@ -258,6 +274,18 @@ export function Sidebar() {
           count={branchCount}
           active={activeView === "branches"}
           onClick={() => navigate("branches")}
+        />
+        <SidebarNavItem
+          icon={<Search className="h-4 w-4" />}
+          label="Search & Archaeology"
+          active={activeView === "archaeology"}
+          onClick={() => navigate("archaeology")}
+        />
+        <SidebarNavItem
+          icon={<Wrench className="h-4 w-4" />}
+          label="Diagnostics & Bisect"
+          active={activeView === "diagnostics"}
+          onClick={() => navigate("diagnostics")}
         />
         <SidebarNavItem
           icon={<GitPullRequest className="h-4 w-4" />}
@@ -350,10 +378,12 @@ export function Sidebar() {
           title="Worktrees"
           count={workspaceSummary?.worktreeCount}
         />
-        {worktreesQuery.isLoading ? (
+        {shouldLoadWorktrees && worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
-        ) : worktreesQuery.error ? (
+        ) : shouldLoadWorktrees && worktreesQuery.error ? (
           <SidebarNote>Worktrees unavailable</SidebarNote>
+        ) : !shouldLoadWorktrees && (workspaceSummary?.worktreeCount ?? 0) > 0 ? (
+          <SidebarNote>Open Worktrees to load linked paths</SidebarNote>
         ) : worktrees.length === 0 ? (
           <SidebarNote>No linked worktrees</SidebarNote>
         ) : (
@@ -381,10 +411,12 @@ export function Sidebar() {
           title="Submodules"
           count={workspaceSummary?.submoduleCount}
         />
-        {submodulesQuery.isLoading ? (
+        {shouldLoadSubmodules && submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
-        ) : submodulesQuery.error ? (
+        ) : shouldLoadSubmodules && submodulesQuery.error ? (
           <SidebarNote>Submodules unavailable</SidebarNote>
+        ) : !shouldLoadSubmodules && (workspaceSummary?.submoduleCount ?? 0) > 0 ? (
+          <SidebarNote>Open Submodules to load configured paths</SidebarNote>
         ) : submodules.length === 0 ? (
           <SidebarNote>No submodules configured</SidebarNote>
         ) : (
@@ -476,6 +508,8 @@ export function Sidebar() {
           onCreateFromBranch={createBranchFrom}
           onFastForward={fastForwardBranch}
           onMerge={mergeBranch}
+          onAdvancedMergeRebase={() => navigate("rebase-conflicts")}
+          onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
         />
       </div>

@@ -41,7 +41,36 @@ pub struct ConflictContent {
     pub result: String,
 }
 
-#[allow(dead_code)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RerereStatus {
+    pub enabled: bool,
+    pub paths: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationConflict {
+    pub path: String,
+    pub status: String,
+    pub conflict_type: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GitOperationSummary {
+    pub operation: Option<String>,
+    pub in_rebase: bool,
+    pub in_merge: bool,
+    pub in_cherry_pick: bool,
+    pub in_revert: bool,
+    pub rebase: RebaseState,
+    pub merge_head: Option<String>,
+    pub cherry_pick_head: Option<String>,
+    pub revert_head: Option<String>,
+    pub conflicts: Vec<OperationConflict>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RebasePreviewItem {

@@ -12,6 +12,9 @@ export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const activeView = useAppStore((s) => s.activeView);
   const { data: snapshot, error } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: rebaseState } = useQuery(
+    gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
+  );
 
   const repoInfo = snapshot?.repositoryInfo;
   const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
@@ -40,6 +43,7 @@ export function AppShell() {
         branchName={repoInfo?.currentBranch}
         isClean={repoInfo?.isClean}
         activeView={activeView}
+        isRebasing={Boolean(rebaseState?.inProgress)}
       />
     </div>
   );
@@ -50,11 +54,13 @@ function StatusBar({
   branchName,
   isClean,
   activeView,
+  isRebasing,
 }: {
   repoName?: string;
   branchName?: string;
   isClean?: boolean;
   activeView: ViewType;
+  isRebasing: boolean;
 }) {
   return (
     <div className="giteye-statusbar flex h-6 shrink-0 items-center gap-2.5 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 text-[11px] text-[var(--color-text-muted)]">
@@ -71,12 +77,22 @@ function StatusBar({
           {isClean ? "Clean" : "Changes"}
         </span>
       )}
+      {isRebasing && (
+        <span className="flex items-center gap-1.5 text-[var(--color-warning)]">
+          <Circle className="h-2 w-2 fill-current" />
+          Rebase active
+        </span>
+      )}
       <span className="ml-auto capitalize">{viewLabel(activeView)}</span>
     </div>
   );
 }
 
 function viewLabel(view: ViewType) {
+  if (view === "rebase-conflicts") {
+    return "merge & rebase";
+  }
+
   return view.split("-").join(" ");
 }
 

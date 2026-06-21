@@ -1,9 +1,13 @@
+pub mod archaeology;
 pub mod branches;
 pub mod commits;
 pub mod config;
+pub mod diagnostics;
 pub mod diff;
 pub mod github;
+pub mod history;
 pub mod lfs;
+pub mod patch;
 pub mod rebase;
 pub mod remotes;
 pub mod repository;

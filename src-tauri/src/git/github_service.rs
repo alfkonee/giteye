@@ -483,6 +483,18 @@ pub fn merge_pull_request(repo_path: &Path, number: u64, method: &str) -> Result
     Ok(())
 }
 
+pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError> {
+    let (_, _) = github_repository(repo_path)?;
+    let number_string = number.to_string();
+    run_required_process(
+        "gh",
+        &["pr", "close", &number_string],
+        repo_path,
+        GH_TIMEOUT,
+    )?;
+    Ok(())
+}
+
 fn github_repository(repo_path: &Path) -> Result<(String, String), AppError> {
     let remote_url = GitCli::run(repo_path, &["remote", "get-url", "origin"])
         .map_err(|e| AppError::GitError(e.to_string()))?;

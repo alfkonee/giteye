@@ -99,3 +99,8 @@ pub fn remove_pull_request_label(
 pub fn merge_pull_request(repo_path: String, number: u64, method: String) -> Result<(), AppError> {
     github_service::merge_pull_request(Path::new(&repo_path), number, &method)
 }
+
+#[tauri::command]
+pub fn close_pull_request(repo_path: String, number: u64) -> Result<(), AppError> {
+    github_service::close_pull_request(Path::new(&repo_path), number)
+}

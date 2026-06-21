@@ -42,6 +42,24 @@ pub fn create_branch(
 }
 
 #[tauri::command]
+pub fn rename_branch(
+    repo_path: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), AppError> {
+    branch_service::rename_branch(Path::new(&repo_path), &old_name, &new_name)
+}
+
+#[tauri::command]
+pub fn set_branch_upstream(
+    repo_path: String,
+    branch_name: String,
+    upstream: Option<String>,
+) -> Result<(), AppError> {
+    branch_service::set_branch_upstream(Path::new(&repo_path), &branch_name, upstream.as_deref())
+}
+
+#[tauri::command]
 pub fn fast_forward_branch(
     repo_path: String,
     branch_name: String,
@@ -53,6 +71,23 @@ pub fn fast_forward_branch(
 #[tauri::command]
 pub fn merge_branch(repo_path: String, source: String) -> Result<(), AppError> {
     branch_service::merge_branch(Path::new(&repo_path), &source)
+}
+
+#[tauri::command]
+pub fn merge_with_options(
+    repo_path: String,
+    source: String,
+    no_ff: bool,
+    squash: bool,
+    strategy_option: Option<String>,
+) -> Result<(), AppError> {
+    branch_service::merge_with_options(
+        Path::new(&repo_path),
+        &source,
+        no_ff,
+        squash,
+        strategy_option.as_deref(),
+    )
 }
 
 #[tauri::command]

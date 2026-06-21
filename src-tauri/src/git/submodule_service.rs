@@ -1,6 +1,6 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
-use crate::models::submodule::{Submodule, SubmoduleStatus};
+use crate::models::submodule::{Submodule, SubmoduleForeachStatus, SubmoduleStatus};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
@@ -131,6 +131,100 @@ pub fn sync_submodules(repo_path: &Path, recursive: bool) -> Result<(), AppError
     Ok(())
 }
 
+pub fn submodule_init_update(
+    repo_path: &Path,
+    path: Option<&str>,
+    recursive: bool,
+    remote: bool,
+) -> Result<(), AppError> {
+    if let Some(path) = path {
+        validate_relative_path(path)?;
+    }
+
+    let mut args = vec!["submodule", "update", "--init"];
+    if recursive {
+        args.push("--recursive");
+    }
+    if remote {
+        args.push("--remote");
+    }
+    if let Some(path) = path {
+        args.push("--");
+        args.push(path);
+    }
+
+    GitCli::run(repo_path, &args)?;
+    Ok(())
+}
+
+pub fn submodule_set_branch(repo_path: &Path, path: &str, branch: &str) -> Result<(), AppError> {
+    validate_relative_path(path)?;
+    let branch = validate_git_arg("branch", branch)?;
+    GitCli::run(
+        repo_path,
+        &["submodule", "set-branch", "--branch", &branch, "--", path],
+    )?;
+    GitCli::run(repo_path, &["submodule", "sync", "--", path])?;
+    Ok(())
+}
+
+pub fn submodule_foreach_status(
+    repo_path: &Path,
+    recursive: bool,
+) -> Result<Vec<SubmoduleForeachStatus>, AppError> {
+    let status_lines = read_submodule_status_for(repo_path, recursive)?;
+
+    status_lines
+        .into_iter()
+        .map(|line| {
+            validate_relative_path(&line.path)?;
+            let initialized = line.marker != '-';
+            let head = if initialized {
+                current_commit(repo_path, &line.path)?
+            } else {
+                None
+            };
+            let branch = if initialized {
+                current_branch(repo_path, &line.path)?
+            } else {
+                None
+            };
+            let detached = initialized && branch.is_none() && head.is_some();
+            let (modified_files, staged_files) = if initialized {
+                submodule_status_counts(repo_path, &line.path)?
+            } else {
+                (0, 0)
+            };
+            let (behind, ahead) = if initialized {
+                ahead_behind(repo_path, &line.path)?
+            } else {
+                (0, 0)
+            };
+            let status = match line.marker {
+                'U' => "Conflict",
+                '-' => "Uninitialized",
+                '+' => "Modified",
+                _ if modified_files > 0 || staged_files > 0 => "Modified",
+                _ => "Clean",
+            }
+            .to_string();
+
+            Ok(SubmoduleForeachStatus {
+                path: line.path,
+                branch,
+                head,
+                status,
+                modified_files,
+                staged_files,
+                ahead,
+                behind,
+                detached,
+                initialized,
+            })
+        })
+        .collect()
+}
+
 pub fn open_submodule(repo_path: &Path, path: &str) -> Result<String, AppError> {
     let submodule_path = checked_submodule_path(repo_path, path)?;
     Ok(submodule_path.to_string_lossy().to_string())
@@ -188,7 +282,18 @@ fn read_gitmodules(repo_path: &Path) -> Result<Vec<SubmoduleConfig>, AppError> {
 }
 
 fn read_submodule_status(repo_path: &Path) -> Result<Vec<SubmoduleStatusLine>, AppError> {
-    match GitCli::run(repo_path, &["submodule", "status", "--recursive"]) {
+    read_submodule_status_for(repo_path, true)
+}
+
+fn read_submodule_status_for(
+    repo_path: &Path,
+    recursive: bool,
+) -> Result<Vec<SubmoduleStatusLine>, AppError> {
+    let mut args = vec!["submodule", "status"];
+    if recursive {
+        args.push("--recursive");
+    }
+    match GitCli::run(repo_path, &args) {
         Ok(output) => Ok(output.lines().filter_map(parse_status_line).collect()),
         Err(AppError::GitError(message)) if message.contains("no submodule mapping found") => {
             Ok(Vec::new())
@@ -230,6 +335,20 @@ fn current_commit(repo_path: &Path, path: &str) -> Result<Option<String>, AppErr
     }
 }
 
+fn current_branch(repo_path: &Path, path: &str) -> Result<Option<String>, AppError> {
+    match GitCli::run(
+        repo_path,
+        &["-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+    ) {
+        Ok(output) => {
+            let branch = output.trim();
+            Ok((!branch.is_empty() && branch != "HEAD").then(|| branch.to_string()))
+        }
+        Err(AppError::GitError(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 fn ahead_behind(repo_path: &Path, path: &str) -> Result<(u32, u32), AppError> {
     match GitCli::run(
         repo_path,
@@ -263,6 +382,32 @@ fn submodule_has_changes(repo_path: &Path, path: &str) -> Result<bool, AppError>
     match GitCli::run(repo_path, &["-C", path, "status", "--porcelain"]) {
         Ok(output) => Ok(!output.trim().is_empty()),
         Err(AppError::GitError(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn submodule_status_counts(repo_path: &Path, path: &str) -> Result<(u32, u32), AppError> {
+    match GitCli::run(repo_path, &["-C", path, "status", "--porcelain=v1"]) {
+        Ok(output) => {
+            let mut modified = 0;
+            let mut staged = 0;
+            for line in output.lines() {
+                let bytes = line.as_bytes();
+                if bytes.len() < 2 {
+                    continue;
+                }
+                let index = bytes[0];
+                let worktree = bytes[1];
+                if index != b' ' && index != b'?' {
+                    staged += 1;
+                }
+                if worktree != b' ' || index == b'?' {
+                    modified += 1;
+                }
+            }
+            Ok((modified, staged))
+        }
+        Err(AppError::GitError(_)) => Ok((0, 0)),
         Err(error) => Err(error),
     }
 }
@@ -345,9 +490,17 @@ fn validate_relative_path(path: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn validate_git_arg(label: &str, value: &str) -> Result<String, AppError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.chars().any(|character| character.is_control()) {
+        return Err(AppError::GitError(format!("Invalid {label}: {value}")));
+    }
+    Ok(trimmed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{classify_status, parse_status_line, validate_relative_path};
+    use super::{classify_status, parse_status_line, validate_git_arg, validate_relative_path};
     use crate::models::submodule::SubmoduleStatus;
 
     #[test]
@@ -393,5 +546,12 @@ mod tests {
         assert!(validate_relative_path("../outside").is_err());
         assert!(validate_relative_path("/absolute").is_err());
         assert!(validate_relative_path("./relative").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_or_control_branch_names() {
+        assert_eq!(validate_git_arg("branch", " main ").unwrap(), "main");
+        assert!(validate_git_arg("branch", "").is_err());
+        assert!(validate_git_arg("branch", "feature\nbad").is_err());
     }
 }

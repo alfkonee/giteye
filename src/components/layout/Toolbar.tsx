@@ -18,6 +18,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { formatDryRunPreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
@@ -46,6 +47,27 @@ type CommandItem = {
   run: () => void;
 };
 
+function remoteNamesFromBranches(branches: Branch[]) {
+  return Array.from(
+    new Set(
+      branches
+        .filter((branch) => branch.isRemote)
+        .map((branch) => branch.shortName.split("/", 1)[0])
+        .filter(Boolean),
+    ),
+  );
+}
+
+function splitRemoteBranch(branch: Branch) {
+  const separator = branch.shortName.indexOf("/");
+  if (separator < 1) return null;
+  return {
+    remote: branch.shortName.slice(0, separator),
+    branch: branch.shortName.slice(separator + 1),
+  };
+}
+
+
 export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -60,7 +82,10 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
   const notices = useNoticeStore((s) => s.notices);
-  const clearFinishedNotices = useNoticeStore((s) => s.clearFinished);
+  const operationTranscript = useNoticeStore((s) => s.operationTranscript);
+  const transcriptOpen = useNoticeStore((s) => s.transcriptOpen);
+  const toggleTranscriptOpen = useNoticeStore((s) => s.toggleTranscriptOpen);
+  const setTranscriptOpen = useNoticeStore((s) => s.setTranscriptOpen);
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath, branchMenuOpen));
@@ -70,6 +95,13 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
   const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
+  const deleteBranchMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
+  const renameBranchMutation = useMutation(gitMutations.renameBranch(queryClient, activeRepoPath));
+  const upstreamMutation = useMutation(gitMutations.setBranchUpstream(queryClient, activeRepoPath));
+  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
+  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
+  const deleteRemoteBranchMutation = useMutation(gitMutations.deleteRemoteBranch(queryClient, activeRepoPath));
+  const deleteRemoteBranchDryRunMutation = useMutation(gitMutations.deleteRemoteBranchDryRun(activeRepoPath));
   const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const setFavorite = useMutation(gitMutations.setRepositoryFavorite(queryClient));
   const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
@@ -79,9 +111,19 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
   const workingTreeState = isClean ? "Clean" : "Uncommitted changes";
-  const isRemoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
+  const remoteNames = remoteNamesFromBranches(branches ?? []);
+  const isRemoteOperationPending =
+    fetchMutation.isPending ||
+    pullMutation.isPending ||
+    pushMutation.isPending ||
+    pushBranchMutation.isPending ||
+    pushBranchDryRunMutation.isPending ||
+    deleteRemoteBranchMutation.isPending ||
+    deleteRemoteBranchDryRunMutation.isPending;
   const pendingNoticeCount = notices.filter((notice) => notice.status === "pending").length;
-  const activeNotice = notices.find((notice) => notice.status === "pending") ?? notices[0] ?? null;
+  const latestTranscriptEntry = operationTranscript[0] ?? null;
+  const activeNotice = notices.find((notice) => notice.status === "pending") ?? notices[0] ?? latestTranscriptEntry;
+  const transcriptBadgeCount = pendingNoticeCount || Math.min(operationTranscript.length, 99);
 
   const repoSwitchItems = useMemo(
     () => buildRepositorySwitchItems(recentRepos ?? [], favoriteRepos ?? [], repoSearch),
@@ -94,22 +136,25 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
     return [
       { label: "Open Working Tree", detail: "Show staged and unstaged changes", disabled, run: navigate("working-tree") },
       { label: "Open History", detail: "Show commit history", disabled, run: navigate("history") },
-      { label: "Open Branches", detail: "Manage local and remote branches", disabled, run: navigate("branches") },
-      { label: "Open Remotes", detail: "Fetch, pull, and push remotes", disabled, run: navigate("remotes") },
+      { label: "Open Branches", detail: "Rename, track, push, and delete local or remote branches", disabled, run: navigate("branches") },
+      { label: "Open Remotes", detail: "Add, edit, prune, delete, fetch, pull, and push remotes", disabled, run: navigate("remotes") },
       { label: "Open Stashes", detail: "Create and apply stashes", disabled, run: navigate("stashes") },
       { label: "Open Git LFS", detail: "Manage large-file tracking patterns", disabled, run: navigate("lfs") },
-      { label: "Open Tags", detail: "Create and delete local tags", disabled, run: navigate("tags") },
+      { label: "Open Tags", detail: "Create, push, and delete local or remote tags", disabled, run: navigate("tags") },
       { label: "Open Worktrees", detail: "Manage linked worktrees", disabled, run: navigate("worktrees") },
       { label: "Open Submodules", detail: "Sync and update submodules", disabled, run: navigate("submodules") },
+      { label: "Open Search & Archaeology", detail: "Search commits, files, blame, grep, pickaxe, reflog, and lost commits", disabled, run: navigate("archaeology") },
+      { label: "Open Diagnostics & Bisect", detail: "Run fsck, maintenance/gc, signature checks, and guided git bisect", disabled, run: navigate("diagnostics") },
       { label: "Open Rebase Resolver", detail: "Inspect rebase todo and conflicts", disabled, run: navigate("rebase-conflicts") },
       { label: "Open Settings", detail: "Application settings", run: navigate("settings") },
+      { label: "Open Operation Transcript", detail: "Show completed Git actions and recovery hints", run: () => setTranscriptOpen(true) },
       { label: "Refresh Repository", detail: "Invalidate live Git data", disabled, run: () => void invalidateGitState(queryClient, activeRepoPath) },
       { label: "Fetch Remotes", detail: "git fetch", disabled: disabled || isRemoteOperationPending, run: () => fetchMutation.mutate(undefined) },
       { label: "Pull Current Branch", detail: "git pull", disabled: disabled || isRemoteOperationPending, run: () => pullMutation.mutate({}) },
       { label: "Push Current Branch", detail: "git push", disabled: disabled || isRemoteOperationPending, run: () => pushMutation.mutate({}) },
       { label: "Toggle Diff Mode", detail: diffMode === "split" ? "Switch to unified diff" : "Switch to split diff", disabled, run: () => setDiffMode(diffMode === "split" ? "unified" : "split") },
     ];
-  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode]);
+  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode, setTranscriptOpen]);
 
   const visibleCommands = useMemo(() => {
     const query = commandValue.trim().toLowerCase();
@@ -197,6 +242,83 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
     mergeBranchMutation.mutate(branch.shortName);
   };
 
+  const deleteBranch = (branch: Branch) => {
+    if (branch.isCurrent || branch.isRemote) return;
+    if (!window.confirm(`Delete local branch "${branch.shortName}"?`)) return;
+    deleteBranchMutation.mutate(branch.shortName);
+  };
+
+  const renameBranch = (branch: Branch) => {
+    if (branch.isRemote) return;
+    const newName = window.prompt(`Rename "${branch.shortName}" to`, branch.shortName)?.trim();
+    if (!newName || newName === branch.shortName) return;
+    renameBranchMutation.mutate({ oldName: branch.shortName, newName });
+  };
+
+  const setBranchUpstream = (branch: Branch) => {
+    if (branch.isRemote) return;
+    const defaultUpstream = branch.upstream ?? (remoteNames[0] ? `${remoteNames[0]}/${branch.shortName}` : "");
+    const upstream = window.prompt(
+      `Upstream for "${branch.shortName}" (remote/branch, empty clears tracking)`,
+      defaultUpstream,
+    );
+    if (upstream === null) return;
+    upstreamMutation.mutate({ branchName: branch.shortName, upstream: upstream.trim() || null });
+  };
+
+  const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
+    if (branch.isRemote) return;
+    const remote = window.prompt("Push to remote", branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin")?.trim();
+    if (!remote) return;
+    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`) ? branch.upstream.slice(remote.length + 1) : branch.shortName;
+    const remoteBranch = window.prompt("Remote branch name", upstreamBranch)?.trim();
+    if (remoteBranch === undefined) return;
+    const target = `${remote}/${remoteBranch || branch.shortName}`;
+    const setUpstream = !forceWithLease && window.confirm(`Set "${branch.shortName}" to track ${target} after push?`);
+    const request = {
+      remote,
+      localBranch: branch.shortName,
+      remoteBranch: remoteBranch || null,
+      setUpstream,
+      forceWithLease,
+    };
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await pushBranchDryRunMutation.mutateAsync(request),
+        "Git did not report any ref updates for this push dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview push to ${target}: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const forceWarning = forceWithLease
+      ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
+      : "";
+    if (!window.confirm(`Push "${branch.shortName}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
+    pushBranchMutation.mutate(request);
+  };
+
+  const deleteRemoteBranch = async (branch: Branch) => {
+    if (!branch.isRemote) return;
+    const parsed = splitRemoteBranch(branch);
+    if (!parsed) return;
+    const target = `${parsed.remote}/${parsed.branch}`;
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await deleteRemoteBranchDryRunMutation.mutateAsync(parsed),
+        "Git did not report a ref deletion for this remote branch dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (!window.confirm(`Delete remote branch "${target}"?\n\nPreview:\n${previewText}\n\nThis removes it from the remote repository. Recovery: recreate it by pushing any local branch or reflog commit that still points at the deleted tip.`)) return;
+    deleteRemoteBranchMutation.mutate(parsed);
+  };
+
+
   return (
     <div className="giteye-toolbar flex h-11 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 shadow-[var(--shadow-panel)]">
       <div className="flex min-w-0 shrink-0 items-center gap-1.5">
@@ -283,7 +405,7 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
             <button
               onClick={() => setBranchMenuOpen((open) => !open)}
               className="flex h-7 max-w-[200px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
-              title="Checkout branch"
+              title="Checkout branch; right-click branch rows for rename, tracking, push, and delete actions"
             >
               <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
               <span className="truncate">{currentBranch}</span>
@@ -292,6 +414,9 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
 
             {branchMenuOpen && (
               <div className="absolute left-0 top-full z-50 mt-1.5 max-h-80 w-80 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
+                <div className="border-b border-[var(--color-border-muted)] px-2.5 py-1.5 text-[11px] text-[var(--color-text-muted)]">
+                  Right-click any branch for rename, tracking, push, and delete tools.
+                </div>
                 <div className="flex items-center justify-between px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
                   <span>Local Branches</span>
                   <span>{localBranches.length}</span>
@@ -301,6 +426,7 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                     key={branch.name}
                     onClick={() => requestBranchSwitch(branch)}
                     onContextMenu={(event) => openBranchContextMenu(event, branch)}
+                    title={branch.isCurrent ? "Current branch · right-click for branch actions" : "Click to checkout · right-click for branch actions"}
                     className={cn(
                       "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors",
                       branch.isCurrent
@@ -331,6 +457,7 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
                         key={branch.name}
                         onClick={() => requestBranchSwitch(branch)}
                         onContextMenu={(event) => openBranchContextMenu(event, branch)}
+                        title="Click to checkout remote branch · right-click for remote branch actions"
                         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)]"
                       >
                         <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
@@ -459,15 +586,15 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           icon={
             <span className="relative">
               <Bell className="h-4 w-4" />
-              {pendingNoticeCount > 0 && (
+              {transcriptBadgeCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-[var(--color-accent)] px-0.5 text-[8px] font-bold leading-none text-white">
-                  {pendingNoticeCount}
+                  {transcriptBadgeCount}
                 </span>
               )}
             </span>
           }
-          title={pendingNoticeCount > 0 ? `${pendingNoticeCount} action${pendingNoticeCount === 1 ? "" : "s"} running` : "Clear completed notices"}
-          onClick={clearFinishedNotices}
+          title={pendingNoticeCount > 0 ? `${pendingNoticeCount} action${pendingNoticeCount === 1 ? "" : "s"} running · open operation transcript` : transcriptOpen ? "Hide operation transcript" : "Show operation transcript"}
+          onClick={toggleTranscriptOpen}
         />
         <ToolbarButton
           icon={<Settings className="h-4 w-4" />}
@@ -486,9 +613,15 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
         branch={contextBranch?.branch ?? null}
         x={contextBranch?.x ?? 0}
         y={contextBranch?.y ?? 0}
+        onRename={renameBranch}
+        onSetUpstream={setBranchUpstream}
+        onPushBranch={(branch) => pushBranch(branch, false)}
+        onForcePushBranch={(branch) => pushBranch(branch, true)}
+        onDeleteRemoteBranch={deleteRemoteBranch}
         onCreateFromBranch={createBranchFrom}
         onFastForward={fastForwardBranch}
         onMerge={mergeBranch}
+        onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
       />
     </div>

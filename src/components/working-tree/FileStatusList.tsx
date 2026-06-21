@@ -4,7 +4,7 @@ import { StatusBadge } from "../common/StatusBadge";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitMutations } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
-import { Plus, Minus, ChevronDown, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Plus, Minus, ChevronDown, ChevronRight, Archive, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
@@ -94,6 +94,8 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const unstageMutation = useMutation(gitMutations.unstageFile(queryClient, repoPath));
   const stageAllMutation = useMutation(gitMutations.stageAll(queryClient, repoPath));
   const unstageAllMutation = useMutation(gitMutations.unstageAll(queryClient, repoPath));
+  const stashPathMutation = useMutation(gitMutations.createStashForPaths(queryClient, repoPath));
+  const discardFileMutation = useMutation(gitMutations.discardFile(queryClient, repoPath));
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
@@ -109,6 +111,47 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     } else {
       stageMutation.mutate(file.path);
     }
+  };
+
+  const handleStashFile = (file: GitStatusFile) => {
+    if (
+      file.staged &&
+      file.unstaged &&
+      !confirm(
+        `"${file.path}" has both staged and unstaged changes. Stashing the path will stash both. Continue?`,
+      )
+    ) {
+      return;
+    }
+    const message = `WIP ${file.path}`;
+    stashPathMutation.mutate({
+      message,
+      includeUntracked: parseFileStatus(file.status) === "untracked",
+      paths: [file.path],
+    });
+  };
+
+  const handleDiscardFile = (file: GitStatusFile) => {
+    const status = parseFileStatus(file.status);
+    const scope = staged
+      ? file.unstaged
+        ? "staged and unstaged file changes"
+        : "staged file changes"
+      : status === "untracked"
+        ? "untracked file"
+        : "unstaged file changes";
+    if (
+      !confirm(
+        `Discard ${scope} for "${file.path}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
+      )
+    ) {
+      return;
+    }
+    discardFileMutation.mutate({
+      filePath: file.path,
+      staged,
+      untracked: status === "untracked",
+    });
   };
 
   return (
@@ -153,9 +196,6 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
             {staged ? "Unstage all" : "Stage all"}
           </button>
         )}
-        <button className="rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]" aria-label={`${title} actions`}>
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       {!collapsed && (
@@ -209,26 +249,64 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                         const status = parseFileStatus(file.status);
                         const isMutating =
                           (staged && unstageMutation.isPending) ||
-                          (!staged && stageMutation.isPending);
+                          (!staged && stageMutation.isPending) ||
+                          stashPathMutation.isPending ||
+                          discardFileMutation.isPending;
 
                         return (
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleStageToggle(file);
-                            }}
-                            disabled={isMutating}
-                            className={cn(
-                              "ml-auto rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                              isSelected
-                                ? "text-white hover:bg-white/15"
-                                : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                              statusTone(status),
+                          <div className="ml-auto flex items-center gap-0.5">
+                            {!staged && (
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleStashFile(file);
+                                }}
+                                disabled={isMutating}
+                                className={cn(
+                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  isSelected
+                                    ? "text-white hover:bg-white/15"
+                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
+                                )}
+                                title="Stash selected file"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                              </button>
                             )}
-                            title={staged ? "Unstage" : "Stage"}
-                          >
-                            {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                          </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDiscardFile(file);
+                              }}
+                              disabled={isMutating}
+                              className={cn(
+                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                isSelected
+                                  ? "text-white hover:bg-white/15"
+                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
+                              )}
+                              title="Discard file changes"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleStageToggle(file);
+                              }}
+                              disabled={isMutating}
+                              className={cn(
+                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                isSelected
+                                  ? "text-white hover:bg-white/15"
+                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
+                                statusTone(status),
+                              )}
+                              title={staged ? "Unstage" : "Stage"}
+                            >
+                              {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
                         );
                       }}
                     />
@@ -240,7 +318,9 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                           selectedFilePath === file.path && selectedFileStaged === staged;
                         const isMutating =
                           (staged && unstageMutation.isPending) ||
-                          (!staged && stageMutation.isPending);
+                          (!staged && stageMutation.isPending) ||
+                          stashPathMutation.isPending ||
+                          discardFileMutation.isPending;
                         const slash = file.path.lastIndexOf("/");
                         const directory = slash === -1 ? "" : file.path.slice(0, slash + 1);
                         const name = slash === -1 ? file.path : file.path.slice(slash + 1);
@@ -249,7 +329,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                           <div
                             key={file.path}
                             className={cn(
-                              "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_28px] items-center gap-1.5 px-2 py-0.5 transition-colors",
+                              "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_76px] items-center gap-1.5 px-2 py-0.5 transition-colors",
                               isSelected
                                 ? "bg-[var(--color-bg-selected)] text-white"
                                 : "hover:bg-[var(--color-bg-hover)]",
@@ -277,23 +357,59 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 </div>
                               )}
                             </div>
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleStageToggle(file);
-                              }}
-                              disabled={isMutating}
-                              className={cn(
-                                "ml-auto rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                isSelected
-                                  ? "text-white hover:bg-white/15"
-                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                                statusTone(status),
+                            <div className="ml-auto flex items-center gap-0.5">
+                              {!staged && (
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleStashFile(file);
+                                  }}
+                                  disabled={isMutating}
+                                  className={cn(
+                                    "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                    isSelected
+                                      ? "text-white hover:bg-white/15"
+                                      : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
+                                  )}
+                                  title="Stash selected file"
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                </button>
                               )}
-                              title={staged ? "Unstage" : "Stage"}
-                            >
-                              {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                            </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleDiscardFile(file);
+                                }}
+                                disabled={isMutating}
+                                className={cn(
+                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  isSelected
+                                    ? "text-white hover:bg-white/15"
+                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
+                                )}
+                                title="Discard file changes"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleStageToggle(file);
+                                }}
+                                disabled={isMutating}
+                                className={cn(
+                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  isSelected
+                                    ? "text-white hover:bg-white/15"
+                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
+                                  statusTone(status),
+                                )}
+                                title={staged ? "Unstage" : "Stage"}
+                              >
+                                {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}

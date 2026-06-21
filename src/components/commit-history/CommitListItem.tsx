@@ -6,6 +6,7 @@ import { formatRelativeTime, truncateHash } from "../../lib/format";
 import { Cloud, GitBranch } from "lucide-react";
 import type { CommitGraphRow } from "./commit-graph";
 import { laneX } from "./commit-graph";
+import { CommitActionStrip } from "./HistorySurgeryActions";
 
 interface CommitListItemProps {
   commit: CommitSummary;
@@ -37,7 +38,7 @@ export function CommitListItem({
   const isHead = displayRefs.some((ref) => ref.isHead);
 
   const style: CSSProperties = {
-    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px`,
+    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px 224px`,
   };
 
   if (isSelected) {
@@ -125,6 +126,8 @@ export function CommitListItem({
       <span className="text-right text-[10px] text-[var(--color-text-muted)]">
         {formatRelativeTime(commit.timestamp)}
       </span>
+
+      <CommitActionStrip target={commit} isHeadCommit={isHead} compact />
     </div>
   );
 }

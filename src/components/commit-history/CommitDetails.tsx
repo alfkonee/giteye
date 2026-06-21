@@ -5,6 +5,7 @@ import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
 import { Calendar, User, ChevronRight, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
 import { FileTree } from "../common/FileTree";
+import { CommitActionStrip } from "./HistorySurgeryActions";
 
 interface CommitDetailsProps {
   commit: CommitDetailsType;
@@ -64,6 +65,10 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2">
+        <CommitActionStrip target={commit} />
       </div>
 
       {commit.body && (

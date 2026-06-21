@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
-import { gitQueries } from "../../lib/git-data";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { WorkingTree } from "../working-tree/WorkingTree";
 import { CommitHistory } from "../commit-history/CommitHistory";
 import { CommitDetails } from "../commit-history/CommitDetails";
@@ -11,9 +11,12 @@ import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
 import { StackedPrBoard } from "../stacked-prs/StackedPrBoard";
 import { DiffReviewStudio } from "../review-studio/DiffReviewStudio";
 import { WorktreesSubmodules } from "../workspaces/WorktreesSubmodules";
-import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
+import { AdvancedMergeRebasePanel } from "../rebase/AdvancedMergeRebasePanel";
 import { LfsView, RemotesView, StashesView, TagsView } from "../repository/LocalGitViews";
+import { ArchaeologyView } from "../repository/ArchaeologyView";
+import { DiagnosticsView } from "../repository/DiagnosticsView";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
+import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen } from "lucide-react";
@@ -26,11 +29,37 @@ export function PanelLayout() {
   const diffMode = useAppStore((s) => s.diffMode);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
+  const queryClient = useQueryClient();
 
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
   );
+  const { mutate: stageHunk, isPending: isStageHunkPending } = useMutation(gitMutations.stageHunk(queryClient, activeRepoPath));
+  const { mutate: unstageHunk, isPending: isUnstageHunkPending } = useMutation(gitMutations.unstageHunk(queryClient, activeRepoPath));
+  const { mutate: discardHunk, isPending: isDiscardHunkPending } = useMutation(gitMutations.discardHunk(queryClient, activeRepoPath));
+
+  const handleStageHunk = useCallback((hunk: DiffHunkActionContext) => {
+    if (!activeRepoPath) return;
+    stageHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText });
+  }, [activeRepoPath, stageHunk]);
+
+  const handleUnstageHunk = useCallback((hunk: DiffHunkActionContext) => {
+    if (!activeRepoPath) return;
+    unstageHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText });
+  }, [activeRepoPath, unstageHunk]);
+
+  const handleDiscardHunk = useCallback((hunk: DiffHunkActionContext) => {
+    if (!activeRepoPath) return;
+    if (
+      !window.confirm(
+        `Discard this hunk from "${hunk.filePath}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups, so stash or commit first if you need a Git safety net.`,
+      )
+    ) {
+      return;
+    }
+    discardHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText, staged: Boolean(hunk.staged) });
+  }, [activeRepoPath, discardHunk]);
 
   const renderMainContent = useCallback(() => {
     switch (activeView) {
@@ -56,7 +85,11 @@ export function PanelLayout() {
       case "submodules":
         return <WorktreesSubmodules />;
       case "rebase-conflicts":
-        return <RebaseConflictResolver />;
+        return <AdvancedMergeRebasePanel />;
+      case "archaeology":
+        return <ArchaeologyView />;
+      case "diagnostics":
+        return <DiagnosticsView />;
       case "settings":
         return <SettingsPlaceholder />;
     }
@@ -81,6 +114,11 @@ export function PanelLayout() {
           isLoading={diffLoading}
           error={diffError?.toString() ?? null}
           mode={diffMode}
+          isStaged={selectedFileStaged}
+          isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
+          onStageHunk={selectedFileStaged ? undefined : handleStageHunk}
+          onUnstageHunk={selectedFileStaged ? handleUnstageHunk : undefined}
+          onDiscardHunk={handleDiscardHunk}
         />
       );
     }
@@ -104,7 +142,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
 
   const showDetailPane = activeView === "working-tree" || activeView === "history";
 

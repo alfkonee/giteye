@@ -69,6 +69,47 @@ export interface CommitDetails {
   changedFiles: string[];
 }
 
+export type ResetMode = "soft" | "mixed" | "hard";
+
+export interface ResetPreviewFile {
+  status: string;
+  path: string;
+}
+
+export interface ResetPreview {
+  targetCommit?: CommitSummary | null;
+  currentHead?: string | null;
+  targetHash?: string | null;
+  targetSubject?: string | null;
+  commitsToRemove?: CommitSummary[];
+  changedFiles?: ResetPreviewFile[];
+  filesChanged?: string[];
+  warnings?: string[];
+  summary?: string | null;
+}
+
+export interface RebasePreviewItem {
+  action: string;
+  commit: string;
+  message: string;
+}
+
+export interface AmendPreview {
+  head: CommitSummary;
+  message: string;
+  stagedFiles: ResetPreviewFile[];
+}
+
+export interface ReflogEntry {
+  selector: string;
+  hash: string;
+  shortHash?: string | null;
+  message: string;
+  action?: string | null;
+  authorName?: string | null;
+  timestamp?: string | null;
+}
+
 export interface Branch {
   name: string;
   shortName: string;
@@ -221,6 +262,19 @@ export interface Submodule {
   hasChanges: boolean;
 }
 
+export interface SubmoduleForeachStatus {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  status: string;
+  modifiedFiles: number;
+  stagedFiles: number;
+  ahead: number;
+  behind: number;
+  detached: boolean;
+  initialized: boolean;
+}
+
 export interface RebaseTodoItem {
   action: string;
   commit: string;
@@ -252,6 +306,59 @@ export interface RebaseState {
   todo: RebaseTodoItem[];
   done: RebaseTodoItem[];
   conflicts: ConflictFile[];
+}
+
+export type MergeStrategyOption =
+  | "ours"
+  | "theirs"
+  | "ignore-space-change"
+  | "ignore-all-space"
+  | "ignore-space-at-eol"
+  | "ignore-cr-at-eol"
+  | "renormalize"
+  | "no-renormalize"
+  | "patience"
+  | "diff-algorithm=patience"
+  | "diff-algorithm=minimal"
+  | "diff-algorithm=histogram"
+  | "diff-algorithm=myers";
+
+export interface MergeWithOptionsRequest {
+  source: string;
+  noFf: boolean;
+  squash: boolean;
+  strategyOption: MergeStrategyOption | null;
+}
+
+export interface StartRebaseRequest {
+  upstream: string;
+  branch: string | null;
+  onto: string | null;
+  autostash: boolean;
+}
+
+export interface RerereStatus {
+  enabled: boolean;
+  paths: string[];
+}
+
+export interface OperationConflict {
+  path: string;
+  status: string;
+  conflictType: string;
+}
+
+export interface GitOperationSummary {
+  operation: string | null;
+  inRebase: boolean;
+  inMerge: boolean;
+  inCherryPick: boolean;
+  inRevert: boolean;
+  rebase: RebaseState;
+  mergeHead: string | null;
+  cherryPickHead: string | null;
+  revertHead: string | null;
+  conflicts: OperationConflict[];
 }
 
 export interface GitHubAccount {
@@ -355,6 +462,198 @@ export interface RepositoryGithubOverview {
   activity: ActivityItem[];
 }
 
+export interface CommitSearchRequest {
+  query: string;
+  limit?: number | null;
+}
+
+export interface FileHistoryRequest {
+  filePath: string;
+  limit?: number | null;
+}
+
+export interface BlameFileRequest {
+  filePath: string;
+  revision?: string | null;
+  limit?: number | null;
+}
+
+export interface GitGrepRequest {
+  query: string;
+  pathspec?: string | null;
+  caseSensitive?: boolean;
+  limit?: number | null;
+}
+
+export type PickaxeSearchMode = "literal" | "regex";
+
+export interface PickaxeSearchRequest {
+  query: string;
+  mode: PickaxeSearchMode;
+  limit?: number | null;
+}
+
+export interface FileChange {
+  status: string;
+  path: string;
+  previousPath?: string | null;
+}
+
+export interface CommitSearchResult {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: string;
+  refs: string[];
+  parents: string[];
+}
+
+export interface FileHistoryEntry {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: string;
+  refs: string[];
+  parents: string[];
+  changes: FileChange[];
+}
+
+export interface BlameLine {
+  lineNumber: number;
+  originalLineNumber: number;
+  hash: string;
+  authorName: string;
+  authorEmail: string;
+  authorTime: string;
+  summary: string;
+  content: string;
+}
+
+export interface GitGrepMatch {
+  path: string;
+  lineNumber: number;
+  content: string;
+}
+
+export interface PickaxeSearchResult {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: string;
+  refs: string[];
+  parents: string[];
+  changes: FileChange[];
+}
+
+export interface LostCommit {
+  hash: string;
+  shortHash: string;
+  message: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: string;
+  source: string;
+}
+
+
+export interface GitCommandSafety {
+  requiresExplicitAction: boolean;
+  changesWorktree: boolean;
+  rewritesHistory: boolean;
+  longRunning: boolean;
+  description: string;
+}
+
+export interface BisectTerms {
+  bad: string;
+  good: string;
+}
+
+export interface BisectRevision {
+  role: string;
+  name: string;
+  commit: string;
+  summary: string;
+}
+
+export interface BisectLogEntry {
+  command: string;
+  revision: string | null;
+  raw: string;
+}
+
+export interface BisectState {
+  inProgress: boolean;
+  terms: BisectTerms;
+  startRevision: string | null;
+  currentCommit: BisectRevision | null;
+  paths: string[];
+  knownGood: BisectRevision[];
+  knownBad: BisectRevision[];
+  skipped: BisectRevision[];
+  log: BisectLogEntry[];
+  safety: GitCommandSafety;
+}
+
+export interface BisectActionSummary {
+  command: string[];
+  output: string;
+  state: BisectState;
+  safety: GitCommandSafety;
+}
+
+export type GitFsckSeverity = "info" | "warning" | "error";
+
+export interface GitFsckIssue {
+  severity: GitFsckSeverity;
+  objectType: string | null;
+  objectId: string | null;
+  message: string;
+}
+
+export interface GitFsckSummary {
+  ok: boolean;
+  exitCode: number;
+  command: string[];
+  issueCount: number;
+  issues: GitFsckIssue[];
+  rawOutput: string;
+  safety: GitCommandSafety;
+}
+
+export interface GitMaintenanceSummary {
+  mode: string;
+  exitCode: number;
+  command: string[];
+  output: string;
+  safety: GitCommandSafety;
+}
+
+export type GitMaintenanceMode = "maintenance" | "gc";
+
+export type GitSignatureStatus = "valid" | "invalid" | "unsigned" | "unknown" | "unsupported";
+
+export interface GitSignatureSummary {
+  target: string;
+  objectType: string;
+  status: GitSignatureStatus;
+  signer: string | null;
+  keyId: string | null;
+  fingerprint: string | null;
+  trust: string | null;
+  exitCode: number;
+  command: string[];
+  output: string;
+  rawStatus: string[];
+  safety: GitCommandSafety;
+}
+
 export type GlobalViewType = "repo-hub";
 
 export type RepositoryViewType =
@@ -370,6 +669,8 @@ export type RepositoryViewType =
   | "worktrees"
   | "submodules"
   | "rebase-conflicts"
+  | "archaeology"
+  | "diagnostics"
   | "settings";
 
 export type ViewType = RepositoryViewType;

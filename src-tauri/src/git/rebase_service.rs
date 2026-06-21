@@ -1,6 +1,9 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
-use crate::models::rebase::{ConflictContent, ConflictFile, RebaseState, RebaseTodoItem};
+use crate::models::rebase::{
+    ConflictContent, ConflictFile, GitOperationSummary, OperationConflict, RebasePreviewItem,
+    RebaseState, RebaseTodoItem, RerereStatus,
+};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -110,6 +113,263 @@ pub fn update_rebase_todo(repo_path: &Path, items: Vec<RebaseTodoItem>) -> Resul
 
     fs::write(rebase_paths.dir.join("git-rebase-todo"), todo)
         .map_err(|e| AppError::IoError(e.to_string()))
+}
+
+pub fn preview_rebase(
+    repo_path: &Path,
+    upstream: &str,
+    onto: Option<&str>,
+    branch: Option<&str>,
+) -> Result<Vec<RebasePreviewItem>, AppError> {
+    let upstream = required_git_arg(upstream, "rebase upstream")?;
+    verify_commit(repo_path, upstream)?;
+
+    if let Some(onto) = onto.map(str::trim).filter(|value| !value.is_empty()) {
+        verify_commit(repo_path, required_git_arg(onto, "rebase onto target")?)?;
+    }
+
+    let branch = match branch.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(branch) => required_git_arg(branch, "rebase branch")?,
+        None => "HEAD",
+    };
+    verify_commit(repo_path, branch)?;
+
+    let range = format!("{upstream}..{branch}");
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "log",
+            "--reverse",
+            "--no-merges",
+            "--format=%H%x00%s",
+            &range,
+        ],
+    )?;
+
+    Ok(output
+        .lines()
+        .filter_map(parse_rebase_preview_line)
+        .collect())
+}
+
+pub fn rebase_onto(
+    repo_path: &Path,
+    upstream: &str,
+    onto: &str,
+    branch: Option<&str>,
+    autostash: bool,
+) -> Result<(), AppError> {
+    let upstream = required_git_arg(upstream, "rebase upstream")?;
+    let onto = required_git_arg(onto, "rebase onto target")?;
+    ensure_rebase_worktree_ready(repo_path, autostash)?;
+
+    let mut args = vec!["rebase".to_string()];
+    if autostash {
+        args.push("--autostash".to_string());
+    }
+    args.push("--onto".to_string());
+    args.push(onto.to_string());
+    args.push(upstream.to_string());
+    if let Some(branch) = branch.map(str::trim).filter(|value| !value.is_empty()) {
+        args.push(required_git_arg(branch, "rebase branch")?.to_string());
+    }
+
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    GitCli::run(repo_path, &argv)?;
+    Ok(())
+}
+
+pub fn rebase_upstream(
+    repo_path: &Path,
+    upstream: &str,
+    branch: Option<&str>,
+    autostash: bool,
+) -> Result<(), AppError> {
+    let upstream = required_git_arg(upstream, "rebase upstream")?;
+    ensure_rebase_worktree_ready(repo_path, autostash)?;
+
+    let mut args = vec!["rebase".to_string()];
+    if autostash {
+        args.push("--autostash".to_string());
+    }
+    args.push(upstream.to_string());
+    if let Some(branch) = branch.map(str::trim).filter(|value| !value.is_empty()) {
+        args.push(required_git_arg(branch, "rebase branch")?.to_string());
+    }
+
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    GitCli::run(repo_path, &argv)?;
+    Ok(())
+}
+
+pub fn get_rerere_config(repo_path: &Path) -> Result<bool, AppError> {
+    get_rerere_enabled(repo_path)
+}
+
+pub fn get_rerere_status(repo_path: &Path) -> Result<RerereStatus, AppError> {
+    let paths = GitCli::run(repo_path, &["rerere", "status"])?
+        .lines()
+        .filter_map(|line| {
+            let path = line.trim();
+            (!path.is_empty()).then(|| path.to_string())
+        })
+        .collect();
+
+    Ok(RerereStatus {
+        enabled: get_rerere_enabled(repo_path)?,
+        paths,
+    })
+}
+
+pub fn set_rerere_enabled(repo_path: &Path, enabled: bool) -> Result<RerereStatus, AppError> {
+    GitCli::run(
+        repo_path,
+        &[
+            "config",
+            "--local",
+            "rerere.enabled",
+            if enabled { "true" } else { "false" },
+        ],
+    )?;
+    get_rerere_status(repo_path)
+}
+
+pub fn get_operation_summary(repo_path: &Path) -> Result<GitOperationSummary, AppError> {
+    let rebase = get_rebase_state(repo_path)?;
+    let merge_head = read_git_state_file(repo_path, "MERGE_HEAD")?;
+    let cherry_pick_head = read_git_state_file(repo_path, "CHERRY_PICK_HEAD")?;
+    let revert_head = read_git_state_file(repo_path, "REVERT_HEAD")?;
+    let conflicts = get_operation_conflicts(repo_path)?;
+
+    let in_rebase = rebase.in_progress;
+    let in_merge = merge_head.is_some();
+    let in_cherry_pick = cherry_pick_head.is_some();
+    let in_revert = revert_head.is_some();
+    let operation = if in_rebase {
+        Some("rebase".to_string())
+    } else if in_merge {
+        Some("merge".to_string())
+    } else if in_cherry_pick {
+        Some("cherryPick".to_string())
+    } else if in_revert {
+        Some("revert".to_string())
+    } else if !conflicts.is_empty() {
+        Some("conflict".to_string())
+    } else {
+        None
+    };
+
+    Ok(GitOperationSummary {
+        operation,
+        in_rebase,
+        in_merge,
+        in_cherry_pick,
+        in_revert,
+        rebase,
+        merge_head,
+        cherry_pick_head,
+        revert_head,
+        conflicts,
+    })
+}
+
+fn get_rerere_enabled(repo_path: &Path) -> Result<bool, AppError> {
+    let (status, output) = GitCli::run_allowing_statuses(
+        repo_path,
+        &["config", "--bool", "--get", "rerere.enabled"],
+        &[1],
+    )?;
+    if status == 1 {
+        return Ok(false);
+    }
+
+    Ok(matches!(output.trim(), "true" | "yes" | "on" | "1"))
+}
+
+fn ensure_rebase_worktree_ready(repo_path: &Path, autostash: bool) -> Result<(), AppError> {
+    if !autostash && has_worktree_changes(repo_path)? {
+        return Err(AppError::GitError(
+            "Working tree must be clean before rebasing without autostash".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
+    GitCli::run(repo_path, &["status", "--porcelain"]).map(|status| !status.trim().is_empty())
+}
+
+fn verify_commit(repo_path: &Path, rev: &str) -> Result<(), AppError> {
+    let commit_rev = format!("{rev}^{{commit}}");
+    GitCli::run(repo_path, &["rev-parse", "--verify", &commit_rev])?;
+    Ok(())
+}
+
+fn parse_rebase_preview_line(line: &str) -> Option<RebasePreviewItem> {
+    let (commit, message) = line.split_once('\0')?;
+    Some(RebasePreviewItem {
+        action: "pick".to_string(),
+        commit: commit.to_string(),
+        message: message.to_string(),
+    })
+}
+
+fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::GitError(format!("{label} is required")));
+    }
+    if value.starts_with('-') {
+        return Err(AppError::GitError(format!(
+            "{label} must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
+
+fn read_git_state_file(repo_path: &Path, name: &str) -> Result<Option<String>, AppError> {
+    let path_output = GitCli::run(repo_path, &["rev-parse", "--git-path", name])?;
+    let path = path_from_git_output(repo_path, path_output.trim());
+    read_optional_file(&path)
+}
+
+fn get_operation_conflicts(repo_path: &Path) -> Result<Vec<OperationConflict>, AppError> {
+    let output = GitCli::run(repo_path, &["status", "--porcelain=v2", "-z"])?;
+    Ok(output
+        .split('\0')
+        .filter_map(parse_operation_conflict_entry)
+        .collect())
+}
+
+fn parse_operation_conflict_entry(entry: &str) -> Option<OperationConflict> {
+    if !entry.starts_with("u ") {
+        return None;
+    }
+
+    let parts: Vec<&str> = entry.splitn(11, ' ').collect();
+    if parts.len() < 11 {
+        return None;
+    }
+
+    let status = parts[1].to_string();
+    Some(OperationConflict {
+        path: parts[10].to_string(),
+        conflict_type: conflict_type_for_status(&status).to_string(),
+        status,
+    })
+}
+
+fn conflict_type_for_status(status: &str) -> &'static str {
+    match status {
+        "DD" => "bothDeleted",
+        "AU" => "addedByUs",
+        "UD" => "deletedByThem",
+        "UA" => "addedByThem",
+        "DU" => "deletedByUs",
+        "AA" => "bothAdded",
+        "UU" => "bothModified",
+        _ => "unmerged",
+    }
 }
 
 fn find_rebase_dir(repo_path: &Path) -> Result<Option<RebasePaths>, AppError> {
@@ -303,9 +563,53 @@ fn validate_todo_field(value: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_todo_item, checkout_conflict_side, parse_todo_line, validate_repo_relative_path,
+        append_todo_item, checkout_conflict_side, get_rerere_config, get_rerere_status,
+        parse_operation_conflict_entry, parse_todo_line, preview_rebase, required_git_arg,
+        set_rerere_enabled, validate_repo_relative_path, GitCli,
     };
     use crate::models::rebase::RebaseTodoItem;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("giteye-rebase-{name}-{nonce}"));
+            fs::create_dir_all(&path).expect("create test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn git(cwd: &Path, args: &[&str]) -> String {
+        GitCli::run(cwd, args).expect("run git").trim().to_string()
+    }
+
+    fn init_repo(path: &Path) {
+        git(path, &["init", "-b", "main"]);
+        git(path, &["config", "user.name", "GitEye Test"]);
+        git(path, &["config", "user.email", "test@giteye.local"]);
+    }
+
+    fn commit_file(path: &Path, file: &str, contents: &str, message: &str) -> String {
+        fs::write(path.join(file), contents).expect("write file");
+        git(path, &["add", file]);
+        git(path, &["commit", "-m", message]);
+        git(path, &["rev-parse", "HEAD"])
+    }
 
     #[test]
     fn parses_rebase_todo_lines() {
@@ -351,5 +655,69 @@ mod tests {
         assert!(validate_repo_relative_path("../outside").is_err());
         assert!(validate_repo_relative_path("/absolute").is_err());
         assert!(validate_repo_relative_path("").is_err());
+    }
+
+    #[test]
+    fn parses_operation_conflict_status_map() {
+        let entry = "u UU N... 100644 100644 100644 100644 aaaaaaa bbbbbbb ccccccc file.txt";
+        let conflict = parse_operation_conflict_entry(entry).expect("parse conflict");
+
+        assert_eq!(conflict.path, "file.txt");
+        assert_eq!(conflict.status, "UU");
+        assert_eq!(conflict.conflict_type, "bothModified");
+        assert!(
+            parse_operation_conflict_entry("1 .M N... 100644 100644 100644 abc abc file.txt")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn preview_rebase_lists_commits_to_replay_without_mutating() {
+        let temp = TestDir::new("preview");
+        init_repo(&temp.path);
+        let base = commit_file(&temp.path, "README.md", "base\n", "Base");
+        git(&temp.path, &["switch", "-c", "feature"]);
+        let first = commit_file(&temp.path, "one.txt", "one\n", "Feature one");
+        let second = commit_file(&temp.path, "two.txt", "two\n", "Feature two");
+        git(&temp.path, &["switch", "main"]);
+
+        let preview =
+            preview_rebase(&temp.path, "main", Some(&base), Some("feature")).expect("preview");
+
+        assert_eq!(preview.len(), 2);
+        assert_eq!(preview[0].action, "pick");
+        assert_eq!(preview[0].commit, first);
+        assert_eq!(preview[0].message, "Feature one");
+        assert_eq!(preview[1].commit, second);
+        assert_eq!(preview[1].message, "Feature two");
+        assert_eq!(git(&temp.path, &["branch", "--show-current"]), "main");
+    }
+
+    #[test]
+    fn rejects_unsafe_rebase_refs() {
+        assert_eq!(
+            required_git_arg("origin/main", "upstream").unwrap(),
+            "origin/main"
+        );
+        assert!(required_git_arg("--exec=rm", "upstream").is_err());
+        assert!(required_git_arg("  ", "upstream").is_err());
+    }
+
+    #[test]
+    fn reads_and_sets_rerere_config() {
+        let temp = TestDir::new("rerere-config");
+        GitCli::run(&temp.path, &["init", "-b", "main"]).expect("init repo");
+
+        assert!(!get_rerere_config(&temp.path).expect("read default rerere config"));
+
+        set_rerere_enabled(&temp.path, true).expect("enable rerere");
+        assert!(get_rerere_config(&temp.path).expect("read enabled rerere config"));
+
+        let status = get_rerere_status(&temp.path).expect("read rerere status");
+        assert!(status.enabled);
+        assert!(status.paths.is_empty());
+
+        set_rerere_enabled(&temp.path, false).expect("disable rerere");
+        assert!(!get_rerere_config(&temp.path).expect("read disabled rerere config"));
     }
 }

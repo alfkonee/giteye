@@ -20,13 +20,61 @@ export function usePruneWorktrees(repoPath: string | null) {
   return useMutation(gitMutations.pruneWorktrees(queryClient, repoPath));
 }
 
+export function usePruneWorktreesDryRun(repoPath: string | null) {
+  return useMutation(gitMutations.pruneWorktreesDryRun(repoPath));
+}
+
+export function useMoveWorktree(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.moveWorktree(queryClient, repoPath));
+}
+
+export function useLockWorktree(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.lockWorktree(queryClient, repoPath));
+}
+
+export function useUnlockWorktree(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.unlockWorktree(queryClient, repoPath));
+}
+
+export function useRepairWorktree(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.repairWorktree(queryClient, repoPath));
+}
+
+
+export function useRepairWorktreeDryRun(repoPath: string | null) {
+  return useMutation(gitMutations.repairWorktreeDryRun(repoPath));
+}
+
 export function useSubmodules(repoPath: string | null) {
   return useQuery(gitQueries.submodules(repoPath));
 }
 
+export function useSubmoduleForeachStatus(
+  repoPath: string | null,
+  recursive: boolean,
+  enabled = true,
+) {
+  return useQuery(gitQueries.submoduleForeachStatus(repoPath, recursive, enabled));
+}
+
+
 export function useUpdateSubmodule(repoPath: string | null) {
   const queryClient = useQueryClient();
   return useMutation(gitMutations.updateSubmodule(queryClient, repoPath));
+}
+
+export function useSubmoduleInitUpdate(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.submoduleInitUpdate(queryClient, repoPath));
+}
+
+export function useSubmoduleSetBranch(repoPath: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation(gitMutations.submoduleSetBranch(queryClient, repoPath));
 }
 
 export function useSyncSubmodules(repoPath: string | null) {

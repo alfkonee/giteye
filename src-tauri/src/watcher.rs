@@ -75,7 +75,6 @@ pub fn start_repository_watch(
     })
     .map_err(|e| AppError::IoError(e.to_string()))?;
 
-
     if let Some(git_dir) = absolute_git_dir(&repo) {
         watch_git_metadata(&mut watcher, &git_dir)?;
     }

@@ -9,6 +9,7 @@ import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { History } from "lucide-react";
 import { layoutCommitGraph } from "./commit-graph";
+import { ReflogRecoveryPanel } from "./HistorySurgeryActions";
 
 const INITIAL_COMMIT_LIMIT = 100;
 const COMMIT_LIMIT_INCREMENT = 100;
@@ -16,6 +17,7 @@ const COMMIT_LIMIT_INCREMENT = 100;
 export function CommitHistory() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const [commitLimit, setCommitLimit] = useState(INITIAL_COMMIT_LIMIT);
+  const [showReflog, setShowReflog] = useState(false);
   const {
     data: commits,
     isLoading,
@@ -95,7 +97,7 @@ export function CommitHistory() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
             <History className="h-3.5 w-3.5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-[14px] font-semibold text-[var(--color-text-primary)]">
               History
             </h2>
@@ -103,13 +105,22 @@ export function CommitHistory() {
               {commits.length} commits in this branch view
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowReflog((value) => !value)}
+            className="ml-auto rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          >
+            {showReflog ? "Hide reflog" : "Reflog recovery"}
+          </button>
         </div>
       </div>
+
+      <ReflogRecoveryPanel open={showReflog} />
 
       <div
         className="sticky top-0 z-10 grid items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur"
         style={{
-          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px`,
+          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px 224px`,
         }}
       >
         <span className="pl-2">Graph</span>
@@ -117,6 +128,7 @@ export function CommitHistory() {
         <span>Message</span>
         <span className="text-right">Author</span>
         <span className="text-right">Date</span>
+        <span className="text-right pr-1">Actions</span>
       </div>
 
       <div ref={parentRef} className="flex-1 overflow-auto px-1.5 py-1.5">

@@ -26,3 +26,18 @@ pub enum SubmoduleStatus {
     Modified,
     Conflict,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmoduleForeachStatus {
+    pub path: String,
+    pub branch: Option<String>,
+    pub head: Option<String>,
+    pub status: String,
+    pub modified_files: u32,
+    pub staged_files: u32,
+    pub ahead: u32,
+    pub behind: u32,
+    pub detached: bool,
+    pub initialized: bool,
+}

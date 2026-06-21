@@ -1,10 +1,14 @@
+pub mod archaeology_service;
 pub mod branch_service;
 pub mod cli;
 pub mod commit_service;
 pub mod config_service;
+pub mod diagnostics_service;
 pub mod diff_service;
 pub mod github_service;
+pub mod history_service;
 pub mod lfs_service;
+pub mod patch_service;
 pub mod rebase_service;
 pub mod remote_service;
 pub mod repository_service;

@@ -89,6 +89,76 @@ pub fn remove_worktree(repo_path: &Path, path: &Path, force: bool) -> Result<(),
     Ok(())
 }
 
+pub fn remove_worktree_dry_run(
+    repo_path: &Path,
+    path: &Path,
+    force: bool,
+) -> Result<Vec<String>, AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    let output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
+    let record = parse_worktree_records(&output)
+        .into_iter()
+        .find(|record| record.path == path_arg || same_path(Path::new(&record.path), path))
+        .ok_or_else(|| AppError::GitError(format!("Worktree is not registered: {path_arg}")))?;
+    let current_path = current_worktree_path(repo_path);
+    let worktree = build_worktree(record, current_path.as_deref());
+    Ok(remove_dry_run_summary(path_arg, &worktree, force))
+}
+
+pub fn move_worktree(repo_path: &Path, path: &Path, new_path: &Path) -> Result<(), AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    let new_path_arg = worktree_path_arg(new_path)?;
+    GitCli::run(repo_path, &["worktree", "move", path_arg, new_path_arg])?;
+    Ok(())
+}
+
+pub fn lock_worktree(repo_path: &Path, path: &Path, reason: Option<&str>) -> Result<(), AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    let trimmed_reason = reason.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(reason) = trimmed_reason {
+        GitCli::run(
+            repo_path,
+            &["worktree", "lock", "--reason", reason, path_arg],
+        )?;
+    } else {
+        GitCli::run(repo_path, &["worktree", "lock", path_arg])?;
+    }
+    Ok(())
+}
+
+pub fn unlock_worktree(repo_path: &Path, path: &Path) -> Result<(), AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    GitCli::run(repo_path, &["worktree", "unlock", path_arg])?;
+    Ok(())
+}
+
+pub fn repair_worktree(repo_path: &Path, path: &Path) -> Result<Vec<String>, AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    let output = GitCli::run(repo_path, &["worktree", "repair", path_arg])?;
+    Ok(non_empty_lines(&output))
+}
+
+pub fn repair_worktree_dry_run(repo_path: &Path, path: &Path) -> Result<Vec<String>, AppError> {
+    let path_arg = worktree_path_arg(path)?;
+    let output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
+    Ok(repair_dry_run_summary(
+        path_arg,
+        path,
+        &parse_worktree_records(&output),
+    ))
+}
+
+pub fn prune_worktrees_dry_run(repo_path: &Path) -> Result<Vec<String>, AppError> {
+    let output = GitCli::run(repo_path, &["worktree", "prune", "--dry-run", "--verbose"])?;
+    let lines = non_empty_lines(&output);
+    if !lines.is_empty() {
+        return Ok(lines);
+    }
+
+    let list_output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
+    Ok(prune_dry_run_summary(&parse_worktree_records(&list_output)))
+}
+
 pub fn prune_worktrees(repo_path: &Path) -> Result<(), AppError> {
     GitCli::run(repo_path, &["worktree", "prune"])?;
     Ok(())
@@ -248,6 +318,134 @@ fn ahead_behind(path: &Path) -> Result<(u32, u32), AppError> {
     Ok((ahead, behind))
 }
 
+fn worktree_path_arg(path: &Path) -> Result<&str, AppError> {
+    let path_arg = path
+        .to_str()
+        .ok_or_else(|| AppError::InvalidPath(path.to_string_lossy().to_string()))?;
+    if path_arg.trim().is_empty() || path_arg.starts_with('-') {
+        return Err(AppError::InvalidPath(path.to_string_lossy().to_string()));
+    }
+    Ok(path_arg)
+}
+
+fn non_empty_lines(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn remove_dry_run_summary(path_arg: &str, worktree: &Worktree, force: bool) -> Vec<String> {
+    let mut lines = vec![format!("Target: {path_arg}")];
+    lines.push(format!(
+        "Branch: {}",
+        worktree.branch.as_deref().unwrap_or("detached")
+    ));
+    lines.push(format!("Status: {}", worktree.status));
+    lines.push(format!(
+        "Changes: {} modified, {} staged",
+        worktree.modified_files, worktree.staged_files
+    ));
+    if worktree.is_current {
+        lines.push("Safety: current worktree cannot be removed".to_string());
+    }
+    if worktree.is_locked {
+        let reason = worktree.lock_reason.as_deref().unwrap_or("no reason");
+        if force {
+            lines.push(format!(
+                "Safety: --force would remove a locked worktree ({reason})"
+            ));
+        } else {
+            lines.push(format!(
+                "Safety: locked worktree requires --force ({reason})"
+            ));
+        }
+    }
+    if worktree.modified_files > 0 || worktree.staged_files > 0 {
+        if force {
+            lines.push("Safety: --force would discard worktree changes".to_string());
+        } else {
+            lines.push("Safety: dirty worktree should fail without --force".to_string());
+        }
+    }
+    lines.push("Dry run only: no worktree was removed".to_string());
+    lines
+}
+fn prune_dry_run_summary(records: &[WorktreeRecord]) -> Vec<String> {
+    let prunable_count = records.iter().filter(|record| record.prunable).count();
+    if prunable_count == 0 {
+        return vec![format!(
+            "No prunable worktrees found ({} registered)",
+            records.len()
+        )];
+    }
+
+    let mut lines = vec![format!("{prunable_count} prunable worktree(s) reported")];
+    lines.extend(
+        records
+            .iter()
+            .filter(|record| record.prunable)
+            .map(|record| format!("Prunable: {}", record.path)),
+    );
+    lines
+}
+
+fn repair_dry_run_summary(path_arg: &str, path: &Path, records: &[WorktreeRecord]) -> Vec<String> {
+    let record = records
+        .iter()
+        .find(|record| record.path == path_arg || same_path(Path::new(&record.path), path));
+    let mut lines = vec![format!("Target: {path_arg}")];
+    lines.push(format!(
+        "Registered worktree: {}",
+        if record.is_some() { "yes" } else { "no" }
+    ));
+    lines.push(format!(
+        "Path exists: {}",
+        if path.exists() { "yes" } else { "no" }
+    ));
+    lines.push(format!(
+        "Git metadata exists: {}",
+        if path.join(".git").exists() {
+            "yes"
+        } else {
+            "no"
+        }
+    ));
+
+    if let Some(record) = record {
+        if let Some(branch) = &record.branch {
+            lines.push(format!("Branch: {branch}"));
+        }
+        if let Some(head) = &record.head {
+            lines.push(format!("Head: {head}"));
+        }
+        if record.is_bare {
+            lines.push("State: bare".to_string());
+        }
+        if record.is_detached {
+            lines.push("State: detached".to_string());
+        }
+        if record.is_locked {
+            lines.push(format!(
+                "State: locked{}",
+                record
+                    .lock_reason
+                    .as_ref()
+                    .map(|reason| format!(" ({reason})"))
+                    .unwrap_or_default()
+            ));
+        }
+        if record.prunable {
+            lines.push("Prune candidate: yes".to_string());
+        }
+    }
+
+    lines.push("Dry run only: no repair was performed".to_string());
+    lines
+}
+
 fn current_worktree_path(repo_path: &Path) -> Option<PathBuf> {
     let output = GitCli::run(repo_path, &["rev-parse", "--show-toplevel"]).ok()?;
     canonical_or_original(Path::new(output.trim()))
@@ -284,7 +482,10 @@ fn short_branch_name(branch: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_worktree_records;
+    use super::{
+        build_worktree, non_empty_lines, parse_worktree_records, prune_dry_run_summary,
+        remove_dry_run_summary, repair_dry_run_summary, worktree_path_arg,
+    };
 
     #[test]
     fn parses_porcelain_worktrees() {
@@ -300,5 +501,63 @@ mod tests {
         assert!(records[1].is_locked);
         assert_eq!(records[1].lock_reason.as_deref(), Some("maintenance"));
         assert!(records[1].prunable);
+    }
+
+    #[test]
+    fn trims_dry_run_summary_lines() {
+        assert_eq!(
+            non_empty_lines("\n  prune stale worktree  \n\nrepair missing gitdir\n"),
+            vec!["prune stale worktree", "repair missing gitdir"]
+        );
+    }
+
+    #[test]
+    fn describes_empty_prune_dry_run() {
+        let records =
+            parse_worktree_records("worktree /repo\nHEAD abc123\nbranch refs/heads/main\n");
+        assert_eq!(
+            prune_dry_run_summary(&records),
+            vec!["No prunable worktrees found (1 registered)"]
+        );
+    }
+
+    #[test]
+    fn rejects_option_like_worktree_paths() {
+        assert!(worktree_path_arg(std::path::Path::new("linked")).is_ok());
+        assert!(worktree_path_arg(std::path::Path::new("-bad")).is_err());
+    }
+
+    #[test]
+    fn describes_repair_dry_run_without_mutating() {
+        let records = parse_worktree_records(
+            "worktree /repo-linked\nHEAD def456\ndetached\nlocked maintenance\nprunable stale\n",
+        );
+        let lines = repair_dry_run_summary(
+            "/repo-linked",
+            std::path::Path::new("/repo-linked"),
+            &records,
+        );
+
+        assert!(lines.contains(&"Registered worktree: yes".to_string()));
+        assert!(lines.contains(&"State: detached".to_string()));
+        assert!(lines.contains(&"State: locked (maintenance)".to_string()));
+        assert!(lines.contains(&"Prune candidate: yes".to_string()));
+        assert!(lines.contains(&"Dry run only: no repair was performed".to_string()));
+    }
+
+    #[test]
+    fn describes_remove_dry_run_without_mutating() {
+        let mut records = parse_worktree_records(
+            "worktree /repo-linked\nHEAD def456\nbranch refs/heads/feature\nlocked maintenance\n",
+        );
+        let worktree = build_worktree(records.pop().expect("record"), None);
+        let lines = remove_dry_run_summary("/repo-linked", &worktree, false);
+
+        assert!(lines.contains(&"Target: /repo-linked".to_string()));
+        assert!(lines.contains(&"Branch: feature".to_string()));
+        assert!(
+            lines.contains(&"Safety: locked worktree requires --force (maintenance)".to_string())
+        );
+        assert!(lines.contains(&"Dry run only: no worktree was removed".to_string()));
     }
 }

@@ -27,3 +27,31 @@ pub fn create_tag(
 pub fn delete_tag(repo_path: String, name: String) -> Result<(), AppError> {
     tag_service::delete_tag(Path::new(&repo_path), &name)
 }
+
+#[tauri::command]
+pub fn push_tag(repo_path: String, remote: String, name: String) -> Result<(), AppError> {
+    tag_service::push_tag(Path::new(&repo_path), &remote, &name)
+}
+
+#[tauri::command]
+pub fn push_tag_dry_run(
+    repo_path: String,
+    remote: String,
+    name: String,
+) -> Result<Vec<String>, AppError> {
+    tag_service::push_tag_dry_run(Path::new(&repo_path), &remote, &name)
+}
+
+#[tauri::command]
+pub fn delete_remote_tag(repo_path: String, remote: String, name: String) -> Result<(), AppError> {
+    tag_service::delete_remote_tag(Path::new(&repo_path), &remote, &name)
+}
+
+#[tauri::command]
+pub fn delete_remote_tag_dry_run(
+    repo_path: String,
+    remote: String,
+    name: String,
+) -> Result<Vec<String>, AppError> {
+    tag_service::delete_remote_tag_dry_run(Path::new(&repo_path), &remote, &name)
+}

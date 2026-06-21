@@ -11,10 +11,13 @@ export function CommitBox() {
   const [message, setMessage] = useState("");
   const queryClient = useQueryClient();
   const commitMutation = useMutation(gitMutations.commit(queryClient, activeRepoPath));
+  const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
   const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
+  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
 
   const branchName = repoInfo?.currentBranch ?? "current branch";
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
+  const stagedCount = snapshot?.summary.stagedCount ?? 0;
 
   const handleCommit = () => {
     if (!message.trim()) return;
@@ -24,6 +27,29 @@ export function CommitBox() {
         setSelectedFile(null, false);
       },
     });
+  };
+
+  const handleAmend = () => {
+    if (!repoInfo?.headCommit) return;
+    const messageDetail = message.trim()
+      ? `replace the HEAD message with:\n\n${message.trim()}`
+      : "reuse the current HEAD message";
+    if (
+      !window.confirm(
+        `Amend HEAD on ${branchName}?\n\nThis rewrites the current branch tip and replaces the HEAD commit. It will include ${stagedCount} currently staged file${stagedCount === 1 ? "" : "s"} and ${messageDetail}.`,
+      )
+    ) {
+      return;
+    }
+    amendMutation.mutate(
+      { message: message.trim() || null },
+      {
+        onSuccess: () => {
+          setMessage("");
+          setSelectedFile(null, false);
+        },
+      },
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -66,24 +92,43 @@ export function CommitBox() {
           <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
             {commitMutation.isPending
               ? "Committing..."
+              : amendMutation.isPending
+              ? "Amending HEAD..."
               : commitMutation.isError
               ? `Error: ${commitMutation.error}`
+              : amendMutation.isError
+              ? `Error: ${amendMutation.error}`
               : commitMutation.isSuccess
               ? "Committed!"
+              : amendMutation.isSuccess
+              ? "HEAD amended!"
               : "Write a concise summary; add details on following lines."}
           </span>
-          <button
-            onClick={handleCommit}
-            disabled={!message.trim() || commitMutation.isPending}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
-              "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
-              "disabled:cursor-not-allowed disabled:opacity-40"
-            )}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Commit
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={handleAmend}
+              disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
+              title={`Amend HEAD with ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}. Leave the message blank to reuse the current HEAD message.`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border border-[color:rgba(248,81,73,0.45)] px-3 py-1.5 text-[13px] font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[color:rgba(248,81,73,0.08)]",
+                "disabled:cursor-not-allowed disabled:opacity-40"
+              )}
+            >
+              Amend HEAD
+            </button>
+            <button
+              onClick={handleCommit}
+              disabled={!message.trim() || commitMutation.isPending || amendMutation.isPending}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
+                "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
+                "disabled:cursor-not-allowed disabled:opacity-40"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Commit
+            </button>
+          </div>
         </div>
       </div>
     </div>

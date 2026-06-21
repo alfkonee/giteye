@@ -277,13 +277,13 @@ export function RebaseConflictResolver() {
   };
 
   const confirmAndAbort = () => {
-    if (window.confirm("Abort the active rebase? This returns the repository to its pre-rebase state.")) {
+    if (window.confirm("Abort the active rebase?\n\nThis returns the repository to its pre-rebase state.")) {
       actions.abortRebase.mutate();
     }
   };
 
   const confirmAndSkip = () => {
-    if (window.confirm("Skip this commit during the active rebase? The commit changes will not be applied.")) {
+    if (window.confirm("Skip this commit during the active rebase?\n\nThe commit changes will not be applied. Recovery: use the reflog/ORIG_HEAD if you need to inspect or recover the skipped state later.")) {
       actions.skipRebase.mutate();
     }
   };
@@ -292,7 +292,7 @@ export function RebaseConflictResolver() {
     if (conflictCount > 0) {
       return;
     }
-    if (window.confirm("Continue the active rebase now that no conflicts are reported?")) {
+    if (window.confirm("Continue the active rebase now that no conflicts are reported?\n\nRecovery: if the result is wrong after completion, use ORIG_HEAD/reflog to create a recovery branch or reset back.")) {
       actions.continueRebase.mutate();
     }
   };

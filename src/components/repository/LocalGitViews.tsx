@@ -1,9 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Globe2, HardDrive, Plus, RefreshCw, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud } from "lucide-react";
+import { Archive, GitBranch, Globe2, HardDrive, Pencil, Plus, RefreshCw, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatDryRunPreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
-import type { GitTag, LfsTrackPattern, Remote, StashEntry } from "../../types/git";
+import type { Branch, GitTag, LfsTrackPattern, Remote, StashEntry } from "../../types/git";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -69,29 +70,187 @@ function ActionButton({ children, disabled, onClick, tone = "default" }: { child
   );
 }
 
+function promptRemoteName(remotes: Remote[], action: string) {
+  if (remotes.length === 0) {
+    window.alert("Add a remote before using this action.");
+    return null;
+  }
+  const remote = window.prompt(`${action} remote`, remotes[0]?.name ?? "origin")?.trim();
+  return remote || null;
+}
+
+function currentOrFirstBranch(branches: Branch[], currentBranch?: string) {
+  return currentBranch || branches.find((branch) => branch.isCurrent)?.shortName || branches[0]?.shortName || "";
+}
+
+
 export function RemotesView() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const remotesQuery = useQuery(gitQueries.remotes(activeRepoPath));
+  const branchesQuery = useQuery(gitQueries.branches(activeRepoPath));
   const snapshotQuery = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
   const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
   const pullMutation = useMutation(gitMutations.pull(queryClient, activeRepoPath));
   const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
+  const addRemoteMutation = useMutation(gitMutations.addRemote(queryClient, activeRepoPath));
+  const updateRemoteMutation = useMutation(gitMutations.updateRemote(queryClient, activeRepoPath));
+  const deleteRemoteMutation = useMutation(gitMutations.deleteRemote(queryClient, activeRepoPath));
+  const pruneRemoteMutation = useMutation(gitMutations.pruneRemote(queryClient, activeRepoPath));
+  const pruneRemotePreviewMutation = useMutation(gitMutations.pruneRemoteDryRun(activeRepoPath));
+  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
+  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
+  const [remoteName, setRemoteName] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
 
   const remotes = remotesQuery.data ?? [];
+  const localBranches = (branchesQuery.data ?? []).filter((branch) => !branch.isRemote);
   const branchName = snapshotQuery.data?.repositoryInfo.currentBranch ?? undefined;
-  const isMutating = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
-  const error = errorMessage(remotesQuery.error ?? fetchMutation.error ?? pullMutation.error ?? pushMutation.error);
+  const isMutating =
+    fetchMutation.isPending ||
+    pullMutation.isPending ||
+    pushMutation.isPending ||
+    addRemoteMutation.isPending ||
+    updateRemoteMutation.isPending ||
+    deleteRemoteMutation.isPending ||
+    pruneRemoteMutation.isPending ||
+    pruneRemotePreviewMutation.isPending ||
+    pushBranchMutation.isPending ||
+    pushBranchDryRunMutation.isPending;
+  const error = errorMessage(
+    remotesQuery.error ??
+      fetchMutation.error ??
+      pullMutation.error ??
+      pushMutation.error ??
+      addRemoteMutation.error ??
+      updateRemoteMutation.error ??
+      deleteRemoteMutation.error ??
+      pruneRemoteMutation.error ??
+      pruneRemotePreviewMutation.error ??
+      pushBranchMutation.error ??
+      pushBranchDryRunMutation.error,
+  );
+
+  const addRemote = () => {
+    const name = remoteName.trim();
+    const url = remoteUrl.trim();
+    if (!name || !url) return;
+    addRemoteMutation.mutate(
+      { name, url },
+      {
+        onSuccess: () => {
+          setRemoteName("");
+          setRemoteUrl("");
+        },
+      },
+    );
+  };
+
+  const editRemote = (remote: Remote) => {
+    const fetchUrl = window.prompt(`Fetch URL for ${remote.name}`, remote.fetchUrl ?? remote.url)?.trim();
+    if (!fetchUrl) return;
+    const pushUrl = window.prompt(`Push URL for ${remote.name}`, remote.pushUrl ?? remote.fetchUrl ?? remote.url)?.trim();
+    if (pushUrl === undefined) return;
+    updateRemoteMutation.mutate({ name: remote.name, fetchUrl, pushUrl: pushUrl || null });
+  };
+
+  const deleteRemote = (remote: Remote) => {
+    if (!window.confirm(`Delete remote "${remote.name}"? This removes the remote and its remote-tracking refs from this repository.`)) return;
+    deleteRemoteMutation.mutate(remote.name);
+  };
+
+  const pruneRemote = async (remote: Remote) => {
+    let previewLines: string[];
+    try {
+      previewLines = await pruneRemotePreviewMutation.mutateAsync(remote.name);
+    } catch (error) {
+      window.alert(`Unable to preview remote prune for "${remote.name}": ${errorMessage(error)}`);
+      return;
+    }
+
+    const preview = previewLines.length > 0
+      ? previewLines.slice(0, 12).join("\n")
+      : "No stale remote-tracking refs reported by dry run.";
+    const overflow = previewLines.length > 12 ? `\n…and ${previewLines.length - 12} more` : "";
+    if (
+      !window.confirm(
+        `Prune stale remote-tracking refs from "${remote.name}"?\n\nPreview:\n${preview}${overflow}\n\nRecovery: stale tracking refs can be recreated by fetching if the branch still exists on the remote; otherwise recover from a local branch or reflog tip.`,
+      )
+    ) return;
+    pruneRemoteMutation.mutate(remote.name);
+  };
+
+  const pushBranchToRemote = async (remote: Remote, forceWithLease: boolean) => {
+    const defaultBranch = currentOrFirstBranch(localBranches, branchName);
+    const localBranch = window.prompt("Local branch to push", defaultBranch)?.trim();
+    if (!localBranch) return;
+    const remoteBranch = window.prompt("Remote branch name", localBranch)?.trim();
+    if (remoteBranch === undefined) return;
+    const target = `${remote.name}/${remoteBranch || localBranch}`;
+    const setUpstream = !forceWithLease && window.confirm(`Set "${localBranch}" to track ${target} after push?`);
+    const request = {
+      remote: remote.name,
+      localBranch,
+      remoteBranch: remoteBranch || null,
+      setUpstream,
+      forceWithLease,
+    };
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await pushBranchDryRunMutation.mutateAsync(request),
+        "Git did not report any ref updates for this push dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview push to ${target}: ${errorMessage(error)}`);
+      return;
+    }
+    const forceWarning = forceWithLease
+      ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
+      : "";
+    if (!window.confirm(`Push "${localBranch}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
+    pushBranchMutation.mutate(request);
+  };
+
+  const pushCurrentBranch = async (remote: Remote) => {
+    if (!branchName) return;
+    const request = {
+      remote: remote.name,
+      localBranch: branchName,
+      remoteBranch: branchName,
+      setUpstream: false,
+      forceWithLease: false,
+    };
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await pushBranchDryRunMutation.mutateAsync(request),
+        "Git did not report any ref updates for this push dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview push to ${remote.name}/${branchName}: ${errorMessage(error)}`);
+      return;
+    }
+    if (!window.confirm(`Push current branch "${branchName}" to ${remote.name}/${branchName}?\n\nPreview:\n${previewText}`)) return;
+    pushMutation.mutate({ remote: remote.name, branch: branchName });
+  };
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <Header
         icon={<Globe2 className="h-5 w-5" />}
         title="Remotes"
-        detail={branchName ? `Current branch: ${branchName}` : "Fetch, pull, and push configured Git remotes."}
+        detail={branchName ? `Current branch: ${branchName}` : "Fetch, pull, push, prune, and edit configured Git remotes."}
         action={<ActionButton disabled={!activeRepoPath || isMutating} onClick={() => fetchMutation.mutate(undefined)}><RefreshCw className="h-3.5 w-3.5" /> Fetch all</ActionButton>}
       />
       <main className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
+          <div className="grid gap-3 md:grid-cols-[minmax(120px,180px)_minmax(260px,1fr)_auto]">
+            <input value={remoteName} onChange={(event) => setRemoteName(event.target.value)} placeholder="Remote name (origin)" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
+            <input value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} placeholder="Remote URL" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
+            <ActionButton disabled={!activeRepoPath || isMutating || !remoteName.trim() || !remoteUrl.trim()} onClick={addRemote} tone="primary"><Plus className="h-3.5 w-3.5" />Add remote</ActionButton>
+          </div>
+        </div>
         {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
         {remotesQuery.isLoading ? <EmptyState message="Loading remotes…" /> : remotes.length === 0 ? <EmptyState message="No Git remotes configured for this repository." /> : (
           <div className="grid gap-3">
@@ -103,7 +262,12 @@ export function RemotesView() {
                 disabled={isMutating}
                 onFetch={() => fetchMutation.mutate(remote.name)}
                 onPull={() => pullMutation.mutate({ remote: remote.name, branch: branchName })}
-                onPush={() => pushMutation.mutate({ remote: remote.name, branch: branchName })}
+                onPush={() => pushCurrentBranch(remote)}
+                onPushBranch={() => pushBranchToRemote(remote, false)}
+                onForcePushBranch={() => pushBranchToRemote(remote, true)}
+                onEdit={() => editRemote(remote)}
+                onPrune={() => pruneRemote(remote)}
+                onDelete={() => deleteRemote(remote)}
               />
             ))}
           </div>
@@ -113,10 +277,34 @@ export function RemotesView() {
   );
 }
 
-function RemoteCard({ remote, branchName, disabled, onFetch, onPull, onPush }: { remote: Remote; branchName?: string; disabled: boolean; onFetch: () => void; onPull: () => void; onPush: () => void }) {
+function RemoteCard({
+  remote,
+  branchName,
+  disabled,
+  onFetch,
+  onPull,
+  onPush,
+  onPushBranch,
+  onForcePushBranch,
+  onEdit,
+  onPrune,
+  onDelete,
+}: {
+  remote: Remote;
+  branchName?: string;
+  disabled: boolean;
+  onFetch: () => void;
+  onPull: () => void;
+  onPush: () => void;
+  onPushBranch: () => void;
+  onForcePushBranch: () => void;
+  onEdit: () => void;
+  onPrune: () => void;
+  onDelete: () => void;
+}) {
   return (
     <article className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 font-semibold"><Globe2 className="h-4 w-4 text-[var(--color-accent)]" />{remote.name}</h2>
           <dl className="mt-3 grid gap-2 text-sm">
@@ -124,10 +312,15 @@ function RemoteCard({ remote, branchName, disabled, onFetch, onPull, onPush }: {
             <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-2"><dt className="text-[var(--color-text-muted)]">Push</dt><dd className="truncate font-mono text-xs text-[var(--color-text-secondary)]">{remote.pushUrl ?? remote.url}</dd></div>
           </dl>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <ActionButton disabled={disabled} onClick={onFetch}><RefreshCw className="h-3.5 w-3.5" />Fetch</ActionButton>
           <ActionButton disabled={disabled || !branchName} onClick={onPull}><DownloadCloud className="h-3.5 w-3.5" />Pull</ActionButton>
-          <ActionButton disabled={disabled || !branchName} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push</ActionButton>
+          <ActionButton disabled={disabled || !branchName} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push current</ActionButton>
+          <ActionButton disabled={disabled} onClick={onPushBranch}><GitBranch className="h-3.5 w-3.5" />Push branch</ActionButton>
+          <ActionButton disabled={disabled} onClick={onForcePushBranch} tone="danger"><UploadCloud className="h-3.5 w-3.5" />Force lease</ActionButton>
+          <ActionButton disabled={disabled} onClick={onPrune}>Prune</ActionButton>
+          <ActionButton disabled={disabled} onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</ActionButton>
+          <ActionButton disabled={disabled} onClick={onDelete} tone="danger"><Trash2 className="h-3.5 w-3.5" />Delete</ActionButton>
         </div>
       </div>
     </article>
@@ -209,15 +402,36 @@ export function TagsView() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const tagsQuery = useQuery(gitQueries.tags(activeRepoPath));
+  const remotesQuery = useQuery(gitQueries.remotes(activeRepoPath));
   const createTag = useMutation(gitMutations.createTag(queryClient, activeRepoPath));
   const deleteTag = useMutation(gitMutations.deleteTag(queryClient, activeRepoPath));
+  const pushTag = useMutation(gitMutations.pushTag(queryClient, activeRepoPath));
+  const deleteRemoteTag = useMutation(gitMutations.deleteRemoteTag(queryClient, activeRepoPath));
+  const pushTagDryRun = useMutation(gitMutations.pushTagDryRun(activeRepoPath));
+  const deleteRemoteTagDryRun = useMutation(gitMutations.deleteRemoteTagDryRun(activeRepoPath));
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
   const [message, setMessage] = useState("");
 
   const tags = tagsQuery.data ?? [];
-  const isMutating = createTag.isPending || deleteTag.isPending;
-  const error = errorMessage(tagsQuery.error ?? createTag.error ?? deleteTag.error);
+  const remotes = remotesQuery.data ?? [];
+  const isMutating =
+    createTag.isPending ||
+    deleteTag.isPending ||
+    pushTag.isPending ||
+    pushTagDryRun.isPending ||
+    deleteRemoteTag.isPending ||
+    deleteRemoteTagDryRun.isPending;
+  const error = errorMessage(
+    tagsQuery.error ??
+      remotesQuery.error ??
+      createTag.error ??
+      deleteTag.error ??
+      pushTag.error ??
+      pushTagDryRun.error ??
+      deleteRemoteTag.error ??
+      deleteRemoteTagDryRun.error,
+  );
   const sortedTags = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), [tags]);
 
   const create = () => {
@@ -236,9 +450,43 @@ export function TagsView() {
     );
   };
 
+  const pushTagToRemote = async (tag: GitTag) => {
+    const remote = promptRemoteName(remotes, `Push "${tag.name}" to`);
+    if (!remote) return;
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await pushTagDryRun.mutateAsync({ remote, name: tag.name }),
+        "Git did not report any ref updates for this tag push dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview tag push for "${tag.name}": ${errorMessage(error)}`);
+      return;
+    }
+    if (!window.confirm(`Push tag "${tag.name}" to ${remote}?\n\nPreview:\n${previewText}`)) return;
+    pushTag.mutate({ remote, name: tag.name });
+  };
+
+  const deleteTagFromRemote = async (tag: GitTag) => {
+    const remote = promptRemoteName(remotes, `Delete "${tag.name}" from`);
+    if (!remote) return;
+    let previewText: string;
+    try {
+      previewText = formatDryRunPreview(
+        await deleteRemoteTagDryRun.mutateAsync({ remote, name: tag.name }),
+        "Git did not report a ref deletion for this remote tag dry run.",
+      );
+    } catch (error) {
+      window.alert(`Unable to preview remote tag deletion for "${tag.name}": ${errorMessage(error)}`);
+      return;
+    }
+    if (!window.confirm(`Delete remote tag "${tag.name}" from ${remote}?\n\nPreview:\n${previewText}\n\nThis does not delete the local tag. Recovery: push the local tag again, or recreate it at the intended commit before pushing.`)) return;
+    deleteRemoteTag.mutate({ remote, name: tag.name });
+  };
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-      <Header icon={<TagIcon className="h-5 w-5" />} title="Tags" detail="Create lightweight or annotated tags and delete obsolete local tags." />
+      <Header icon={<TagIcon className="h-5 w-5" />} title="Tags" detail="Create local tags, push tags, and delete obsolete local or remote tags." />
       <main className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
           <div className="grid gap-3 md:grid-cols-[1fr_1fr_1.4fr_auto]">
@@ -251,7 +499,18 @@ export function TagsView() {
         {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
         {tagsQuery.isLoading ? <EmptyState message="Loading tags…" /> : sortedTags.length === 0 ? <EmptyState message="No local tags in this repository." /> : (
           <div className="grid gap-3">
-            {sortedTags.map((tag) => <TagCard key={tag.name} tag={tag} disabled={isMutating} onDelete={() => { if (window.confirm(`Delete tag ${tag.name}?`)) deleteTag.mutate(tag.name); }} />)}
+            {sortedTags.map((tag) => (
+              <TagCard
+                key={tag.name}
+                tag={tag}
+                disabled={isMutating}
+                onPush={() => pushTagToRemote(tag)}
+                onDeleteRemote={() => deleteTagFromRemote(tag)}
+                onDelete={() => {
+                  if (window.confirm(`Delete local tag "${tag.name}"?`)) deleteTag.mutate(tag.name);
+                }}
+              />
+            ))}
           </div>
         )}
       </main>
@@ -371,16 +630,32 @@ function LfsPatternRow({ trackedPattern, disabled, onUntrack }: { trackedPattern
 }
 
 
-function TagCard({ tag, disabled, onDelete }: { tag: GitTag; disabled: boolean; onDelete: () => void }) {
+function TagCard({
+  tag,
+  disabled,
+  onPush,
+  onDeleteRemote,
+  onDelete,
+}: {
+  tag: GitTag;
+  disabled: boolean;
+  onPush: () => void;
+  onDeleteRemote: () => void;
+  onDelete: () => void;
+}) {
   return (
     <article className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2"><TagIcon className="h-4 w-4 text-[var(--color-accent)]" /><h2 className="font-semibold">{tag.name}</h2><span className="rounded-full border border-[var(--color-border-muted)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">{tag.annotated ? "annotated" : "lightweight"}</span></div>
           <p className="mt-2 truncate text-sm text-[var(--color-text-secondary)]">{tag.subject ?? "No tag subject"}</p>
           <p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{tag.shortHash}{tag.tagger ? ` · ${tag.tagger}` : ""}{tag.timestamp ? ` · ${formatRelativeTime(tag.timestamp)}` : ""}</p>
         </div>
-        <ActionButton disabled={disabled} onClick={onDelete} tone="danger"><Trash2 className="h-3.5 w-3.5" />Delete</ActionButton>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <ActionButton disabled={disabled} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push</ActionButton>
+          <ActionButton disabled={disabled} onClick={onDeleteRemote} tone="danger">Delete remote</ActionButton>
+          <ActionButton disabled={disabled} onClick={onDelete} tone="danger"><Trash2 className="h-3.5 w-3.5" />Delete local</ActionButton>
+        </div>
       </div>
     </article>
   );

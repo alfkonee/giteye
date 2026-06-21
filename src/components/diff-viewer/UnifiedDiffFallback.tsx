@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MouseEvent } from "react";
 import { cn } from "../../lib/cn";
 import { FileCode2 } from "lucide-react";
+import type { DiffHunkActionContext, DiffHunkActionHandler } from "./DiffViewer.types";
 
 
 export interface DiffLineSelection {
@@ -11,10 +12,20 @@ export interface DiffLineSelection {
 interface UnifiedDiffFallbackProps {
   diffText: string;
   filePath: string;
+  oldFilePath?: string;
   mode: "unified" | "split";
   focusedFilePath?: string;
+  isStaged?: boolean;
+  isHunkActionPending?: boolean;
   onLineSelect?: (selection: DiffLineSelection) => void;
   selectedLine?: DiffLineSelection | null;
+  onStageHunk?: DiffHunkActionHandler;
+  onUnstageHunk?: DiffHunkActionHandler;
+  onDiscardHunk?: DiffHunkActionHandler;
+}
+
+interface DiffHunk extends DiffHunkActionContext {
+  id: string;
 }
 
 interface DiffLine {
@@ -24,19 +35,46 @@ interface DiffLine {
   lineNumber?: number;
   oldLineNumber?: number;
   side?: "LEFT" | "RIGHT";
+  hunk?: DiffHunk;
 }
 
-function parseDiff(diffText: string): DiffLine[] {
+function parseDiff(diffText: string, fallbackFilePath: string, oldFilePath?: string, isStaged?: boolean): DiffLine[] {
   const lines: DiffLine[] = [];
   let oldLine = 0;
   let newLine = 0;
   let currentFilePath: string | undefined;
+  let fileHeaderLines: string[] = [];
+  let currentHunk: DiffHunk | null = null;
+  let currentHunkLines: string[] = [];
+  let hunkIndex = 0;
+
+  const finishHunk = () => {
+    if (!currentHunk) return;
+    currentHunk.patchText = [...fileHeaderLines, ...currentHunkLines].join("\n");
+    currentHunk = null;
+    currentHunkLines = [];
+  };
+
+  const startFileHeader = (line: string) => {
+    finishHunk();
+    const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    currentFilePath = match ? normalizeDiffPath(match[2]) : currentFilePath;
+    fileHeaderLines = [line];
+    lines.push({ type: "header", content: line, filePath: currentFilePath });
+  };
+
+  const appendFileHeader = (line: string) => {
+    fileHeaderLines.push(line);
+    lines.push({ type: "header", content: line, filePath: currentFilePath });
+  };
+
+  const appendHunkLine = (line: string) => {
+    if (currentHunk) currentHunkLines.push(line);
+  };
 
   for (const line of diffText.split("\n")) {
     if (line.startsWith("diff --git")) {
-      const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-      currentFilePath = match ? normalizeDiffPath(match[2]) : currentFilePath;
-      lines.push({ type: "header", content: line, filePath: currentFilePath });
+      startFileHeader(line);
     } else if (
       line.startsWith("index ") ||
       line.startsWith("---") ||
@@ -49,21 +87,37 @@ function parseDiff(diffText: string): DiffLine[] {
       line.startsWith("rename ") ||
       line.startsWith("copy ")
     ) {
-      lines.push({ type: "header", content: line, filePath: currentFilePath });
+      appendFileHeader(line);
     } else if (line.startsWith("@@")) {
+      finishHunk();
       const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
-      if (match) {
-        oldLine = parseInt(match[1], 10);
-        newLine = parseInt(match[2], 10);
-      }
-      lines.push({ type: "hunk", content: line, filePath: currentFilePath });
+      const parsedOldStart = match ? parseInt(match[1], 10) : undefined;
+      const parsedNewStart = match ? parseInt(match[2], 10) : undefined;
+      if (parsedOldStart !== undefined) oldLine = parsedOldStart;
+      if (parsedNewStart !== undefined) newLine = parsedNewStart;
+      const hunkFilePath = currentFilePath ?? fallbackFilePath;
+      currentHunk = {
+        id: `${hunkFilePath}:${parsedOldStart ?? "?"}:${parsedNewStart ?? "?"}:${hunkIndex++}`,
+        filePath: hunkFilePath,
+        oldFilePath,
+        header: line,
+        oldStart: parsedOldStart,
+        newStart: parsedNewStart,
+        patchText: "",
+        staged: isStaged,
+      };
+      currentHunkLines = [line];
+      lines.push({ type: "hunk", content: line, filePath: currentFilePath, hunk: currentHunk });
     } else if (line.startsWith("+")) {
+      appendHunkLine(line);
       lines.push({ type: "add", content: line, filePath: currentFilePath, lineNumber: newLine, side: "RIGHT" });
       newLine++;
     } else if (line.startsWith("-")) {
+      appendHunkLine(line);
       lines.push({ type: "remove", content: line, filePath: currentFilePath, oldLineNumber: oldLine, side: "LEFT" });
       oldLine++;
     } else {
+      appendHunkLine(line);
       lines.push({
         type: "context",
         content: line,
@@ -77,6 +131,7 @@ function parseDiff(diffText: string): DiffLine[] {
     }
   }
 
+  finishHunk();
   return lines;
 }
 
@@ -95,18 +150,80 @@ function diffHeaderMatchesFile(header: string, filePath: string | undefined) {
   const normalized = normalizeDiffPath(filePath);
   return header.includes(` a/${normalized}`) || header.includes(` b/${normalized}`);
 }
+interface HunkActionButtonProps {
+  hunk: DiffHunk;
+  label: string;
+  disabled?: boolean;
+  tone?: "default" | "danger";
+  onAction?: DiffHunkActionHandler;
+}
+
+function HunkActionButton({ hunk, label, disabled, tone = "default", onAction }: HunkActionButtonProps) {
+  if (!onAction) return null;
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void onAction(hunk);
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={handleClick}
+      className={cn(
+        "rounded border px-2 py-0.5 text-[10px] font-semibold leading-4 transition-colors disabled:cursor-wait disabled:opacity-50",
+        tone === "danger"
+          ? "border-[color:rgba(239,68,68,0.45)] bg-[color:rgba(239,68,68,0.10)] text-[var(--color-deleted)] hover:bg-[color:rgba(239,68,68,0.18)]"
+          : "border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/18",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CopyHunkPatchButton({ hunk }: { hunk: DiffHunk }) {
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void navigator.clipboard?.writeText(hunk.patchText);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[10px] font-semibold leading-4 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+      title="Copy hunk patch"
+    >
+      Copy patch
+    </button>
+  );
+}
+
 
 
 export function UnifiedDiffFallback({
   diffText,
   filePath,
+  oldFilePath,
   mode: _mode,
   focusedFilePath,
+  isStaged,
+  isHunkActionPending,
   onLineSelect,
   selectedLine,
+  onStageHunk,
+  onUnstageHunk,
+  onDiscardHunk,
 }: UnifiedDiffFallbackProps) {
   const focusedRowRef = useRef<HTMLDivElement | null>(null);
-  const lines = useMemo(() => parseDiff(diffText), [diffText]);
+  const lines = useMemo(
+    () => parseDiff(diffText, filePath, oldFilePath, isStaged),
+    [diffText, filePath, oldFilePath, isStaged],
+  );
 
   useEffect(() => {
     focusedRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -161,6 +278,7 @@ export function UnifiedDiffFallback({
                 line.side === selectedLine.side &&
                 selectableLine === selectedLine.line,
             );
+            const canActOnHunk = Boolean(line.hunk && (onStageHunk || onUnstageHunk || onDiscardHunk));
 
             return (
             <div
@@ -191,9 +309,17 @@ export function UnifiedDiffFallback({
               >
                 {line.type === "add" ? "+" : line.type === "remove" ? "−" : " "}
               </span>
-              <span className="w-full px-3 whitespace-pre">
+              <span className={cn("min-w-0 flex-1 px-3 whitespace-pre", canActOnHunk && "pr-2")}>
                 {line.content || " "}
               </span>
+              {line.hunk && canActOnHunk ? (
+                <div className="sticky right-0 ml-4 flex shrink-0 items-center gap-1 bg-inherit px-2 py-0.5 font-sans whitespace-normal">
+                  <CopyHunkPatchButton hunk={line.hunk} />
+                  <HunkActionButton hunk={line.hunk} label="Stage" disabled={isHunkActionPending} onAction={onStageHunk} />
+                  <HunkActionButton hunk={line.hunk} label="Unstage" disabled={isHunkActionPending} onAction={onUnstageHunk} />
+                  <HunkActionButton hunk={line.hunk} label="Discard" disabled={isHunkActionPending} tone="danger" onAction={onDiscardHunk} />
+                </div>
+              ) : null}
             </div>
             );
           })}

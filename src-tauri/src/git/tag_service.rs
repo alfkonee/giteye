@@ -60,6 +60,118 @@ pub fn delete_tag(repo_path: &Path, name: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+pub fn push_tag(repo_path: &Path, remote: &str, name: &str) -> Result<(), AppError> {
+    let args = push_tag_args(repo_path, remote, name, false)?;
+    run_git(repo_path, &args)?;
+    Ok(())
+}
+
+pub fn push_tag_dry_run(
+    repo_path: &Path,
+    remote: &str,
+    name: &str,
+) -> Result<Vec<String>, AppError> {
+    let args = push_tag_args(repo_path, remote, name, true)?;
+    let output = run_git(repo_path, &args)?;
+    let lines = non_empty_lines(&output);
+    if lines.is_empty() {
+        Ok(vec![format!("Tag {name} would not change on {remote}")])
+    } else {
+        Ok(lines)
+    }
+}
+
+pub fn delete_remote_tag(repo_path: &Path, remote: &str, name: &str) -> Result<(), AppError> {
+    let args = delete_remote_tag_args(repo_path, remote, name, false)?;
+    run_git(repo_path, &args)?;
+    Ok(())
+}
+
+pub fn delete_remote_tag_dry_run(
+    repo_path: &Path,
+    remote: &str,
+    name: &str,
+) -> Result<Vec<String>, AppError> {
+    let args = delete_remote_tag_args(repo_path, remote, name, true)?;
+    let output = run_git(repo_path, &args)?;
+    let lines = non_empty_lines(&output);
+    if lines.is_empty() {
+        Ok(vec![format!("Remote tag {remote}/{name} would not change")])
+    } else {
+        Ok(lines)
+    }
+}
+
+fn push_tag_args(
+    repo_path: &Path,
+    remote: &str,
+    name: &str,
+    dry_run: bool,
+) -> Result<Vec<String>, AppError> {
+    let remote = required_git_arg(remote, "remote name")?;
+    let name = required_tag_name(repo_path, name)?;
+    let refspec = format!("refs/tags/{name}:refs/tags/{name}");
+    Ok(push_args(remote, refspec, dry_run))
+}
+
+fn delete_remote_tag_args(
+    repo_path: &Path,
+    remote: &str,
+    name: &str,
+    dry_run: bool,
+) -> Result<Vec<String>, AppError> {
+    let remote = required_git_arg(remote, "remote name")?;
+    let name = required_tag_name(repo_path, name)?;
+    let refspec = format!(":refs/tags/{name}");
+    Ok(push_args(remote, refspec, dry_run))
+}
+
+fn push_args(remote: &str, refspec: String, dry_run: bool) -> Vec<String> {
+    let mut args = vec!["push".to_string()];
+    if dry_run {
+        args.push("--dry-run".to_string());
+        args.push("--porcelain".to_string());
+    }
+    args.push(remote.to_string());
+    args.push(refspec);
+    args
+}
+
+fn required_tag_name<'a>(repo_path: &Path, name: &'a str) -> Result<&'a str, AppError> {
+    let name = required_git_arg(name, "tag name")?;
+    let ref_name = format!("refs/tags/{name}");
+    GitCli::run(repo_path, &["check-ref-format", &ref_name])
+        .map_err(|_| AppError::GitError(format!("tag name is not a valid Git ref name: {name}")))?;
+    Ok(name)
+}
+
+fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::GitError(format!("{label} is required")));
+    }
+    if value.starts_with('-') {
+        return Err(AppError::GitError(format!(
+            "{label} must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
+
+fn run_git(repo_path: &Path, args: &[String]) -> Result<String, AppError> {
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    GitCli::run(repo_path, &refs)
+}
+
+fn non_empty_lines(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 fn parse_tag_line(line: &str) -> Option<GitTag> {
     let mut parts = line.split('\0');
     let name = parts.next()?.to_string();
@@ -201,5 +313,70 @@ mod tests {
             .expect("list tags")
             .iter()
             .all(|tag| tag.name != "v-test"));
+    }
+
+    #[test]
+    fn pushes_and_deletes_remote_tag_with_explicit_refspec() {
+        let source = TestRepo::new("remote-source");
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let remote_path = std::env::temp_dir().join(format!("giteye-tag-remote-{nonce}.git"));
+        run_git(
+            &source.path,
+            &[
+                "clone",
+                "--bare",
+                ".",
+                remote_path.to_str().expect("remote path"),
+            ],
+        );
+        let remote = TestRepo { path: remote_path };
+        run_git(
+            &source.path,
+            &[
+                "remote",
+                "add",
+                "origin",
+                remote.path.to_str().expect("remote path"),
+            ],
+        );
+
+        create_tag(&source.path, "v-remote", None, None).expect("create tag");
+        let push_preview =
+            push_tag_dry_run(&source.path, "origin", "v-remote").expect("preview push tag");
+        assert!(push_preview.iter().any(|line| line.contains("v-remote")));
+        assert!(GitCli::run(
+            &remote.path,
+            &["rev-parse", "--verify", "refs/tags/v-remote"]
+        )
+        .is_err());
+        push_tag(&source.path, "origin", "v-remote").expect("push tag");
+        assert!(Command::new("git")
+            .args(["rev-parse", "--verify", "refs/tags/v-remote"])
+            .current_dir(&remote.path)
+            .output()
+            .expect("verify remote tag")
+            .status
+            .success());
+
+        let delete_preview = delete_remote_tag_dry_run(&source.path, "origin", "v-remote")
+            .expect("preview delete remote tag");
+        assert!(delete_preview.iter().any(|line| line.contains("v-remote")));
+        assert!(GitCli::run(
+            &remote.path,
+            &["rev-parse", "--verify", "refs/tags/v-remote"]
+        )
+        .is_ok());
+
+        delete_remote_tag(&source.path, "origin", "v-remote").expect("delete remote tag");
+        assert!(!Command::new("git")
+            .args(["rev-parse", "--verify", "refs/tags/v-remote"])
+            .current_dir(&remote.path)
+            .output()
+            .expect("verify deleted remote tag")
+            .status
+            .success());
     }
 }
