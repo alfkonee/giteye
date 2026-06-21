@@ -22,6 +22,7 @@ import type {
   ActivityItem,
   CheckRunSummary,
   PullRequestSummary,
+  PullRequestFileDiff,
   ReviewCommentSummary,
   ReviewSummary,
 } from "../../types/git";
@@ -29,6 +30,9 @@ import type {
 interface ReviewRow {
   name: string;
   state: string;
+  body: string;
+  age: string;
+  url: string | null;
   isAuthor: boolean;
 }
 
@@ -42,13 +46,35 @@ interface ActivityRow {
   author: string;
   message: string;
   age: string;
+  url: string | null;
 }
 
 type ReviewStudioTab = "conversations" | "files" | "checks";
 type MergeMethod = "merge" | "rebase" | "squash";
 
-const isMergeMethod = (value: string): value is MergeMethod =>
-  ["merge", "rebase", "squash"].includes(value);
+
+const mergeMethodLabels: Record<MergeMethod, string> = {
+  merge: "Create merge commit",
+  squash: "Squash commits",
+  rebase: "Rebase and merge",
+};
+
+const formatErrorMessage = (error: unknown) => {
+  if (!error) return null;
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object") {
+    const value = error as { error?: unknown; message?: unknown };
+    if (typeof value.error === "string") return value.error;
+    if (typeof value.message === "string") return value.message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+};
 
 const formatRelative = (value: string | null | undefined) => {
   if (!value) return "recently";
@@ -85,25 +111,61 @@ const statusFromCheck = (check: CheckRunSummary): CheckRow => {
 const reviewFromSummary = (
   review: ReviewSummary,
   author: string | null | undefined,
-): ReviewRow => ({
-  name: review.author ?? "GitHub reviewer",
-  state: stateLabel(review.state),
-  isAuthor: Boolean(author && review.author === author),
-});
+): ReviewRow => {
+  const state = stateLabel(review.state);
+  const body = review.body?.trim() || `Submitted a ${state.toLowerCase()} review.`;
+  return {
+    name: review.author ?? "GitHub reviewer",
+    state,
+    body,
+    age: formatRelative(review.submittedAt),
+    url: review.url,
+    isAuthor: Boolean(author && review.author === author),
+  };
+};
 
 const activityFromSummary = (activity: ActivityItem): ActivityRow => ({
   author: activity.actor ?? "GitHub",
-  message: activity.title || activity.kind,
+  message: activity.title?.trim() || stateLabel(activity.kind),
   age: formatRelative(activity.createdAt),
+  url: activity.url,
 });
 
 const commentFromSummary = (comment: ReviewCommentSummary): ActivityRow => ({
   author: comment.author ?? "GitHub reviewer",
   message: comment.path
-    ? `${comment.path}${comment.line ? `:${comment.line}` : ""} — ${comment.body}`
-    : comment.body,
+    ? `${comment.path}${comment.line ? `:${comment.line}` : ""} — ${comment.body || "No comment body returned."}`
+    : comment.body || "No comment body returned.",
   age: formatRelative(comment.createdAt),
+  url: comment.url,
 });
+
+const filesFromDiff = (
+  diffText: string | null | undefined,
+): PullRequestFileDiff[] => {
+  if (!diffText) return [];
+  const files: PullRequestFileDiff[] = [];
+  let current: PullRequestFileDiff | null = null;
+  for (const line of diffText.split("\n")) {
+    const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+    if (match) {
+      current = {
+        path: match[2],
+        additions: 0,
+        deletions: 0,
+        status: "modified",
+      };
+      files.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("new file mode")) current.status = "added";
+    else if (line.startsWith("deleted file mode")) current.status = "deleted";
+    else if (line.startsWith("+") && !line.startsWith("+++")) current.additions += 1;
+    else if (line.startsWith("-") && !line.startsWith("---")) current.deletions += 1;
+  }
+  return files;
+};
 
 function EmptyState({ message }: { message: string }) {
   return (
@@ -162,6 +224,9 @@ export function DiffReviewStudio() {
     useState<DiffLineSelection | null>(null);
   const [lineCommentBody, setLineCommentBody] = useState("");
   const [activeTab, setActiveTab] = useState<ReviewStudioTab>("conversations");
+  const [mergeMethod, setMergeMethod] = useState<MergeMethod>("squash");
+  const [finalizeWithAdmin, setFinalizeWithAdmin] = useState(false);
+  const [deleteHeadBranch, setDeleteHeadBranch] = useState(true);
 
   const selectedPrNumber = selectedPullRequestId
     ? Number(selectedPullRequestId)
@@ -256,9 +321,18 @@ export function DiffReviewStudio() {
       ? "text-[var(--color-success)]"
       : "text-[var(--color-text-muted)]";
   const commentCount = activityRows.length + reviewRows.length;
-  const changedFiles = prDiff?.files ?? [];
+  const derivedChangedFiles = useMemo(
+    () => filesFromDiff(prDiff?.diffText),
+    [prDiff?.diffText],
+  );
+  const changedFiles =
+    prDiff?.files && prDiff.files.length > 0
+      ? prDiff.files
+      : derivedChangedFiles;
   const firstChangedFilePath = changedFiles[0]?.path ?? null;
+  const diffErrorMessage = formatErrorMessage(prDiffError);
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
+  const prFetchWarning = prDiff?.fetchError ?? null;
   const selectedFile =
     changedFiles.find((file) => file.path === selectedFilePath) ??
     changedFiles[0] ??
@@ -331,20 +405,21 @@ export function DiffReviewStudio() {
   };
   const finalizePullRequest = () => {
     if (!currentPr) return;
-    const input = window
-      .prompt("Merge method: merge, squash, or rebase", "squash")
-      ?.trim()
-      .toLowerCase();
-    if (!input) return;
-    if (!isMergeMethod(input)) {
-      window.alert("Choose one of: merge, squash, or rebase.");
-      return;
-    }
+    const bypassCopy = finalizeWithAdmin
+      ? " This will ask GitHub to bypass required checks/reviews with --admin."
+      : "";
     if (
-      !window.confirm(`Finalize PR #${currentPr.number} with ${input} merge?`)
+      !window.confirm(
+        `Complete PR #${currentPr.number} with ${mergeMethodLabels[mergeMethod]}?${bypassCopy}`,
+      )
     )
       return;
-    mergePrMutation.mutate({ number: currentPr.number, method: input });
+    mergePrMutation.mutate({
+      number: currentPr.number,
+      method: mergeMethod,
+      admin: finalizeWithAdmin,
+      deleteBranch: deleteHeadBranch,
+    });
   };
   const closePullRequest = () => {
     if (!currentPr) return;
@@ -460,8 +535,10 @@ export function DiffReviewStudio() {
                   prDiffLoading
                     ? "Loading PR file diff…"
                     : diffUnavailable
-                      ? String(prDiffError)
-                      : "No changed files returned for this pull request."
+                      ? (diffErrorMessage ?? "GitHub diff failed to load.")
+                      : prFetchWarning
+                        ? prFetchWarning
+                        : "No changed files returned for this pull request."
                 }
               />
             ) : (
@@ -541,7 +618,12 @@ export function DiffReviewStudio() {
         </div>
         {reviewActionError ? (
           <div className="border-b border-[var(--color-danger)]/30 bg-[color:rgba(248,81,73,0.08)] px-4 py-2 text-xs text-[var(--color-danger)]">
-            {String(reviewActionError)}
+            {formatErrorMessage(reviewActionError)}
+          </div>
+        ) : null}
+        {diffErrorMessage || prFetchWarning ? (
+          <div className="border-b border-[var(--color-danger)]/30 bg-[color:rgba(248,81,73,0.08)] px-4 py-2 text-xs text-[var(--color-danger)]">
+            {diffErrorMessage ?? prFetchWarning}
           </div>
         ) : null}
         {activeTab === "files" ? (
@@ -579,9 +661,9 @@ export function DiffReviewStudio() {
                       currentPr
                         ? prDiffLoading
                           ? "Loading live pull request diff…"
-                          : prDiffError
-                            ? String(prDiffError)
-                            : "No diff text returned for this pull request."
+                          : diffErrorMessage
+                            ? diffErrorMessage
+                            : (prFetchWarning ?? "No diff text returned for this pull request.")
                         : providerDetail
                     }
                   />
@@ -709,13 +791,6 @@ export function DiffReviewStudio() {
                   </button>
                   <button
                     disabled={!canMutateCurrentPr || reviewActionPending}
-                    onClick={finalizePullRequest}
-                    className="rounded-md bg-[var(--color-success)] px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Finalize
-                  </button>
-                  <button
-                    disabled={!canMutateCurrentPr || reviewActionPending}
                     onClick={closePullRequest}
                     className="rounded-md border border-[var(--color-danger)]/50 px-2 py-1 text-xs text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -739,29 +814,54 @@ export function DiffReviewStudio() {
                         key={`${review.name}-${review.state}`}
                         className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3 text-sm"
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-3">
                           <span className="font-medium">{review.name}</span>
                           <span className="text-xs text-[var(--color-text-muted)]">
-                            {review.state}
+                            {review.age} · {review.state}
                           </span>
                         </div>
+                        <p className="mt-2 whitespace-pre-wrap text-[var(--color-text-secondary)]">
+                          {review.body}
+                        </p>
+                        {review.url ? (
+                          <button
+                            type="button"
+                            onClick={() => window.open(review.url!, "_blank")}
+                            className="mt-2 text-xs text-[var(--color-accent)]"
+                          >
+                            Open review
+                          </button>
+                        ) : null}
                       </div>
                     ))
                   : null}
                 {activityRows.length > 0 ? (
                   activityRows.map((activity) => (
-                    <p
+                    <div
                       key={`${activity.author}-${activity.message}`}
-                      className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3 text-sm text-[var(--color-text-secondary)]"
+                      className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3 text-sm"
                     >
-                      <b className="text-[var(--color-text-primary)]">
-                        {activity.author}
-                      </b>{" "}
-                      <span className="text-xs text-[var(--color-text-muted)]">
-                        {activity.age}
-                      </span>{" "}
-                      {activity.message}
-                    </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <b className="text-[var(--color-text-primary)]">
+                          {activity.author}
+                        </b>
+                        <span className="text-xs text-[var(--color-text-muted)]">
+                          {activity.age}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-[var(--color-text-secondary)]">
+                        {activity.message}
+                      </p>
+                      {activity.url ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(activity.url!, "_blank")}
+                          className="mt-2 text-xs text-[var(--color-accent)]"
+                        >
+                          Open on GitHub
+                        </button>
+                      ) : null}
+                    </div>
                   ))
                 ) : reviewRows.length === 0 ? (
                   <EmptyState message="No review activity returned by GitHub." />
@@ -770,6 +870,68 @@ export function DiffReviewStudio() {
             </section>
           </div>
         )}
+        {currentPr ? (
+          <section className="border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3">
+            <div className="grid gap-3 text-xs lg:grid-cols-[1.1fr_1fr_auto]">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  Complete pull request
+                </h3>
+                <p className="mt-1 text-[var(--color-text-muted)]">
+                  {currentPr.headRefName ?? "head unavailable"} into{" "}
+                  {currentPr.baseRefName ?? "base unavailable"} · Review{" "}
+                  {currentPr.reviewDecision ?? "pending"} · Merge{" "}
+                  {currentPr.mergeStateStatus ?? "unknown"}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {(["squash", "merge", "rebase"] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setMergeMethod(method)}
+                      className={`rounded-md border px-2 py-1.5 text-left ${mergeMethod === method ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/20 text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] text-[var(--color-text-secondary)]"}`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[var(--color-text-muted)]">
+                  {mergeMethodLabels[mergeMethod]}
+                </p>
+              </div>
+              <div className="flex min-w-[220px] flex-col gap-2">
+                <label className="inline-flex items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={finalizeWithAdmin}
+                    onChange={(event) => setFinalizeWithAdmin(event.target.checked)}
+                  />
+                  Bypass required checks/reviews with admin override
+                </label>
+                <label className="inline-flex items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={deleteHeadBranch}
+                    onChange={(event) => setDeleteHeadBranch(event.target.checked)}
+                  />
+                  Delete head branch after merge
+                </label>
+                <button
+                  disabled={!canMutateCurrentPr || reviewActionPending}
+                  onClick={finalizePullRequest}
+                  className="rounded-md bg-[var(--color-success)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Complete PR
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+              Admin bypass maps to <code>gh pr merge --admin</code>; GitHub will reject it unless the authenticated account can override branch protection.
+            </p>
+          </section>
+        ) : null}
       </main>
 
       <aside className="min-h-0 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
@@ -799,20 +961,13 @@ export function DiffReviewStudio() {
                   Merge: {currentPr.mergeStateStatus ?? "unknown"}
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                <button
-                  disabled={!canMutateCurrentPr || reviewActionPending}
-                  onClick={finalizePullRequest}
-                  className="rounded-md bg-[var(--color-success)] px-2 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Finalize
-                </button>
+              <div className="mt-4 text-xs">
                 <button
                   disabled={!canMutateCurrentPr || reviewActionPending}
                   onClick={closePullRequest}
-                  className="rounded-md border border-[var(--color-danger)]/50 px-2 py-1.5 text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-md border border-[var(--color-danger)]/50 px-2 py-1.5 text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Close PR
+                  Close PR without merging
                 </button>
               </div>
               <div className="mt-4 space-y-3 border-l border-[var(--color-border)] pl-4 text-sm">

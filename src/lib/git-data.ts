@@ -150,6 +150,8 @@ export interface EditPullRequestLabelsRequest {
 export interface MergePullRequestRequest {
   number: number;
   method: "merge" | "rebase" | "squash";
+  admin?: boolean;
+  deleteBranch?: boolean;
 }
 
 export interface GenerateSshKeyRequest {
@@ -2832,12 +2834,15 @@ export const gitMutations = {
 
   mergePullRequest: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ number, method }: MergePullRequestRequest) =>
-        gitApi.mergePullRequest(repoPath!, number, method),
-      onMutate: ({ number, method }) =>
+      mutationFn: ({ number, method, admin, deleteBranch }: MergePullRequestRequest) =>
+        gitApi.mergePullRequest(repoPath!, number, method, {
+          admin: admin ?? false,
+          deleteBranch: deleteBranch ?? true,
+        }),
+      onMutate: ({ number, method, admin, deleteBranch }) =>
         startGitActionNotice(
           "Merging pull request",
-          `PR #${number} via ${method}`,
+          `PR #${number} via ${method}${admin ? " with admin bypass" : ""}${deleteBranch === false ? " without deleting branch" : ""}`,
           repoPath,
         ),
       onSuccess: async (_data, { number }, context) => {

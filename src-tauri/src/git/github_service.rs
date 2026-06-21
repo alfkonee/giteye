@@ -124,7 +124,11 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     overview.provider_available = true;
     overview.account = account_handle.join().ok().flatten();
     overview.pull_requests = pull_request_handle.join().unwrap_or_default();
-    overview.check_runs = check_runs_handle.join().unwrap_or_default();
+    overview.check_runs = check_runs_handle
+        .join()
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
     overview.activity = activity_handle.join().unwrap_or_default();
 
     if !github_request_active(&request_context) {
@@ -137,7 +141,8 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
             &repo,
             first_pr.number,
             Some(&request_context),
-        );
+        )
+        .unwrap_or_default();
     }
 
     store_github_overview(cache_key, overview.clone());
@@ -199,17 +204,54 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
     let (owner, repo) = github_repository(repo_path)?;
     let repository = format!("{owner}/{repo}");
     let number_string = number.to_string();
-    let diff_text = run_required_process(
+    let mut fetch_errors = Vec::new();
+    let diff_text = match run_required_process(
         "gh",
         &["pr", "diff", &number_string, "--repo", &repository],
         repo_path,
         GH_TIMEOUT,
-    )?;
-    let files = fetch_pull_request_files(repo_path, &owner, &repo, number);
-    let comments = fetch_review_comments(repo_path, &owner, &repo, number);
-    let reviews = fetch_reviews(repo_path, &owner, &repo, number, None);
-    let check_runs = fetch_check_runs(repo_path, &owner, &repo, Some(number), None);
-    let activity = fetch_pull_request_activity(repo_path, &owner, &repo, number);
+    ) {
+        Ok(diff_text) => diff_text,
+        Err(error) => {
+            fetch_errors.push(format!("diff: {error}"));
+            String::new()
+        }
+    };
+    let files = match fetch_pull_request_files(repo_path, &owner, &repo, number) {
+        Ok(files) => files,
+        Err(error) => {
+            fetch_errors.push(format!("files: {error}"));
+            Vec::new()
+        }
+    };
+    let comments = match fetch_review_comments(repo_path, &owner, &repo, number) {
+        Ok(comments) => comments,
+        Err(error) => {
+            fetch_errors.push(format!("comments: {error}"));
+            Vec::new()
+        }
+    };
+    let reviews = match fetch_reviews(repo_path, &owner, &repo, number, None) {
+        Ok(reviews) => reviews,
+        Err(error) => {
+            fetch_errors.push(format!("reviews: {error}"));
+            Vec::new()
+        }
+    };
+    let check_runs = match fetch_check_runs(repo_path, &owner, &repo, Some(number), None) {
+        Ok(check_runs) => check_runs,
+        Err(error) => {
+            fetch_errors.push(format!("checks: {error}"));
+            Vec::new()
+        }
+    };
+    let activity = match fetch_pull_request_activity(repo_path, &owner, &repo, number) {
+        Ok(activity) => activity,
+        Err(error) => {
+            fetch_errors.push(format!("activity: {error}"));
+            Vec::new()
+        }
+    };
     let pr = fetch_pull_request(repo_path, &owner, &repo, number);
 
     Ok(PullRequestDiff {
@@ -222,6 +264,7 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
         reviews,
         check_runs,
         activity,
+        fetch_error: (!fetch_errors.is_empty()).then(|| fetch_errors.join(" · ")),
     })
 }
 
@@ -466,7 +509,13 @@ fn edit_pull_request_labels(
     Ok(())
 }
 
-pub fn merge_pull_request(repo_path: &Path, number: u64, method: &str) -> Result<(), AppError> {
+pub fn merge_pull_request(
+    repo_path: &Path,
+    number: u64,
+    method: &str,
+    admin: bool,
+    delete_branch: bool,
+) -> Result<(), AppError> {
     let (_, _) = github_repository(repo_path)?;
     let number_string = number.to_string();
     let merge_flag = match method {
@@ -474,12 +523,20 @@ pub fn merge_pull_request(repo_path: &Path, number: u64, method: &str) -> Result
         "rebase" => "--rebase",
         _ => "--squash",
     };
-    run_required_process(
-        "gh",
-        &["pr", "merge", &number_string, merge_flag, "--delete-branch"],
-        repo_path,
-        GH_TIMEOUT,
-    )?;
+    let mut args = vec![
+        "pr".to_string(),
+        "merge".to_string(),
+        number_string,
+        merge_flag.to_string(),
+    ];
+    if delete_branch {
+        args.push("--delete-branch".to_string());
+    }
+    if admin {
+        args.push("--admin".to_string());
+    }
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_required_process("gh", &arg_refs, repo_path, GH_TIMEOUT)?;
     Ok(())
 }
 
@@ -716,7 +773,7 @@ fn fetch_pull_request_files(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Vec<PullRequestFileDiff> {
+) -> Result<Vec<PullRequestFileDiff>, AppError> {
     #[derive(Deserialize)]
     struct GhFile {
         filename: Option<String>,
@@ -726,9 +783,9 @@ fn fetch_pull_request_files(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/files?per_page=100");
-    run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)
-        .and_then(|json| serde_json::from_str::<Vec<GhFile>>(&json).ok())
-        .unwrap_or_default()
+    let json = run_required_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    Ok(serde_json::from_str::<Vec<GhFile>>(&json)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .filter_map(|file| {
             Some(PullRequestFileDiff {
@@ -738,7 +795,7 @@ fn fetch_pull_request_files(
                 status: file.status.unwrap_or_default(),
             })
         })
-        .collect()
+        .collect())
 }
 
 fn fetch_review_comments(
@@ -746,7 +803,7 @@ fn fetch_review_comments(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Vec<ReviewCommentSummary> {
+) -> Result<Vec<ReviewCommentSummary>, AppError> {
     #[derive(Deserialize)]
     struct GhComment {
         id: Option<u64>,
@@ -759,9 +816,9 @@ fn fetch_review_comments(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/comments?per_page=100");
-    run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)
-        .and_then(|json| serde_json::from_str::<Vec<GhComment>>(&json).ok())
-        .unwrap_or_default()
+    let json = run_required_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    Ok(serde_json::from_str::<Vec<GhComment>>(&json)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .map(|comment| ReviewCommentSummary {
             id: comment.id.unwrap_or_default(),
@@ -772,7 +829,7 @@ fn fetch_review_comments(
             url: comment.html_url,
             created_at: comment.created_at,
         })
-        .collect()
+        .collect())
 }
 
 fn fetch_check_runs(
@@ -781,7 +838,7 @@ fn fetch_check_runs(
     repo: &str,
     number: Option<u64>,
     request_context: Option<&GithubRequestContext>,
-) -> Vec<CheckRunSummary> {
+) -> Result<Vec<CheckRunSummary>, AppError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct GhCheckRun {
@@ -805,15 +862,15 @@ fn fetch_check_runs(
         "name,state,link,startedAt,completedAt",
     ]);
 
-    let output = if let Some(request_context) = request_context {
+    let json = if let Some(request_context) = request_context {
         run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+            .ok_or_else(|| AppError::GitError("Failed to fetch pull request checks".to_string()))?
     } else {
-        run_process("gh", &args, repo_path, GH_TIMEOUT)
+        run_required_process("gh", &args, repo_path, GH_TIMEOUT)?
     };
 
-    output
-        .and_then(|json| serde_json::from_str::<Vec<GhCheckRun>>(&json).ok())
-        .unwrap_or_default()
+    Ok(serde_json::from_str::<Vec<GhCheckRun>>(&json)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .map(|check| CheckRunSummary {
             name: check.name.unwrap_or_default(),
@@ -823,7 +880,7 @@ fn fetch_check_runs(
             started_at: check.started_at,
             completed_at: check.completed_at,
         })
-        .collect()
+        .collect())
 }
 
 fn fetch_reviews(
@@ -832,34 +889,36 @@ fn fetch_reviews(
     repo: &str,
     number: u64,
     request_context: Option<&GithubRequestContext>,
-) -> Vec<ReviewSummary> {
+) -> Result<Vec<ReviewSummary>, AppError> {
     #[derive(Deserialize)]
     struct GhReview {
         user: Option<GhAuthor>,
         state: Option<String>,
         submitted_at: Option<String>,
         html_url: Option<String>,
+        body: Option<String>,
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/reviews");
     let args = ["api", endpoint.as_str()];
-    let output = if let Some(request_context) = request_context {
+    let json = if let Some(request_context) = request_context {
         run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+            .ok_or_else(|| AppError::GitError("Failed to fetch pull request reviews".to_string()))?
     } else {
-        run_process("gh", &args, repo_path, GH_TIMEOUT)
+        run_required_process("gh", &args, repo_path, GH_TIMEOUT)?
     };
 
-    output
-        .and_then(|json| serde_json::from_str::<Vec<GhReview>>(&json).ok())
-        .unwrap_or_default()
+    Ok(serde_json::from_str::<Vec<GhReview>>(&json)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .map(|review| ReviewSummary {
             author: review.user.and_then(|user| user.login),
             state: review.state.unwrap_or_default(),
             submitted_at: review.submitted_at,
+            body: review.body,
             url: review.html_url,
         })
-        .collect()
+        .collect())
 }
 
 fn fetch_activity(
@@ -898,9 +957,9 @@ fn fetch_pull_request_activity(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Vec<ActivityItem> {
+) -> Result<Vec<ActivityItem>, AppError> {
     let endpoint = format!("repos/{owner}/{repo}/issues/{number}/timeline?per_page=50");
-    let output = run_process(
+    let json = run_required_process(
         "gh",
         &[
             "api",
@@ -910,11 +969,10 @@ fn fetch_pull_request_activity(
         ],
         repo_path,
         GH_TIMEOUT,
-    );
+    )?;
 
-    output
-        .and_then(|json| serde_json::from_str::<Vec<Value>>(&json).ok())
-        .unwrap_or_default()
+    Ok(serde_json::from_str::<Vec<Value>>(&json)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .enumerate()
         .map(|(index, event)| ActivityItem {
@@ -931,7 +989,7 @@ fn fetch_pull_request_activity(
             created_at: json_string(&event, "created_at")
                 .or_else(|| json_string(&event, "submitted_at")),
         })
-        .collect()
+        .collect())
 }
 
 fn timeline_title(event: &Value) -> Option<String> {

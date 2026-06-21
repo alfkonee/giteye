@@ -774,7 +774,15 @@ export const gitApi = {
     repoPath: string,
     number: number,
     method: "merge" | "rebase" | "squash",
-  ) => invoke<void>("merge_pull_request", { repoPath, number, method }),
+    options: { admin?: boolean; deleteBranch?: boolean } = {},
+  ) =>
+    invoke<void>("merge_pull_request", {
+      repoPath,
+      number,
+      method,
+      admin: options.admin ?? false,
+      deleteBranch: options.deleteBranch ?? true,
+    }),
 
   closePullRequest: (repoPath: string, number: number) =>
     invoke<void>("close_pull_request", { repoPath, number }),

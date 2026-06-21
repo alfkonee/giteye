@@ -422,6 +422,7 @@ export interface PullRequestDiff {
   reviews: ReviewSummary[];
   checkRuns: CheckRunSummary[];
   activity: ActivityItem[];
+  fetchError: string | null;
 }
 
 export interface CheckRunSummary {
@@ -437,6 +438,7 @@ export interface ReviewSummary {
   author: string | null;
   state: string;
   submittedAt: string | null;
+  body: string | null;
   url: string | null;
 }
 

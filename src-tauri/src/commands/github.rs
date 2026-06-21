@@ -96,8 +96,20 @@ pub fn remove_pull_request_label(
 }
 
 #[tauri::command]
-pub fn merge_pull_request(repo_path: String, number: u64, method: String) -> Result<(), AppError> {
-    github_service::merge_pull_request(Path::new(&repo_path), number, &method)
+pub fn merge_pull_request(
+    repo_path: String,
+    number: u64,
+    method: String,
+    admin: Option<bool>,
+    delete_branch: Option<bool>,
+) -> Result<(), AppError> {
+    github_service::merge_pull_request(
+        Path::new(&repo_path),
+        number,
+        &method,
+        admin.unwrap_or(false),
+        delete_branch.unwrap_or(true),
+    )
 }
 
 #[tauri::command]

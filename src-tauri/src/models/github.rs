@@ -62,6 +62,7 @@ pub struct PullRequestDiff {
     pub reviews: Vec<ReviewSummary>,
     pub check_runs: Vec<CheckRunSummary>,
     pub activity: Vec<ActivityItem>,
+    pub fetch_error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -93,6 +94,7 @@ pub struct ReviewSummary {
     pub author: Option<String>,
     pub state: String,
     pub submitted_at: Option<String>,
+    pub body: Option<String>,
     pub url: Option<String>,
 }
 
