@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { Branch, CommitSummary } from "../../types/git";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
@@ -6,7 +6,7 @@ import { formatRelativeTime, truncateHash } from "../../lib/format";
 import { Cloud, GitBranch } from "lucide-react";
 import type { CommitGraphRow } from "./commit-graph";
 import { laneX } from "./commit-graph";
-import { CommitActionStrip } from "./HistorySurgeryActions";
+import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 
 interface CommitListItemProps {
   commit: CommitSummary;
@@ -36,9 +36,17 @@ export function CommitListItem({
   const isSelected = selectedCommitHash === commit.hash;
   const displayRefs = buildDisplayRefs(commit.refs, branches);
   const isHead = displayRefs.some((ref) => ref.isHead);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedCommitHash(commit.hash);
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  };
 
   const style: CSSProperties = {
-    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px 224px`,
+    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px 40px`,
   };
 
   if (isSelected) {
@@ -54,6 +62,7 @@ export function CommitListItem({
   return (
     <div
       onClick={() => setSelectedCommitHash(commit.hash)}
+      onContextMenu={openContextMenu}
       role="row"
       aria-selected={isSelected}
       className={cn(
@@ -128,6 +137,15 @@ export function CommitListItem({
       </span>
 
       <CommitActionStrip target={commit} isHeadCommit={isHead} compact />
+      {contextMenu ? (
+        <CommitActionContextMenu
+          target={commit}
+          isHeadCommit={isHead}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import type { CommitDetails as CommitDetailsType } from "../../types/git";
 import { truncateHash } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
 import { Calendar, User, ChevronRight, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
 import { FileTree } from "../common/FileTree";
-import { CommitActionStrip } from "./HistorySurgeryActions";
+import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 
 interface CommitDetailsProps {
   commit: CommitDetailsType;
@@ -15,10 +15,16 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
-      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-3">
+    <div className="flex h-full flex-col bg-[var(--color-bg-primary)]" onContextMenu={(event) => event.preventDefault()}>
+      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-3" onContextMenu={openContextMenu}>
         <div className="flex items-start gap-2">
           <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
             <GitCommitHorizontal className="h-4 w-4" />
@@ -44,7 +50,7 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
         </div>
       </div>
 
-      <div className="shrink-0 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/55 px-3 py-2 text-[12px]">
+      <div className="shrink-0 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/55 px-3 py-2 text-[12px]" onContextMenu={openContextMenu}>
         <div className="flex min-w-0 items-center gap-1.5">
           <Hash className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
           <span className="text-[var(--color-text-muted)]">commit</span>
@@ -67,9 +73,17 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
         )}
       </div>
 
-      <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2">
+      <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2" onContextMenu={openContextMenu}>
         <CommitActionStrip target={commit} />
       </div>
+      {contextMenu ? (
+        <CommitActionContextMenu
+          target={commit}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
 
       {commit.body && (
         <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2">
