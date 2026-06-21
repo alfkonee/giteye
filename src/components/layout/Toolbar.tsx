@@ -23,7 +23,7 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import { useNoticeStore } from "../../stores/notice-store";
-import type { Branch, FavoriteRepo, RecentRepo } from "../../types/git";
+import type { Branch, FavoriteRepo, RecentRepo, RepositoryParent } from "../../types/git";
 import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
@@ -32,6 +32,7 @@ interface ToolbarProps {
   repoName?: string;
   currentBranch?: string;
   isClean?: boolean;
+  submoduleParent?: RepositoryParent | null;
 }
 
 type RepositorySwitchItem = {
@@ -68,7 +69,7 @@ function splitRemoteBranch(branch: Branch) {
 }
 
 
-export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
+export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
@@ -335,11 +336,27 @@ export function Toolbar({ repoName, currentBranch, isClean }: ToolbarProps) {
           <button
             type="button"
             onClick={() => setRepoMenuOpen((open) => !open)}
-            className="flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
-            title="Switch repository"
+            className="flex h-7 max-w-[560px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
+            title={
+              submoduleParent
+                ? `${repoName ?? "Repository"} is submodule ${submoduleParent.submodulePath} of parent repository ${submoduleParent.name} (${submoduleParent.path})`
+                : "Switch repository"
+            }
           >
             <FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
-            <span className="truncate">{repoName ?? "GitEye"}</span>
+            <span className="max-w-[180px] shrink-0 truncate">{repoName ?? "GitEye"}</span>
+            {submoduleParent ? (
+              <span
+                className="flex min-w-0 max-w-[330px] items-center gap-1 rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)]"
+                title={`Parent repo: ${submoduleParent.name} (${submoduleParent.path}); submodule path: ${submoduleParent.submodulePath}`}
+              >
+                <span className="shrink-0 uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Parent repo</span>
+                <span className="min-w-0 truncate text-[var(--color-text-primary)]">{submoduleParent.name}</span>
+                <span className="shrink-0 text-[var(--color-text-muted)]">→</span>
+                <span className="shrink-0 uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Submodule</span>
+                <span className="min-w-0 truncate">{submoduleParent.submodulePath}</span>
+              </span>
+            ) : null}
             <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)] transition-transform", repoMenuOpen && "rotate-180")} />
           </button>
 

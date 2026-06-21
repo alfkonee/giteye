@@ -122,6 +122,37 @@ pub fn update_submodule(repo_path: &Path, path: &str, recursive: bool) -> Result
     Ok(())
 }
 
+pub fn add_submodule(
+    repo_path: &Path,
+    url: &str,
+    path: &str,
+    branch: Option<&str>,
+    name: Option<&str>,
+) -> Result<(), AppError> {
+    let url = validate_git_arg("submodule URL", url)?;
+    validate_relative_path(path)?;
+    let branch = branch
+        .map(|branch| validate_git_arg("submodule branch", branch))
+        .transpose()?;
+    let name = name
+        .map(|name| validate_git_arg("submodule name", name))
+        .transpose()?;
+
+    let mut args = vec!["submodule", "add"];
+    if let Some(branch) = branch.as_deref() {
+        args.extend(["--branch", branch]);
+    }
+    if let Some(name) = name.as_deref() {
+        args.extend(["--name", name]);
+    }
+    args.push("--");
+    args.push(&url);
+    args.push(path);
+
+    GitCli::run(repo_path, &args)?;
+    Ok(())
+}
+
 pub fn sync_submodules(repo_path: &Path, recursive: bool) -> Result<(), AppError> {
     let mut args = vec!["submodule", "sync"];
     if recursive {

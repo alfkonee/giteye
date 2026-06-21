@@ -573,6 +573,21 @@ export const gitApi = {
   updateSubmodule: (repoPath: string, path: string, recursive: boolean) =>
     invoke<void>("update_submodule", { repoPath, path, recursive }),
 
+  addSubmodule: (
+    repoPath: string,
+    url: string,
+    path: string,
+    branch?: string | null,
+    name?: string | null,
+  ) =>
+    invoke<void>("add_submodule", {
+      repoPath,
+      url,
+      path,
+      branch: branch ?? null,
+      name: name ?? null,
+    }),
+
   submoduleInitUpdate: (
     repoPath: string,
     path: string | null,

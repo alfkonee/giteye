@@ -131,6 +131,7 @@ pub fn run() {
             commands::worktrees::worktree_prune_dry_run,
             commands::submodules::list_submodules,
             commands::submodules::update_submodule,
+            commands::submodules::add_submodule,
             commands::submodules::sync_submodules,
             commands::submodules::open_submodule,
             commands::submodules::bump_submodule,

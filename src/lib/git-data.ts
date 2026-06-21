@@ -92,6 +92,13 @@ export interface SubmoduleInitUpdateRequest {
   remote: boolean;
 }
 
+export interface AddSubmoduleRequest {
+  url: string;
+  path: string;
+  branch?: string | null;
+  name?: string | null;
+}
+
 export interface SubmoduleSetBranchRequest {
   path: string;
   branch: string;
@@ -2189,6 +2196,29 @@ export const gitMutations = {
         finishGitActionNotice(
           context,
           "Submodule updated and repository views refreshed.",
+        );
+      },
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  addSubmodule: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ url, path, branch, name }: AddSubmoduleRequest) =>
+        gitApi.addSubmodule(repoPath!, url, path, branch, name),
+      onMutate: ({ url, path, branch, name }) =>
+        startGitActionNotice(
+          "Adding submodule",
+          [path, url, branch ? `branch ${branch}` : null, name ? `name ${name}` : null]
+            .filter(Boolean)
+            .join(" · "),
+          repoPath,
+        ),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context);
+        finishGitActionNotice(
+          context,
+          "Submodule added and repository views refreshed.",
         );
       },
       onError: (error, _variables, context) =>
