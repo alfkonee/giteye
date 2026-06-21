@@ -22,6 +22,8 @@ pub fn get_commit_history(
             "--date-order",
             "--max-count",
             &limit_str,
+            "--branches",
+            "--remotes",
             "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D%x00%P",
         ],
     )?;
@@ -243,6 +245,94 @@ mod tests {
         assert_eq!(history[0].message, "Second fixture");
         assert_eq!(history[0].parents, vec![history[1].hash.clone()]);
         assert!(history[1].parents.is_empty());
+    }
+
+    #[test]
+    fn history_includes_unmerged_non_checked_out_branches() {
+        let temp = TestDir::new("all-branches");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+
+        git(&temp.path, &["checkout", "-b", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature");
+        git(&temp.path, &["add", "feature.txt"]);
+        git(&temp.path, &["commit", "-m", "Feature-only work"]);
+
+        git(&temp.path, &["checkout", "main"]);
+        fs::write(temp.path.join("main.txt"), "main\n").expect("write main");
+        git(&temp.path, &["add", "main.txt"]);
+        git(&temp.path, &["commit", "-m", "Main work"]);
+
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+            .expect("history")
+            .into_iter()
+            .map(|commit| commit.message)
+            .collect();
+
+        assert!(
+            messages
+                .iter()
+                .any(|message| message == "Feature-only work"),
+            "history should include commits reachable only from another branch: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn history_includes_remote_only_branch_refs() {
+        let temp = TestDir::new("remote-branches");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+
+        git(&temp.path, &["checkout", "-b", "remote-work"]);
+        fs::write(temp.path.join("remote.txt"), "remote\n").expect("write remote");
+        git(&temp.path, &["add", "remote.txt"]);
+        git(&temp.path, &["commit", "-m", "Remote-only work"]);
+        git(
+            &temp.path,
+            &["update-ref", "refs/remotes/origin/remote-work", "HEAD"],
+        );
+        git(&temp.path, &["checkout", "main"]);
+        git(&temp.path, &["branch", "-D", "remote-work"]);
+
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+            .expect("history")
+            .into_iter()
+            .map(|commit| commit.message)
+            .collect();
+
+        assert!(
+            messages.iter().any(|message| message == "Remote-only work"),
+            "history should include commits reachable only from remote branch refs: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn history_excludes_non_branch_refs_like_stash() {
+        let temp = TestDir::new("stash");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+
+        fs::write(temp.path.join("README.md"), "# fixture\n\nstashed\n").expect("stash change");
+        git(&temp.path, &["stash", "push", "-m", "Temporary stash"]);
+
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+            .expect("history")
+            .into_iter()
+            .map(|commit| commit.message)
+            .collect();
+
+        assert!(
+            messages
+                .iter()
+                .all(|message| !message.contains("Temporary stash")),
+            "history should not include stash commits when showing branch history: {messages:?}"
+        );
     }
 
     #[test]

@@ -1,10 +1,12 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatAmendPreview } from "../../lib/git-preview";
 import type { CommitSummary, ReflogEntry, ResetMode, ResetPreview } from "../../types/git";
+import { MoreHorizontal } from "lucide-react";
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
@@ -19,6 +21,18 @@ interface CommitActionStripProps {
 
 interface ReflogRecoveryPanelProps {
   open: boolean;
+}
+const COMMIT_MENU_WIDTH = 320;
+const COMMIT_MENU_HEIGHT = 440;
+const COMMIT_MENU_EDGE_GAP = 8;
+
+function clampMenuPosition(x: number, y: number) {
+  const maxLeft = Math.max(COMMIT_MENU_EDGE_GAP, window.innerWidth - COMMIT_MENU_WIDTH - COMMIT_MENU_EDGE_GAP);
+  const maxTop = Math.max(COMMIT_MENU_EDGE_GAP, window.innerHeight - COMMIT_MENU_HEIGHT - COMMIT_MENU_EDGE_GAP);
+  return {
+    left: Math.min(Math.max(x, COMMIT_MENU_EDGE_GAP), maxLeft),
+    top: Math.min(Math.max(y, COMMIT_MENU_EDGE_GAP), maxTop),
+  };
 }
 
 function shortHash(target: CommitActionTarget) {
@@ -313,71 +327,202 @@ function ActionButton({
 }
 
 export function CommitActionStrip({ target, isHeadCommit, compact = false }: CommitActionStripProps) {
-  const actions = useHistorySurgeryActions();
-  const head = isHeadCommit ?? actions.isHead(target);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
-  if (compact) {
-    return (
-      <div className="flex items-center justify-end gap-1">
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.cherryPick(target)} title="Cherry-pick this commit onto the current branch">
-          Pick
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.revert(target)} title="Create a revert commit">
-          Revert
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.createBranchFromCommit(target)} title="Create a branch from this commit">
-          Branch
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.promptReset(target)} tone="danger" title="Reset current branch to this commit">
-          Reset
-        </ActionButton>
-        {head ? (
-          <ActionButton disabled={actions.isBusy} onClick={() => actions.amendHead(target, head)} tone="primary" title="Amend the current HEAD commit">
-            Amend
-          </ActionButton>
-        ) : null}
-      </div>
-    );
-  }
+  const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenuPosition({ x: event.clientX, y: event.clientY });
+  };
 
   return (
-    <div className="space-y-2 rounded-xl border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/60 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-auto text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
-          History surgery
-        </span>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.cherryPick(target)}>
-          Cherry-pick
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.revert(target)}>
-          Revert
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => actions.createBranchFromCommit(target)}>
-          Branch from commit
-        </ActionButton>
+    <>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={Boolean(menuPosition)}
+        title="Commit actions"
+        onClick={openMenu}
+        onContextMenu={openMenu}
+        className={cn(
+          "inline-flex items-center justify-center rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+          compact ? "ml-auto h-7 w-8" : "gap-1.5 px-2.5 py-1 text-[11px]",
+        )}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+        {!compact ? <span>Actions</span> : <span className="sr-only">Commit actions</span>}
+      </button>
+      {menuPosition ? (
+        <CommitActionContextMenu
+          target={target}
+          isHeadCommit={isHeadCommit}
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export function CommitActionContextMenu({
+  target,
+  isHeadCommit,
+  x,
+  y,
+  onClose,
+}: {
+  target: CommitActionTarget;
+  isHeadCommit?: boolean;
+  x: number;
+  y: number;
+  onClose: () => void;
+}) {
+  const actions = useHistorySurgeryActions();
+  const head = isHeadCommit ?? actions.isHead(target);
+  const position = clampMenuPosition(x, y);
+
+  useEffect(() => {
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+
+    return () => {
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+
+  if (typeof document === "undefined" || !document.body) return null;
+
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[110]"
+      role="presentation"
+      onMouseDown={onClose}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
+    >
+      <div
+        role="menu"
+        aria-label={`Commit actions for ${shortHash(target)}`}
+        className="w-80 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]"
+        style={{ left: position.left, top: position.top, position: "fixed" }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-[var(--color-border-muted)] px-3 py-2 text-xs">
+          <div className="font-mono font-semibold text-[var(--color-accent)]">{shortHash(target)}</div>
+          <div className="mt-0.5 max-w-72 truncate text-[11px] text-[var(--color-text-muted)]">{target.message}</div>
+        </div>
+        <CommitMenuItem
+          label="Cherry-pick"
+          detail="Apply this commit onto the current branch"
+          disabled={actions.isBusy}
+          onSelect={() => actions.cherryPick(target)}
+          onClose={onClose}
+        />
+        <CommitMenuItem
+          label="Revert"
+          detail="Create a new commit that reverses this commit"
+          disabled={actions.isBusy}
+          onSelect={() => actions.revert(target)}
+          onClose={onClose}
+        />
+        <CommitMenuItem
+          label="New branch from commit"
+          detail="Create a branch starting at this commit"
+          disabled={actions.isBusy}
+          onSelect={() => actions.createBranchFromCommit(target)}
+          onClose={onClose}
+        />
+        <div className="my-1 border-t border-[var(--color-border-muted)]" />
+        <CommitMenuItem
+          label="Reset current branch: soft"
+          detail={resetModeEffect("soft")}
+          tone="danger"
+          disabled={actions.isBusy}
+          onSelect={() => void actions.resetToCommit(target, "soft")}
+          onClose={onClose}
+        />
+        <CommitMenuItem
+          label="Reset current branch: mixed"
+          detail={resetModeEffect("mixed")}
+          tone="danger"
+          disabled={actions.isBusy}
+          onSelect={() => void actions.resetToCommit(target, "mixed")}
+          onClose={onClose}
+        />
+        <CommitMenuItem
+          label="Reset current branch: hard"
+          detail={resetModeEffect("hard")}
+          tone="danger"
+          disabled={actions.isBusy}
+          onSelect={() => void actions.resetToCommit(target, "hard")}
+          onClose={onClose}
+        />
+        <div className="my-1 border-t border-[var(--color-border-muted)]" />
+        <CommitMenuItem
+          label="Amend HEAD"
+          detail={head ? "Rewrite HEAD with staged changes" : "Only the current HEAD commit can be amended"}
+          tone="primary"
+          disabled={actions.isBusy || !head}
+          onSelect={() => actions.amendHead(target, head)}
+          onClose={onClose}
+        />
+        {actions.error ? (
+          <p className="border-t border-[var(--color-border-muted)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
+            {errorMessage(actions.error)}
+          </p>
+        ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-auto text-[11px] text-[var(--color-text-muted)]">Reset current branch to this commit:</span>
-        <ActionButton disabled={actions.isBusy} onClick={() => void actions.resetToCommit(target, "soft")} tone="danger" title={resetModeEffect("soft")}>
-          Soft
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => void actions.resetToCommit(target, "mixed")} tone="danger" title={resetModeEffect("mixed")}>
-          Mixed
-        </ActionButton>
-        <ActionButton disabled={actions.isBusy} onClick={() => void actions.resetToCommit(target, "hard")} tone="danger" title={resetModeEffect("hard")}>
-          Hard
-        </ActionButton>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-auto text-[11px] text-[var(--color-text-muted)]">
-          {head ? "HEAD can be amended with staged changes." : "Only the current HEAD commit can be amended."}
-        </span>
-        <ActionButton disabled={actions.isBusy || !head} onClick={() => actions.amendHead(target, head)} tone="primary">
-          Amend HEAD
-        </ActionButton>
-      </div>
-      {actions.error ? <p className="text-[11px] text-[var(--color-danger)]">{errorMessage(actions.error)}</p> : null}
-    </div>
+    </div>,
+    document.body,
+  );
+}
+
+function CommitMenuItem({
+  label,
+  detail,
+  disabled,
+  tone = "default",
+  onSelect,
+  onClose,
+}: {
+  label: string;
+  detail: string;
+  disabled?: boolean;
+  tone?: "default" | "danger" | "primary";
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  const toneClass =
+    tone === "primary"
+      ? "text-[var(--color-accent)]"
+      : tone === "danger"
+        ? "text-[var(--color-danger)]"
+        : "text-[var(--color-text-primary)]";
+
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onClose();
+        onSelect();
+      }}
+      className={cn(
+        "flex w-full flex-col px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
+        toneClass,
+      )}
+    >
+      <span className="font-medium">{label}</span>
+      <span className="mt-0.5 max-w-72 text-[11px] text-[var(--color-text-muted)]">{detail}</span>
+    </button>
   );
 }
 

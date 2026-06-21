@@ -66,7 +66,7 @@ export function CommitHistory() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" onContextMenu={(event) => event.preventDefault()}>
         <LoadingSpinner />
       </div>
     );
@@ -74,7 +74,7 @@ export function CommitHistory() {
 
   if (error) {
     return (
-      <div className="p-4">
+      <div className="p-4" onContextMenu={(event) => event.preventDefault()}>
         <ErrorCallout message="Failed to load commit history" />
       </div>
     );
@@ -82,16 +82,18 @@ export function CommitHistory() {
 
   if (!commits || commits.length === 0) {
     return (
-      <EmptyState
-        icon={<History className="w-8 h-8" />}
-        title="No Commits"
-        description="This repository has no commits yet"
-      />
+      <div onContextMenu={(event) => event.preventDefault()}>
+        <EmptyState
+          icon={<History className="w-8 h-8" />}
+          title="No Commits"
+          description="This repository has no commits yet"
+        />
+      </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
+    <div className="flex h-full flex-col bg-[var(--color-bg-primary)]" onContextMenu={(event) => event.preventDefault()}>
       <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
@@ -102,7 +104,7 @@ export function CommitHistory() {
               History
             </h2>
             <p className="text-[11px] text-[var(--color-text-muted)]">
-              {commits.length} commits in this branch view
+              {commits.length} commits across all branches
             </p>
           </div>
           <button
@@ -120,7 +122,7 @@ export function CommitHistory() {
       <div
         className="sticky top-0 z-10 grid items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur"
         style={{
-          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px 224px`,
+          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px 40px`,
         }}
       >
         <span className="pl-2">Graph</span>
@@ -128,7 +130,7 @@ export function CommitHistory() {
         <span>Message</span>
         <span className="text-right">Author</span>
         <span className="text-right">Date</span>
-        <span className="text-right pr-1">Actions</span>
+        <span className="text-right pr-1">Menu</span>
       </div>
 
       <div ref={parentRef} className="flex-1 overflow-auto px-1.5 py-1.5">
