@@ -321,7 +321,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
 
   return (
-    <div className="giteye-toolbar flex h-11 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 shadow-[var(--shadow-panel)]">
+    <div className="giteye-toolbar flex h-11 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2.5">
       <div className="flex min-w-0 shrink-0 items-center gap-1.5">
         <button
           type="button"
