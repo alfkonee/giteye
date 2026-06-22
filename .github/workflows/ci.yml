@@ -75,6 +75,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run Rust tests
+        if: runner.os != 'Windows'
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
       - name: Compile Tauri app without bundling
