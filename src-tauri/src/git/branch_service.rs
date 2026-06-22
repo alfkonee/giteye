@@ -149,10 +149,12 @@ pub fn fast_forward_branch(repo_path: &Path, name: &str, upstream: &str) -> Resu
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn merge_branch(repo_path: &Path, source: &str) -> Result<(), AppError> {
     merge_with_options(repo_path, source, false, false, None)
 }
 
+#[allow(dead_code)]
 pub fn merge_with_options(
     repo_path: &Path,
     source: &str,

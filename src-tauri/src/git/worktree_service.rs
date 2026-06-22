@@ -132,12 +132,6 @@ pub fn unlock_worktree(repo_path: &Path, path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn repair_worktree(repo_path: &Path, path: &Path) -> Result<Vec<String>, AppError> {
-    let path_arg = worktree_path_arg(path)?;
-    let output = GitCli::run(repo_path, &["worktree", "repair", path_arg])?;
-    Ok(non_empty_lines(&output))
-}
-
 pub fn repair_worktree_dry_run(repo_path: &Path, path: &Path) -> Result<Vec<String>, AppError> {
     let path_arg = worktree_path_arg(path)?;
     let output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
@@ -157,11 +151,6 @@ pub fn prune_worktrees_dry_run(repo_path: &Path) -> Result<Vec<String>, AppError
 
     let list_output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
     Ok(prune_dry_run_summary(&parse_worktree_records(&list_output)))
-}
-
-pub fn prune_worktrees(repo_path: &Path) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["worktree", "prune"])?;
-    Ok(())
 }
 
 fn parse_worktree_records(output: &str) -> Vec<WorktreeRecord> {

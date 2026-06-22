@@ -7,6 +7,7 @@ pub mod diagnostics_service;
 pub mod diff_service;
 pub mod github_service;
 pub mod history_service;
+pub mod job_runner;
 pub mod lfs_service;
 pub mod patch_service;
 pub mod rebase_service;

@@ -1,7 +1,9 @@
 use crate::errors::AppError;
+use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::git::remote_service;
-use crate::models::Remote;
+use crate::models::{GitJobSummary, Remote};
 use std::path::Path;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn list_remotes(repo_path: String) -> Result<Vec<Remote>, AppError> {
@@ -9,26 +11,65 @@ pub fn list_remotes(repo_path: String) -> Result<Vec<Remote>, AppError> {
 }
 
 #[tauri::command]
-pub fn fetch(repo_path: String, remote: Option<String>) -> Result<(), AppError> {
-    remote_service::fetch(Path::new(&repo_path), remote.as_deref())
+pub fn fetch(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+    remote: Option<String>,
+) -> Result<GitJobSummary, AppError> {
+    let mut args = vec!["fetch".to_string()];
+    if let Some(remote) = non_empty(remote) {
+        args.push(remote);
+    }
+    let request = GitJobRequest::new(repo_path, "fetch", "Fetch remote updates", args)
+        .with_invalidation_reasons(vec!["remote", "refs"]);
+    jobs.start_job(app, request)
 }
 
 #[tauri::command]
 pub fn pull(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
     repo_path: String,
     remote: Option<String>,
     branch: Option<String>,
-) -> Result<(), AppError> {
-    remote_service::pull(Path::new(&repo_path), remote.as_deref(), branch.as_deref())
+) -> Result<GitJobSummary, AppError> {
+    let mut args = vec!["pull".to_string()];
+    if let Some(remote) = non_empty(remote) {
+        args.push(remote);
+    }
+    if let Some(branch) = non_empty(branch) {
+        args.push(branch);
+    }
+    let request = GitJobRequest::new(repo_path, "pull", "Pull remote changes", args)
+        .with_invalidation_reasons(vec!["remote", "refs", "worktree"]);
+    jobs.start_job(app, request)
 }
 
 #[tauri::command]
 pub fn push(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
     repo_path: String,
     remote: Option<String>,
     branch: Option<String>,
-) -> Result<(), AppError> {
-    remote_service::push(Path::new(&repo_path), remote.as_deref(), branch.as_deref())
+) -> Result<GitJobSummary, AppError> {
+    let mut args = vec!["push".to_string()];
+    if let Some(remote) = non_empty(remote) {
+        args.push(remote);
+    }
+    if let Some(branch) = non_empty(branch) {
+        args.push(branch);
+    }
+    let request = GitJobRequest::new(repo_path, "push", "Push local commits", args)
+        .with_invalidation_reasons(vec!["remote", "refs"]);
+    jobs.start_job(app, request)
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 #[tauri::command]

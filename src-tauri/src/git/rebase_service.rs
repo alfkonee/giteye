@@ -59,21 +59,6 @@ pub fn get_conflict_content(
     })
 }
 
-pub fn continue_rebase(repo_path: &Path) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["rebase", "--continue"])?;
-    Ok(())
-}
-
-pub fn abort_rebase(repo_path: &Path) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["rebase", "--abort"])?;
-    Ok(())
-}
-
-pub fn skip_rebase(repo_path: &Path) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["rebase", "--skip"])?;
-    Ok(())
-}
-
 pub fn mark_file_resolved(repo_path: &Path, file_path: &str) -> Result<(), AppError> {
     validate_repo_relative_path(file_path)?;
     GitCli::run(repo_path, &["add", "--", file_path])?;
@@ -150,56 +135,6 @@ pub fn preview_rebase(
         .lines()
         .filter_map(parse_rebase_preview_line)
         .collect())
-}
-
-pub fn rebase_onto(
-    repo_path: &Path,
-    upstream: &str,
-    onto: &str,
-    branch: Option<&str>,
-    autostash: bool,
-) -> Result<(), AppError> {
-    let upstream = required_git_arg(upstream, "rebase upstream")?;
-    let onto = required_git_arg(onto, "rebase onto target")?;
-    ensure_rebase_worktree_ready(repo_path, autostash)?;
-
-    let mut args = vec!["rebase".to_string()];
-    if autostash {
-        args.push("--autostash".to_string());
-    }
-    args.push("--onto".to_string());
-    args.push(onto.to_string());
-    args.push(upstream.to_string());
-    if let Some(branch) = branch.map(str::trim).filter(|value| !value.is_empty()) {
-        args.push(required_git_arg(branch, "rebase branch")?.to_string());
-    }
-
-    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    GitCli::run(repo_path, &argv)?;
-    Ok(())
-}
-
-pub fn rebase_upstream(
-    repo_path: &Path,
-    upstream: &str,
-    branch: Option<&str>,
-    autostash: bool,
-) -> Result<(), AppError> {
-    let upstream = required_git_arg(upstream, "rebase upstream")?;
-    ensure_rebase_worktree_ready(repo_path, autostash)?;
-
-    let mut args = vec!["rebase".to_string()];
-    if autostash {
-        args.push("--autostash".to_string());
-    }
-    args.push(upstream.to_string());
-    if let Some(branch) = branch.map(str::trim).filter(|value| !value.is_empty()) {
-        args.push(required_git_arg(branch, "rebase branch")?.to_string());
-    }
-
-    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    GitCli::run(repo_path, &argv)?;
-    Ok(())
 }
 
 pub fn get_rerere_config(repo_path: &Path) -> Result<bool, AppError> {
@@ -284,19 +219,6 @@ fn get_rerere_enabled(repo_path: &Path) -> Result<bool, AppError> {
     }
 
     Ok(matches!(output.trim(), "true" | "yes" | "on" | "1"))
-}
-
-fn ensure_rebase_worktree_ready(repo_path: &Path, autostash: bool) -> Result<(), AppError> {
-    if !autostash && has_worktree_changes(repo_path)? {
-        return Err(AppError::GitError(
-            "Working tree must be clean before rebasing without autostash".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
-    GitCli::run(repo_path, &["status", "--porcelain"]).map(|status| !status.trim().is_empty())
 }
 
 fn verify_commit(repo_path: &Path, rev: &str) -> Result<(), AppError> {
