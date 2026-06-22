@@ -63,29 +63,32 @@ src/                          src-tauri/src/
 ## Implemented Features (Phase 1)
 
 ### Git Operations
-- **Repository**: Open local repo, repo info (branch, clean/dirty, HEAD), recent repos
+- **Repository workspace**: Open multiple local repos, switch between top-level repo tabs, preserve per-repo view/selection state, repo info (branch, clean/dirty, HEAD), recent repos
 - **Status**: Full status via `git status --porcelain=v2`, staged/unstaged file lists
 - **Working Tree**: Stage/unstage individual files, stage all, unstage all
 - **Commit**: Commit with message (Ctrl+Enter)
 - **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation)
 - **Commits**: History with virtualization, commit details, changed file list
-- **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view
+- **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view; long-running network operations run as background jobs with streamed logs
 - **Stashes**: Create, apply, pop, and drop local stashes, including untracked files
 - **Tags**: List local tags, create lightweight/annotated tags, delete local tags
 - **Git LFS**: Detect LFS availability/version, list tracked patterns/files, install local hooks, track/untrack patterns
 - **SSH keys**: Inspect `~/.ssh` public keys, generate Ed25519 keys, copy public keys, and add local private keys to `ssh-agent`
 - **Credential helper config**: Inspect effective/global/local `credential.helper`, set or clear local helper, and reject shell-command helpers
 - **Diff**: File diff (working tree and staged), commit diff, binary detection, unified/split mode toggle
-- **Rebase/conflicts**: Inspect active rebase state, edit remaining todo actions/order, autosquash fixup/squash commits, accept current/incoming side, mark files resolved, continue/skip/abort
+- **Rebase/conflicts**: Inspect active rebase state, edit remaining todo actions/order, autosquash fixup/squash commits, accept current/incoming side, mark files resolved, continue/skip/abort through background jobs where long-running
+- **Background Git jobs**: Clone, fetch, pull, push, merge/rebase, submodule update/sync/init, and worktree repair/prune run through a Tauri job runner with per-repo mutation serialization, cancellation, streamed stdout/stderr, and command-log history
 - **GitHub PR review**: Load live PRs, labels, review requests, selected-PR checks/reviews/timeline, filtered PR diffs/comments, inline diff line comments, stack landing order/action, label add/remove prompts, review request prompts, and approve/comment/request-changes actions through `gh`
 
 ### UI
 - Dark-first developer aesthetic (Catppuccin Mocha-inspired palette)
-- Welcome screen with recent repositories
+- Welcome screen with recent repositories and open repository sessions
+- Top repository tabs for multi-repo workflows with branch, dirty, and running-job badges
 - Resizable 3-panel layout (sidebar | main content | detail pane)
-- Collapsible sidebar with branch list plus dedicated Branches, Remotes, Stashes, Tags, Git LFS, Worktrees, Submodules, and Rebase views
+- Collapsible sidebar grouped around core local Git views, with collaboration/provider views separated from local workflows
 - Toolbar showing repo name, branch, clean/dirty status, remote status shortcut, and diff mode toggle
 - Toolbar command search executes local navigation, refresh, remote sync, and diff-mode actions
+- In-app command log drawer for GitEye-triggered background job metadata, stdout/stderr, final status, and output clearing
 - Commit history with TanStack Virtual for large lists
 - Diff viewer with syntax-colored unified diff fallback
 - File status badges (M/A/D/R/C/!/??/!!/T)
@@ -109,7 +112,7 @@ src/                          src-tauri/src/
 | Command palette (cmdk) | Phase 2+ |
 | CI status | Future |
 | Theme switching (light/dark) | Implemented in app state |
-| Async/cancellable Git operations | Synchronous in Phase 1 |
+| Async/cancellable Git operations | Implemented for long-running GitEye-triggered jobs |
 
 ---
 
@@ -175,10 +178,9 @@ cd src-tauri && cargo check && cargo fmt --check
 
 ## Known Limitations (Phase 1)
 
-- **No async Git operations**: Long-running commands (clone, large diffs) block the UI. Tauri 2 supports async commands — this is a deliberate Phase 1 simplification.
+- **Limited custom command execution**: The command log records GitEye-triggered jobs only; arbitrary custom Git command execution is not exposed.
 - **Limited credential handling**: SSH key management and `credential.helper` configuration are wired, but GitEye does not display, store, or prompt for credential secrets.
 - **Diff renderer uses fallback**: `@pierre/diffs` is installed but not yet wired in. The current diff view is a custom unified renderer without Shiki syntax highlighting. See `docs/architecture/library-decisions.md` for integration plan.
-- **No file watcher**: Git status doesn't auto-refresh on file system changes. Use the refresh button.
 - **Settings persistence scope**: Theme and diff mode persist in app state; repository identity writes to local Git config. Native app-level settings export/import is not implemented.
 
 ---

@@ -3,6 +3,12 @@ import { create } from "zustand";
 export type NoticeStatus = "pending" | "success" | "error" | "info";
 export type NoticeCategory = "git" | "system";
 
+export interface NoticeAction {
+  label: string;
+  target: "command-log";
+  jobId?: string | null;
+}
+
 export interface Notice {
   id: string;
   title: string;
@@ -15,6 +21,7 @@ export interface Notice {
   updatedAt: number;
   finishedAt: number | null;
   expiresAt: number | null;
+  action: NoticeAction | null;
 }
 
 export interface OperationTranscriptEntry {
@@ -36,6 +43,7 @@ export interface NoticeInput {
   status?: NoticeStatus;
   category?: NoticeCategory;
   repoPath?: string | null;
+  action?: NoticeAction | null;
 }
 
 interface NoticeStore {
@@ -43,7 +51,7 @@ interface NoticeStore {
   operationTranscript: OperationTranscriptEntry[];
   transcriptOpen: boolean;
   startNotice: (notice: NoticeInput) => string;
-  updateNotice: (id: string, patch: Partial<Pick<Notice, "title" | "detail" | "recoveryHint" | "status" | "repoPath">>) => void;
+  updateNotice: (id: string, patch: Partial<Pick<Notice, "title" | "detail" | "recoveryHint" | "status" | "repoPath" | "action">>) => void;
   finishNotice: (id: string, status: Extract<NoticeStatus, "success" | "error" | "info">, detail: string, recoveryHint?: string | null) => void;
   dismissNotice: (id: string) => void;
   clearFinished: () => void;
@@ -77,6 +85,7 @@ export const useNoticeStore = create<NoticeStore>((set) => ({
       updatedAt: now,
       finishedAt: null,
       expiresAt: null,
+      action: input.action ?? null,
     };
 
     set((state) => ({

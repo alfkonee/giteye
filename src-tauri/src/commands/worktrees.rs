@@ -1,7 +1,10 @@
 use crate::errors::AppError;
+use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::git::worktree_service;
+use crate::models::job::GitJobSummary;
 use crate::models::worktree::Worktree;
 use std::path::Path;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn list_worktrees(repo_path: String) -> Result<Vec<Worktree>, AppError> {
@@ -61,8 +64,21 @@ pub fn worktree_unlock(repo_path: String, path: String) -> Result<(), AppError> 
 }
 
 #[tauri::command]
-pub fn worktree_repair(repo_path: String, path: String) -> Result<Vec<String>, AppError> {
-    worktree_service::repair_worktree(Path::new(&repo_path), Path::new(&path))
+pub fn worktree_repair(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+    path: String,
+) -> Result<GitJobSummary, AppError> {
+    let args = vec!["worktree".to_string(), "repair".to_string(), path];
+    let request = GitJobRequest::new(
+        repo_path,
+        "worktree.repair",
+        "Repair worktree metadata",
+        args,
+    )
+    .with_invalidation_reasons(vec!["worktree", "refs"]);
+    jobs.start_job(app, request)
 }
 
 #[tauri::command]
@@ -76,6 +92,13 @@ pub fn worktree_prune_dry_run(repo_path: String) -> Result<Vec<String>, AppError
 }
 
 #[tauri::command]
-pub fn prune_worktrees(repo_path: String) -> Result<(), AppError> {
-    worktree_service::prune_worktrees(Path::new(&repo_path))
+pub fn prune_worktrees(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+) -> Result<GitJobSummary, AppError> {
+    let args = vec!["worktree".to_string(), "prune".to_string()];
+    let request = GitJobRequest::new(repo_path, "worktree.prune", "Prune stale worktrees", args)
+        .with_invalidation_reasons(vec!["worktree"]);
+    jobs.start_job(app, request)
 }

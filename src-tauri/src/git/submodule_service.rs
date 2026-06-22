@@ -110,18 +110,6 @@ pub fn submodule_count_and_behind(repo_path: &Path) -> Result<(u32, u32), AppErr
     Ok((configs.len() as u32, behind_count))
 }
 
-pub fn update_submodule(repo_path: &Path, path: &str, recursive: bool) -> Result<(), AppError> {
-    validate_relative_path(path)?;
-    let mut args = vec!["submodule", "update", "--init"];
-    if recursive {
-        args.push("--recursive");
-    }
-    args.push("--");
-    args.push(path);
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
 pub fn add_submodule(
     repo_path: &Path,
     url: &str,
@@ -148,41 +136,6 @@ pub fn add_submodule(
     args.push("--");
     args.push(&url);
     args.push(path);
-
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
-pub fn sync_submodules(repo_path: &Path, recursive: bool) -> Result<(), AppError> {
-    let mut args = vec!["submodule", "sync"];
-    if recursive {
-        args.push("--recursive");
-    }
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
-pub fn submodule_init_update(
-    repo_path: &Path,
-    path: Option<&str>,
-    recursive: bool,
-    remote: bool,
-) -> Result<(), AppError> {
-    if let Some(path) = path {
-        validate_relative_path(path)?;
-    }
-
-    let mut args = vec!["submodule", "update", "--init"];
-    if recursive {
-        args.push("--recursive");
-    }
-    if remote {
-        args.push("--remote");
-    }
-    if let Some(path) = path {
-        args.push("--");
-        args.push(path);
-    }
 
     GitCli::run(repo_path, &args)?;
     Ok(())

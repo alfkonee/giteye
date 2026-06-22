@@ -1,30 +1,25 @@
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import {
-  AlertTriangle,
-  Archive,
   Box,
   Command,
-  Database,
   FolderOpen,
   GitBranch,
-  GitFork,
-  GitPullRequest,
   Globe,
-  HardDrive,
-  History,
   Layers,
   PanelLeft,
   PanelLeftClose,
-  Settings,
-  Search,
-  Tag,
-  Wrench,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
+import {
+  getViewsForGroup,
+  isCollaborationView,
+  viewGroups,
+  type ViewDefinition,
+} from "../../lib/view-registry";
 import type { Branch, ViewType } from "../../types/git";
 import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
@@ -61,8 +56,7 @@ export function Sidebar() {
   );
 
   const shouldLoadBranches = Boolean(activeRepoPath);
-  const shouldLoadGithub =
-    activeView === "stacked-prs" || activeView === "review-studio";
+  const shouldLoadGithub = isCollaborationView(activeView);
   const shouldLoadWorktrees = activeView === "worktrees";
   const shouldLoadSubmodules = activeView === "submodules";
 
@@ -124,6 +118,30 @@ export function Sidebar() {
     snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
   const hasConflicts = conflictCount > 0;
   const hasActiveRebase = Boolean(rebaseQuery.data?.inProgress);
+  const collaborationOverview = githubOverviewQuery.data;
+  const hasCollaborationData = Boolean(
+    collaborationOverview &&
+      (collaborationOverview.providerAvailable ||
+        collaborationOverview.isGithubRepository ||
+        collaborationOverview.pullRequests.length > 0 ||
+        collaborationOverview.checkRuns.length > 0 ||
+        collaborationOverview.reviews.length > 0 ||
+        collaborationOverview.activity.length > 0),
+  );
+  const showCollaborationViews =
+    hasCollaborationData || isCollaborationView(activeView);
+  const viewCounts: Partial<Record<ViewType, number | undefined>> = {
+    "working-tree": statusFileCount,
+    branches: branchCount,
+    "rebase-conflicts": hasConflicts ? conflictCount : undefined,
+    worktrees: workspaceSummary?.worktreeCount,
+    submodules: workspaceSummary?.submoduleCount,
+    remotes: remotesQuery.data?.length,
+    stashes: stashesQuery.data?.length,
+    tags: tagsQuery.data?.length,
+    lfs: lfsQuery.data?.files.length,
+    "stacked-prs": pullRequestCount,
+  };
 
   useEffect(() => {
     if (!activeRepoPath || !shouldLoadGithub) return;
@@ -195,6 +213,36 @@ export function Sidebar() {
     deleteBranchMutation.mutate(branch.shortName);
   };
 
+  const shouldShowView = (definition: ViewDefinition) => {
+    if (!definition.collaboration) {
+      return true;
+    }
+
+    return definition.connectEntry || showCollaborationViews;
+  };
+
+  const renderViewItem = (definition: ViewDefinition) => {
+    const Icon = definition.icon;
+    return (
+      <SidebarNavItem
+        key={definition.id}
+        icon={<Icon className="h-4 w-4" />}
+        label={definition.label}
+        description={definition.connectEntry ? definition.description : undefined}
+        count={viewCounts[definition.id]}
+        active={activeView === definition.id}
+        tone={
+          definition.id === "rebase-conflicts" &&
+          (hasConflicts || hasActiveRebase)
+            ? "warning"
+            : "default"
+        }
+        onClick={() => navigate(definition.id)}
+        title={definition.description}
+      />
+    );
+  };
+
   if (sidebarCollapsed) {
     return (
       <div className="flex w-10 shrink-0 flex-col items-center border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
@@ -231,83 +279,19 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto py-1.5">
-        <SidebarSection title="Workspace" />
-        <SidebarNavItem
-          icon={<FolderOpen className="h-4 w-4" />}
-          label="Working Tree"
-          active={activeView === "working-tree"}
-          count={statusFileCount}
-          onClick={() => navigate("working-tree")}
-        />
-        <SidebarNavItem
-          icon={<History className="h-4 w-4" />}
-          label="History"
-          active={activeView === "history"}
-          onClick={() => navigate("history")}
-        />
-        <SidebarNavItem
-          icon={<GitPullRequest className="h-4 w-4" />}
-          label="Stacked PRs"
-          count={pullRequestCount}
-          active={activeView === "stacked-prs"}
-          onClick={() => navigate("stacked-prs")}
-        />
-        <SidebarNavItem
-          icon={<GitFork className="h-4 w-4" />}
-          label="Review Studio"
-          active={activeView === "review-studio"}
-          onClick={() => navigate("review-studio")}
-        />
-        <SidebarNavItem
-          icon={<AlertTriangle className="h-4 w-4" />}
-          label="Merge & Rebase"
-          count={hasConflicts ? conflictCount : undefined}
-          active={activeView === "rebase-conflicts"}
-          tone={hasConflicts || hasActiveRebase ? "warning" : "default"}
-          onClick={() => navigate("rebase-conflicts")}
-        />
+        {viewGroups.map((group) => {
+          const views = getViewsForGroup(group.id).filter(shouldShowView);
+          if (views.length === 0) {
+            return null;
+          }
 
-        <SidebarSection title="Repository Workspace" />
-        <SidebarNavItem
-          icon={<GitBranch className="h-4 w-4" />}
-          label="Branches"
-          count={branchCount}
-          active={activeView === "branches"}
-          onClick={() => navigate("branches")}
-        />
-        <SidebarNavItem
-          icon={<Search className="h-4 w-4" />}
-          label="Search & Archaeology"
-          active={activeView === "archaeology"}
-          onClick={() => navigate("archaeology")}
-        />
-        <SidebarNavItem
-          icon={<Wrench className="h-4 w-4" />}
-          label="Diagnostics & Bisect"
-          active={activeView === "diagnostics"}
-          onClick={() => navigate("diagnostics")}
-        />
-        <SidebarNavItem
-          icon={<GitPullRequest className="h-4 w-4" />}
-          label="Pull Requests"
-          count={pullRequestCount}
-          active={activeView === "stacked-prs"}
-          onClick={() => navigate("stacked-prs")}
-        />
-        <SidebarNavItem
-          icon={<Layers className="h-4 w-4" />}
-          label="Worktrees"
-          count={workspaceSummary?.worktreeCount}
-          active={activeView === "worktrees"}
-          onClick={() => navigate("worktrees")}
-        />
-        <SidebarNavItem
-          icon={<Box className="h-4 w-4" />}
-          label="Submodules"
-          count={workspaceSummary?.submoduleCount}
-          active={activeView === "submodules"}
-          onClick={() => navigate("submodules")}
-        />
+          return (
+            <Fragment key={group.id}>
+              <SidebarSection title={group.label} />
+              {views.map(renderViewItem)}
+            </Fragment>
+          );
+        })}
 
         <SidebarSection
           title="Local Branches"
@@ -375,7 +359,7 @@ export function Sidebar() {
         )}
 
         <SidebarSection
-          title="Worktrees"
+          title="Worktree Paths"
           count={workspaceSummary?.worktreeCount}
         />
         {shouldLoadWorktrees && worktreesQuery.isLoading ? (
@@ -408,7 +392,7 @@ export function Sidebar() {
         )}
 
         <SidebarSection
-          title="Submodules"
+          title="Submodule Paths"
           count={workspaceSummary?.submoduleCount}
         />
         {shouldLoadSubmodules && submodulesQuery.isLoading ? (
@@ -434,48 +418,12 @@ export function Sidebar() {
             />
           ))
         )}
-
-        <SidebarSection title="Repository" />
-        <SidebarNavItem
-          icon={<Archive className="h-4 w-4" />}
-          label="Stashes"
-          count={stashesQuery.data?.length}
-          active={activeView === "stashes"}
-          onClick={() => navigate("stashes")}
-        />
-        <SidebarNavItem
-          icon={<Tag className="h-4 w-4" />}
-          label="Tags"
-          count={tagsQuery.data?.length}
-          active={activeView === "tags"}
-          onClick={() => navigate("tags")}
-        />
-        <SidebarNavItem
-          icon={<HardDrive className="h-4 w-4" />}
-          label="Git LFS"
-          count={lfsQuery.data?.files.length}
-          active={activeView === "lfs"}
-          onClick={() => navigate("lfs")}
-        />
-        <SidebarNavItem
-          icon={<Database className="h-4 w-4" />}
-          label="Remotes"
-          count={remotesQuery.data?.length}
-          active={activeView === "remotes"}
-          onClick={() => navigate("remotes")}
-        />
-        <SidebarNavItem
-          icon={<Settings className="h-4 w-4" />}
-          label="Settings"
-          active={activeView === "settings"}
-          onClick={() => navigate("settings")}
-        />
       </div>
 
       <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
         <SidebarNavItem
           icon={<FolderOpen className="h-4 w-4" />}
-          label="Switch Repository"
+          label="Repo Hub"
           onClick={() => setActiveRepoPath(null)}
         />
 

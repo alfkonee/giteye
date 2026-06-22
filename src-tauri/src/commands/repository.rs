@@ -1,9 +1,12 @@
 use crate::errors::AppError;
+use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::git::repository_service;
-use crate::models::{BranchSummary, RepositoryInfo, RepositorySnapshot, WorkspaceSummary};
+use crate::models::{
+    BranchSummary, GitJobSummary, RepositoryInfo, RepositorySnapshot, WorkspaceSummary,
+};
 use crate::storage;
-use std::path::Path;
-use tauri::AppHandle;
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn open_repository(
@@ -34,18 +37,43 @@ pub fn init_repository(
 
 #[tauri::command]
 pub fn clone_repository(
+    app_handle: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
     url: String,
     destination: String,
-    app_handle: AppHandle,
-) -> Result<RepositorySnapshot, AppError> {
-    repository_service::clone_repository(&url, Path::new(&destination))?;
-    let snapshot = repository_service::get_repository_snapshot(Path::new(&destination))?;
-    storage::save_recent_repository(&app_handle, &destination, &snapshot.repository_info.name)?;
-    repository_service::prime_repository_context_with_budget(
-        Path::new(&destination).to_path_buf(),
-        false,
-    );
-    Ok(snapshot)
+) -> Result<GitJobSummary, AppError> {
+    let destination_path = PathBuf::from(&destination);
+    let parent = destination_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let Some(name) = destination_path
+        .file_name()
+        .and_then(|value| value.to_str())
+    else {
+        return Err(AppError::InvalidPath(destination));
+    };
+    let args = vec!["clone".to_string(), url, name.to_string()];
+    let hook_destination = destination.clone();
+    let hook_app = app_handle.clone();
+    let request = GitJobRequest::new(destination, "clone", "Clone repository", args)
+        .with_working_dir(parent)
+        .with_invalidation_reasons(vec!["worktree", "refs", "remote"])
+        .on_success(Box::new(move || {
+            let repo_path = Path::new(&hook_destination);
+            if let Ok(snapshot) = repository_service::get_repository_snapshot(repo_path) {
+                let _ = storage::save_recent_repository(
+                    &hook_app,
+                    &hook_destination,
+                    &snapshot.repository_info.name,
+                );
+                repository_service::prime_repository_context_with_budget(
+                    repo_path.to_path_buf(),
+                    false,
+                );
+            }
+        }));
+    jobs.start_job(app_handle, request)
 }
 
 #[tauri::command]

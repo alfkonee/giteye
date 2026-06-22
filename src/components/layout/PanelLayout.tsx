@@ -3,18 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
-import { WorkingTree } from "../working-tree/WorkingTree";
-import { CommitHistory } from "../commit-history/CommitHistory";
+import { getViewDefinition } from "../../lib/view-registry";
 import { CommitDetails } from "../commit-history/CommitDetails";
-import { BranchList } from "../branches/BranchList";
-import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
-import { StackedPrBoard } from "../stacked-prs/StackedPrBoard";
-import { DiffReviewStudio } from "../review-studio/DiffReviewStudio";
-import { WorktreesSubmodules } from "../workspaces/WorktreesSubmodules";
-import { AdvancedMergeRebasePanel } from "../rebase/AdvancedMergeRebasePanel";
-import { LfsView, RemotesView, StashesView, TagsView } from "../repository/LocalGitViews";
-import { ArchaeologyView } from "../repository/ArchaeologyView";
-import { DiagnosticsView } from "../repository/DiagnosticsView";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
 import { EmptyState } from "../common/EmptyState";
@@ -30,7 +20,7 @@ export function PanelLayout() {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const queryClient = useQueryClient();
-
+  const activeViewDefinition = getViewDefinition(activeView);
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
@@ -61,39 +51,7 @@ export function PanelLayout() {
     discardHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText, staged: Boolean(hunk.staged) });
   }, [activeRepoPath, discardHunk]);
 
-  const renderMainContent = useCallback(() => {
-    switch (activeView) {
-      case "working-tree":
-        return <WorkingTree />;
-      case "history":
-        return <CommitHistory />;
-      case "branches":
-        return <BranchList />;
-      case "remotes":
-        return <RemotesView />;
-      case "stashes":
-        return <StashesView />;
-      case "tags":
-        return <TagsView />;
-      case "lfs":
-        return <LfsView />;
-      case "stacked-prs":
-        return <StackedPrBoard />;
-      case "review-studio":
-        return <DiffReviewStudio />;
-      case "worktrees":
-      case "submodules":
-        return <WorktreesSubmodules />;
-      case "rebase-conflicts":
-        return <AdvancedMergeRebasePanel />;
-      case "archaeology":
-        return <ArchaeologyView />;
-      case "diagnostics":
-        return <DiagnosticsView />;
-      case "settings":
-        return <SettingsPlaceholder />;
-    }
-  }, [activeView]);
+  const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {
     if (selectedCommitHash && selectedCommitFilePath) {
@@ -144,12 +102,12 @@ export function PanelLayout() {
     );
   }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
 
-  const showDetailPane = activeView === "working-tree" || activeView === "history";
+  const showDetailPane = Boolean(activeViewDefinition.detailPane);
 
   if (!showDetailPane) {
     return (
       <div className="h-full overflow-hidden bg-[var(--color-bg-primary)]">
-        {renderMainContent()}
+        {mainContent}
       </div>
     );
   }
@@ -161,7 +119,7 @@ export function PanelLayout() {
         minSize={30}
       >
         <div className="h-full overflow-hidden">
-          {renderMainContent()}
+          {mainContent}
         </div>
       </Panel>
       <PanelResizeHandle className="group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">

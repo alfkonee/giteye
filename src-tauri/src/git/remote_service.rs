@@ -39,39 +39,6 @@ pub fn list_remotes(repo_path: &Path) -> Result<Vec<Remote>, AppError> {
     Ok(remotes)
 }
 
-pub fn fetch(repo_path: &Path, remote: Option<&str>) -> Result<(), AppError> {
-    let mut args = vec!["fetch"];
-    if let Some(r) = remote {
-        args.push(r);
-    }
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
-pub fn pull(repo_path: &Path, remote: Option<&str>, branch: Option<&str>) -> Result<(), AppError> {
-    let mut args = vec!["pull"];
-    if let Some(r) = remote {
-        args.push(r);
-    }
-    if let Some(b) = branch {
-        args.push(b);
-    }
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
-pub fn push(repo_path: &Path, remote: Option<&str>, branch: Option<&str>) -> Result<(), AppError> {
-    let mut args = vec!["push"];
-    if let Some(r) = remote {
-        args.push(r);
-    }
-    if let Some(b) = branch {
-        args.push(b);
-    }
-    GitCli::run(repo_path, &args)?;
-    Ok(())
-}
-
 pub fn add_remote(repo_path: &Path, name: &str, url: &str) -> Result<(), AppError> {
     let name = required_git_arg(name, "remote name")?;
     let url = required_git_arg(url, "remote URL")?;

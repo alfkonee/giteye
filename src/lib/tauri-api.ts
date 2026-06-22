@@ -52,6 +52,8 @@ import type {
   GitMaintenanceMode,
   GitMaintenanceSummary,
   GitSignatureSummary,
+  GitJobRecord,
+  GitJobSummary,
 } from "../types/git";
 
 export type CheckoutBranchStrategy = "move" | "stash";
@@ -86,6 +88,8 @@ export interface BisectStartRequest {
   paths?: string[];
 }
 
+export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
+
 export const gitApi = {
   openRepository: (path: string) =>
     invoke<RepositorySnapshot>("open_repository", { path }),
@@ -94,7 +98,7 @@ export const gitApi = {
     invoke<RepositorySnapshot>("init_repository", { path }),
 
   cloneRepository: (url: string, destination: string) =>
-    invoke<RepositorySnapshot>("clone_repository", { url, destination }),
+    invoke<GitJobSummary>("clone_repository", { url, destination }),
 
   getRepositoryInfo: (path: string) =>
     invoke<RepositoryInfo>("get_repository_info", { path }),
@@ -128,6 +132,18 @@ export const gitApi = {
 
   stopRepositoryWatch: (repoPath: string) =>
     invoke<void>("stop_repository_watch", { repoPath }),
+
+  listGitJobs: (repoPath?: string | null) =>
+    invoke<GitJobSummary[]>("list_git_jobs", { repoPath: repoPath ?? null }),
+
+  getGitJob: (jobId: string) =>
+    invoke<GitJobRecord | null>("get_git_job", { jobId }),
+
+  cancelGitJob: (jobId: string) =>
+    invoke<GitJobSummary>("cancel_git_job", { jobId }),
+
+  clearGitJobLog: (repoPath?: string | null, jobId?: string | null) =>
+    invoke<GitJobSummary[]>("clear_git_job_log", { repoPath: repoPath ?? null, jobId: jobId ?? null }),
 
   // Status
   getStatus: (repoPath: string) =>
@@ -314,10 +330,10 @@ export const gitApi = {
     invoke<void>("fast_forward_branch", { repoPath, branchName, upstream }),
 
   mergeBranch: (repoPath: string, source: string) =>
-    invoke<void>("merge_branch", { repoPath, source }),
+    invoke<GitJobSummary>("merge_branch", { repoPath, source }),
 
   mergeWithOptions: (repoPath: string, request: MergeWithOptionsRequest) =>
-    invoke<void>("merge_with_options", {
+    invoke<GitJobSummary>("merge_with_options", {
       repoPath,
       source: request.source,
       noFf: request.noFf,
@@ -370,17 +386,17 @@ export const gitApi = {
     invoke<Remote[]>("list_remotes", { repoPath }),
 
   fetch: (repoPath: string, remote?: string) =>
-    invoke<void>("fetch", { repoPath, remote: remote ?? null }),
+    invoke<GitJobSummary>("fetch", { repoPath, remote: remote ?? null }),
 
   pull: (repoPath: string, remote?: string, branch?: string) =>
-    invoke<void>("pull", {
+    invoke<GitJobSummary>("pull", {
       repoPath,
       remote: remote ?? null,
       branch: branch ?? null,
     }),
 
   push: (repoPath: string, remote?: string, branch?: string) =>
-    invoke<void>("push", {
+    invoke<GitJobSummary>("push", {
       repoPath,
       remote: remote ?? null,
       branch: branch ?? null,
@@ -546,7 +562,7 @@ export const gitApi = {
     invoke<string[]>("remove_worktree_dry_run", { repoPath, path, force }),
 
   pruneWorktrees: (repoPath: string) =>
-    invoke<void>("prune_worktrees", { repoPath }),
+    invoke<GitJobSummary>("prune_worktrees", { repoPath }),
 
   pruneWorktreesDryRun: (repoPath: string) =>
     invoke<string[]>("worktree_prune_dry_run", { repoPath }),
@@ -561,7 +577,7 @@ export const gitApi = {
     invoke<void>("worktree_unlock", { repoPath, path }),
 
   repairWorktree: (repoPath: string, path: string) =>
-    invoke<string[]>("worktree_repair", { repoPath, path }),
+    invoke<GitJobSummary>("worktree_repair", { repoPath, path }),
 
   repairWorktreeDryRun: (repoPath: string, path: string) =>
     invoke<string[]>("worktree_repair_dry_run", { repoPath, path }),
@@ -571,7 +587,7 @@ export const gitApi = {
     invoke<Submodule[]>("list_submodules", { repoPath }),
 
   updateSubmodule: (repoPath: string, path: string, recursive: boolean) =>
-    invoke<void>("update_submodule", { repoPath, path, recursive }),
+    invoke<GitJobSummary>("update_submodule", { repoPath, path, recursive }),
 
   addSubmodule: (
     repoPath: string,
@@ -594,7 +610,7 @@ export const gitApi = {
     recursive: boolean,
     remote: boolean,
   ) =>
-    invoke<void>("submodule_init_update", {
+    invoke<GitJobSummary>("submodule_init_update", {
       repoPath,
       path,
       recursive,
@@ -611,7 +627,7 @@ export const gitApi = {
     }),
 
   syncSubmodules: (repoPath: string, recursive: boolean) =>
-    invoke<void>("sync_submodules", { repoPath, recursive }),
+    invoke<GitJobSummary>("sync_submodules", { repoPath, recursive }),
 
   openSubmodule: (repoPath: string, path: string) =>
     invoke<string>("open_submodule", { repoPath, path }),
@@ -647,7 +663,7 @@ export const gitApi = {
     }),
 
   rebaseOnto: (repoPath: string, request: StartRebaseRequest) =>
-    invoke<void>("rebase_onto", {
+    invoke<GitJobSummary>("rebase_onto", {
       repoPath,
       upstream: request.upstream,
       onto: request.onto ?? "",
@@ -656,7 +672,7 @@ export const gitApi = {
     }),
 
   rebaseUpstream: (repoPath: string, request: StartRebaseRequest) =>
-    invoke<void>("rebase_upstream", {
+    invoke<GitJobSummary>("rebase_upstream", {
       repoPath,
       upstream: request.upstream,
       branch: request.branch,
@@ -664,11 +680,11 @@ export const gitApi = {
     }),
 
   continueRebase: (repoPath: string) =>
-    invoke<void>("continue_rebase", { repoPath }),
+    invoke<GitJobSummary>("continue_rebase", { repoPath }),
 
-  abortRebase: (repoPath: string) => invoke<void>("abort_rebase", { repoPath }),
+  abortRebase: (repoPath: string) => invoke<GitJobSummary>("abort_rebase", { repoPath }),
 
-  skipRebase: (repoPath: string) => invoke<void>("skip_rebase", { repoPath }),
+  skipRebase: (repoPath: string) => invoke<GitJobSummary>("skip_rebase", { repoPath }),
 
   markFileResolved: (repoPath: string, filePath: string) =>
     invoke<void>("mark_file_resolved", { repoPath, filePath }),

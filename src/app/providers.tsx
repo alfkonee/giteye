@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { NoticeCenter } from "../components/common/NoticeCenter";
+import { CommandLogDrawer } from "../components/common/CommandLogDrawer";
+import { GitJobEventListener, GitStateWatcher } from "../lib/git-watch";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -18,6 +20,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <GitStateWatcher />
+      <GitJobEventListener />
+      <CommandLogDrawer />
       <NoticeCenter />
       {children}
     </QueryClientProvider>

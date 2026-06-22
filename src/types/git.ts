@@ -663,6 +663,48 @@ export interface GitSignatureSummary {
   safety: GitCommandSafety;
 }
 
+export type GitJobStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "canceled"
+  | "cancelled";
+
+export type GitJobLogChannel = "stdout" | "stderr";
+
+export interface GitJobStreamLine {
+  channel: GitJobLogChannel;
+  line: string;
+  timestamp?: string | null;
+}
+
+export interface GitJobEvent {
+  jobId: string;
+  repoPath: string;
+  kind: string;
+  title: string;
+  status: GitJobStatus;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  command?: string | null;
+  args?: string[] | null;
+  stream?: GitJobStreamLine | null;
+  exitCode?: number | null;
+  error?: string | null;
+  invalidationReasons?: string[] | null;
+}
+
+export interface GitJobSummary extends Omit<GitJobEvent, "stream"> {
+  logLineCount?: number;
+}
+
+export interface GitJobRecord extends GitJobSummary {
+  logs?: GitJobStreamLine[];
+  output?: GitJobStreamLine[];
+}
+
 export type GlobalViewType = "repo-hub";
 
 export type RepositoryViewType =
@@ -673,6 +715,7 @@ export type RepositoryViewType =
   | "stashes"
   | "tags"
   | "lfs"
+  | "collaboration-connect"
   | "stacked-prs"
   | "review-studio"
   | "worktrees"
@@ -687,6 +730,12 @@ export type ViewType = RepositoryViewType;
 export type AppRoute =
   | { area: "global"; view: GlobalViewType }
   | { area: "repository"; view: RepositoryViewType; repoPath: string };
+
+export interface RepositorySessionState {
+  repoPath: string;
+  activeView: RepositoryViewType;
+  selected: SelectedEntityState;
+}
 
 export interface SelectedEntityState {
   repositoryPath: string | null;
