@@ -35,8 +35,18 @@ jobs:
         run: bun run build
 
   tauri-smoke:
-    name: Tauri Linux smoke build
-    runs-on: ubuntu-22.04
+    name: Tauri ${{ matrix.name }} smoke build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-22.04
+          - name: Windows
+            runner: windows-latest
+          - name: macOS
+            runner: macos-latest
 
     steps:
       - name: Checkout repository
@@ -56,6 +66,7 @@ jobs:
           workspaces: ./src-tauri -> target
 
       - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
