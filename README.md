@@ -147,7 +147,7 @@ bun run tauri:build
 bun run build:appimage
 ```
 
-The AppImage is written to `src-tauri/target/release/bundle/appimage/`. The GitHub Actions workflow at `.github/workflows/appimage.yml` builds on Ubuntu 22.04 for a conservative glibc baseline, uploads the AppImage artifact for manual runs, and attaches it to GitHub releases when a `v*` or `app-v*` tag is pushed.
+The AppImage is written to `src-tauri/target/release/bundle/appimage/`. The GitHub Actions workflow at `.github/workflows/release.yml` runs when a GitHub Release is published, builds Linux, Windows, and macOS bundles, and uploads the generated artifacts to that release.
 
 ### Typecheck & Lint
 
