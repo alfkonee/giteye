@@ -3,6 +3,7 @@ import type { GitJobEvent, GitJobLogChannel, GitJobRecord, GitJobStatus, GitJobS
 
 export interface GitJobLogLine {
   id: string;
+  sourceKey: string;
   jobId: string;
   channel: GitJobLogChannel;
   line: string;
@@ -56,7 +57,7 @@ export const useJobStore = create<JobStore>((set) => ({
     set((state) => {
       let nextState: Pick<JobStore, "jobsById" | "jobOrder" | "selectedJobId"> = state;
       for (const job of jobs) {
-        nextState = upsertJobEvent(nextState, job, job.logs ?? job.output ?? []);
+        nextState = upsertJobEvent(nextState, job, job.logs ?? job.output ?? [], true);
       }
       return nextState;
     });
@@ -93,6 +94,7 @@ function upsertJobEvent(
   state: Pick<JobStore, "jobsById" | "jobOrder" | "selectedJobId">,
   event: GitJobEvent,
   output: GitJobStreamLine[] = [],
+  replaceLines = false,
 ) {
   const now = Date.now();
   const existing = state.jobsById[event.jobId];
@@ -117,7 +119,7 @@ function upsertJobEvent(
     exitCode: event.exitCode ?? existing?.exitCode ?? null,
     error: event.error ?? existing?.error ?? null,
     invalidationReasons: event.invalidationReasons ?? existing?.invalidationReasons ?? [],
-    lines: [...(existing?.lines ?? []), ...eventLines],
+    lines: mergeLogLines(existing?.lines ?? [], eventLines, replaceLines),
     updatedAt: now,
   };
 
@@ -136,13 +138,34 @@ function upsertJobEvent(
 }
 
 function toLogLine(jobId: string, stream: GitJobStreamLine, receivedAt: number): GitJobLogLine {
+  const sourceKey = logLineSourceKey(jobId, stream);
   return {
-    id: `${jobId}-${receivedAt}-${Math.random().toString(36).slice(2)}`,
+    id: sourceKey,
+    sourceKey,
     jobId,
     channel: stream.channel,
     line: stream.line,
     receivedAt,
   };
+}
+
+function mergeLogLines(existing: GitJobLogLine[], incoming: GitJobLogLine[], preferIncomingOrder: boolean) {
+  const first = preferIncomingOrder ? incoming : existing;
+  const second = preferIncomingOrder ? existing : incoming;
+  const seen = new Set<string>();
+  const merged: GitJobLogLine[] = [];
+
+  for (const line of [...first, ...second]) {
+    if (seen.has(line.sourceKey)) continue;
+    seen.add(line.sourceKey);
+    merged.push(line);
+  }
+
+  return merged;
+}
+
+function logLineSourceKey(jobId: string, stream: GitJobStreamLine) {
+  return JSON.stringify([jobId, stream.channel, stream.timestamp ?? "", stream.line]);
 }
 
 function parseEventTime(value: string | null | undefined) {

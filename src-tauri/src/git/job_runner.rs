@@ -8,8 +8,9 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 pub const GIT_JOB_EVENT: &str = "giteye://git-job-event";
@@ -133,9 +134,19 @@ impl GitJobRunnerState {
         let job_id_for_thread = job_id.clone();
 
         thread::spawn(move || {
-            let _repo_guard = match &repo_lock {
-                Some(lock) => lock.lock().ok(),
-                None => None,
+            let _repo_guard = match wait_for_repo_guard(&repo_lock, &cancel_flag) {
+                RepoGuardWait::Acquired(guard) => guard,
+                RepoGuardWait::Canceled => {
+                    update_job(&jobs, &app, &job_id_for_thread, None, |job| {
+                        job.status = GitJobStatus::Canceled;
+                        job.finished_at = Some(Utc::now());
+                        job.error = Some("Git job canceled before start".to_string());
+                    });
+                    if let Ok(mut cancellations) = cancellations.lock() {
+                        cancellations.remove(&job_id_for_thread);
+                    }
+                    return;
+                }
             };
 
             if cancel_flag.load(Ordering::SeqCst) {
@@ -274,7 +285,7 @@ impl GitJobRunnerState {
         Ok(jobs.get(job_id).cloned())
     }
 
-    pub fn cancel_job(&self, job_id: &str) -> Result<GitJobSummary, AppError> {
+    pub fn cancel_job(&self, app: &AppHandle, job_id: &str) -> Result<GitJobSummary, AppError> {
         let cancel_flag = {
             let cancellations = self.cancellations.lock().map_err(lock_error)?;
             cancellations.get(job_id).cloned()
@@ -290,10 +301,18 @@ impl GitJobRunnerState {
             }
         }
 
-        let jobs = self.jobs.lock().map_err(lock_error)?;
-        jobs.get(job_id)
-            .map(GitJobRecord::summary)
-            .ok_or_else(|| AppError::GitError(format!("Git job {job_id} was not found")))
+        let mut jobs = self.jobs.lock().map_err(lock_error)?;
+        let job = jobs
+            .get_mut(job_id)
+            .ok_or_else(|| AppError::GitError(format!("Git job {job_id} was not found")))?;
+        if matches!(job.status, GitJobStatus::Queued) {
+            job.status = GitJobStatus::Canceled;
+            job.finished_at = Some(Utc::now());
+            job.error = Some("Git job canceled before start".to_string());
+        }
+        let summary = job.summary();
+        emit_job_event(app, job, None);
+        Ok(summary)
     }
 
     pub fn clear_job_logs(
@@ -323,6 +342,34 @@ impl GitJobRunnerState {
                 .entry(repo_path.to_string())
                 .or_insert_with(|| Arc::new(Mutex::new(()))),
         ))
+    }
+}
+
+enum RepoGuardWait<'a> {
+    Acquired(Option<MutexGuard<'a, ()>>),
+    Canceled,
+}
+
+fn wait_for_repo_guard<'a>(
+    repo_lock: &'a Option<Arc<Mutex<()>>>,
+    cancel_flag: &AtomicBool,
+) -> RepoGuardWait<'a> {
+    let Some(lock) = repo_lock else {
+        return RepoGuardWait::Acquired(None);
+    };
+
+    loop {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return RepoGuardWait::Canceled;
+        }
+
+        match lock.try_lock() {
+            Ok(guard) => return RepoGuardWait::Acquired(Some(guard)),
+            Err(TryLockError::WouldBlock) => thread::sleep(Duration::from_millis(25)),
+            Err(TryLockError::Poisoned(error)) => {
+                return RepoGuardWait::Acquired(Some(error.into_inner()));
+            }
+        }
     }
 }
 
@@ -376,4 +423,38 @@ fn first_non_empty(value: &str) -> Option<String> {
 
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> AppError {
     AppError::IoError(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn wait_for_repo_guard_exits_when_canceled_while_queued() {
+        let lock = Arc::new(Mutex::new(()));
+        let held_guard = lock.lock().expect("lock should be available");
+        let repo_lock = Some(Arc::clone(&lock));
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let worker_flag = Arc::clone(&cancel_flag);
+
+        let started_at = Instant::now();
+        let worker = thread::spawn(move || {
+            matches!(
+                wait_for_repo_guard(&repo_lock, &worker_flag),
+                RepoGuardWait::Canceled
+            )
+        });
+
+        thread::sleep(Duration::from_millis(50));
+        cancel_flag.store(true, Ordering::SeqCst);
+
+        assert!(worker.join().expect("worker should not panic"));
+        assert!(
+            started_at.elapsed() < Duration::from_millis(500),
+            "queued cancellation should not wait for the repo mutation lock"
+        );
+
+        drop(held_guard);
+    }
 }

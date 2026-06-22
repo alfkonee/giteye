@@ -1,7 +1,7 @@
 use crate::errors::AppError;
 use crate::git::job_runner::GitJobRunnerState;
 use crate::models::job::{GitJobRecord, GitJobSummary};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 /// Lists GitEye-triggered background Git jobs, optionally scoped to one repository path.
 #[tauri::command]
@@ -24,10 +24,11 @@ pub fn get_git_job(
 /// Requests cancellation for a running GitEye-triggered background Git job where the child process can be killed.
 #[tauri::command]
 pub fn cancel_git_job(
+    app: AppHandle,
     state: State<'_, GitJobRunnerState>,
     job_id: String,
 ) -> Result<GitJobSummary, AppError> {
-    state.cancel_job(&job_id)
+    state.cancel_job(&app, &job_id)
 }
 
 /// Clears captured stdout/stderr lines for retained Git jobs while keeping lifecycle summaries.
