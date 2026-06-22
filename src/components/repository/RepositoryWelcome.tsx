@@ -20,6 +20,7 @@ import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { AppChrome } from "../layout/AppChrome";
 
 type RepositoryCard = {
   name: string;
@@ -87,14 +88,9 @@ export function RepositoryWelcome() {
   const actionError = openMutation.error ?? initMutation.error ?? cloneMutation.error;
 
   return (
-    <div className="giteye-shell flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+    <AppChrome title="GitEye · Repo Hub" subtitle="No repository open">
+      <div className="flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <aside className="flex w-[264px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
-        <div className="flex h-11 items-center gap-2 border-b border-[var(--color-border-muted)] px-4">
-          <span className="h-3 w-3 rounded-full bg-[var(--color-danger)]" />
-          <span className="h-3 w-3 rounded-full bg-[var(--color-warning)]" />
-          <span className="h-3 w-3 rounded-full bg-[var(--color-success)]" />
-        </div>
-
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <button className="flex h-9 w-full items-center gap-3 rounded-lg bg-[var(--color-bg-selected)]/15 px-3 text-left text-sm font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-accent)]/20">
             <Home className="h-4 w-4 text-[var(--color-accent)]" />
@@ -145,15 +141,6 @@ export function RepositoryWelcome() {
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-11 shrink-0 items-center justify-center border-b border-[var(--color-border-muted)] bg-[var(--color-bg-primary)]/85 px-5">
-          <span className="text-sm font-semibold text-[var(--color-text-primary)]">Repo Hub</span>
-          <div className="absolute right-5 flex items-center gap-4 text-[var(--color-text-muted)]">
-            <span className="h-2.5 w-2.5 rounded-full bg-[var(--color-bg-surface)]" />
-            <span className="h-2.5 w-2.5 rounded-sm border border-[var(--color-text-muted)]" />
-            <span className="text-lg leading-none">×</span>
-          </div>
-        </header>
-
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="mx-auto max-w-[980px]">
@@ -320,7 +307,8 @@ export function RepositoryWelcome() {
           </span>
         </footer>
       </main>
-    </div>
+      </div>
+    </AppChrome>
   );
 }
 
