@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../stores/app-store";
@@ -21,8 +21,11 @@ type AppStoreWithOpenRepos = {
 const jobNoticeIds = new Map<string, string>();
 
 export function GitStateWatcher() {
-  const watchedRepoPaths = useAppStore((state) =>
-    normalizeWatchedRepoPaths(state as AppStoreWithOpenRepos),
+  const activeRepoPath = useAppStore((state) => state.activeRepoPath);
+  const openRepoPaths = useAppStore((state) => state.openRepoPaths);
+  const watchedRepoPaths = useMemo(
+    () => normalizeWatchedRepoPaths({ activeRepoPath, openRepoPaths }),
+    [activeRepoPath, openRepoPaths],
   );
   const watchedRepoKey = watchedRepoPaths.join("\0");
   const queryClient = useQueryClient();
