@@ -91,6 +91,27 @@ jobs:
           tauriScript: bunx tauri
           args: ${{ steps.tauri-args.outputs.args }}
 
+      - name: Patch and re-upload Linux AppImage runtime hook
+        if: runner.os == 'Linux'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ github.event.release.tag_name }}"
+          version="${version#v}"
+          app_dir="src-tauri/target/release/bundle/appimage/GitEye.AppDir"
+          app_image="GitEye_${version}_amd64.AppImage"
+
+          cp src-tauri/bundle/linuxdeploy-plugin-gtk.sh "$app_dir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+          chmod +x "$app_dir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+
+          curl -L --fail -o appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$app_dir" "$app_image"
+
+          gh release upload "${{ github.event.release.tag_name }}" "$app_image" --clobber
+
   finalize-assets:
     name: Verify release artifact versions
     runs-on: ubuntu-22.04
