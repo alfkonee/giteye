@@ -18,3 +18,8 @@ export GDK_PIXBUF_MODULE_FILE="$APPDIR/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2
 # Restrict GIO to the modules bundled in the AppImage. Using GIO_EXTRA_MODULES still lets
 # GLib load host modules first, which can break when host gvfs was built against newer GLib.
 export GIO_MODULE_DIR="$APPDIR/usr/lib/x86_64-linux-gnu/gio/modules"
+
+# Avoid blank/aborted WebKitGTK windows on Linux GPU/session combinations where EGL or
+# DMA-BUF acceleration is unavailable or mismatched with the bundled WebKit libraries.
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
