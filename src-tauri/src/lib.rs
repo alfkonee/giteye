@@ -9,12 +9,10 @@ mod watcher;
 pub fn run() {
     configure_linux_webkit_environment();
 
-    let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
 
     #[cfg(debug_assertions)]
-    {
-        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
-    }
+    let builder = builder.plugin(tauri_plugin_mcp_bridge::init());
 
     builder
         .manage(watcher::RepositoryWatcherState::default())
@@ -23,6 +21,7 @@ pub fn run() {
             if !git::cli::GitCli::is_git_available() {
                 eprintln!("Warning: Git is not installed or not in PATH");
             }
+            configure_linux_webview(_app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -210,6 +209,23 @@ fn configure_linux_webkit_environment() {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+fn configure_linux_webview(app: &tauri::App) {
+    use tauri::Manager;
+    use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+
+    if let Some(webview_window) = app.get_webview_window("main") {
+        let _ = webview_window.with_webview(|webview| {
+            if let Some(settings) = webview.inner().settings() {
+                settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+            }
+        });
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_linux_webview(_app: &tauri::App) {}
 
 #[cfg(not(target_os = "linux"))]
 fn configure_linux_webkit_environment() {}

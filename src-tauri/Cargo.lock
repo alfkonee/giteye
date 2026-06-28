@@ -1342,6 +1342,7 @@ dependencies = [
  "tauri-plugin-mcp-bridge",
  "tauri-plugin-opener",
  "thiserror 2.0.18",
+ "webkit2gtk",
 ]
 
 [[package]]
