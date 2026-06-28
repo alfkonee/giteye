@@ -248,6 +248,7 @@ pub fn init_repository(path: &Path) -> Result<RepositoryInfo, AppError> {
     get_repository_info(path)
 }
 
+#[allow(dead_code)]
 pub fn clone_repository(url: &str, destination: &Path) -> Result<RepositoryInfo, AppError> {
     let parent = destination.parent().unwrap_or_else(|| Path::new("."));
     let Some(name) = destination.file_name().and_then(|value| value.to_str()) else {

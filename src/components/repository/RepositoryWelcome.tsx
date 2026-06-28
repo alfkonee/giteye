@@ -20,6 +20,7 @@ import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { RepositoryTabs } from "../layout/RepositoryTabs";
 
 type RepositoryCard = {
   name: string;
@@ -32,6 +33,7 @@ export function RepositoryWelcome() {
   const [path, setPath] = useState("");
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const openRepoPaths = useAppStore((s) => s.openRepoPaths);
   const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const initMutation = useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
   const cloneMutation = useMutation(gitMutations.cloneRepository(queryClient, setActiveRepoPath));
@@ -114,14 +116,27 @@ export function RepositoryWelcome() {
 
           <div className="my-5 h-px bg-[var(--color-border-muted)]" />
           <SectionLabel>Workspaces</SectionLabel>
-          <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
-            <p className="font-medium text-[var(--color-text-primary)]">No workspaces yet</p>
-            <p className="mt-1 leading-5">Open a repository to begin organizing local work.</p>
-            <button disabled className="mt-3 flex h-8 w-full cursor-not-allowed items-center gap-2 rounded-md px-2 text-left text-[var(--color-text-muted)] opacity-60" title="Workspace provider management is not configured yet.">
-              <Plus className="h-4 w-4" />
-              New Workspace
-            </button>
-          </div>
+          {openRepoPaths.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {openRepoPaths.map((repoPath) => (
+                <button
+                  key={repoPath}
+                  type="button"
+                  onClick={() => setActiveRepoPath(repoPath)}
+                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                  title={repoPath}
+                >
+                  <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                  <span className="truncate">{basename(repoPath)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
+              <p className="font-medium text-[var(--color-text-primary)]">No repository sessions yet</p>
+              <p className="mt-1 leading-5">Open a repository to begin organizing local work.</p>
+            </div>
+          )}
 
           <div className="my-5 h-px bg-[var(--color-border-muted)]" />
           <SectionLabel>Accounts</SectionLabel>
@@ -140,11 +155,12 @@ export function RepositoryWelcome() {
 
         <div className="border-t border-[var(--color-border-muted)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
           <GitBranch className="mr-2 inline h-3.5 w-3.5" />
-          No repository open
+          {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} repository session${openRepoPaths.length === 1 ? "" : "s"} open`}
         </div>
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
+        <RepositoryTabs />
         <header className="flex h-11 shrink-0 items-center justify-center border-b border-[var(--color-border-muted)] bg-[var(--color-bg-primary)]/85 px-5">
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">Repo Hub</span>
           <div className="absolute right-5 flex items-center gap-4 text-[var(--color-text-muted)]">
@@ -561,4 +577,10 @@ function Shortcut({ keys, label }: { keys: string; label: string }) {
       {label}
     </span>
   );
+}
+
+function basename(path: string) {
+  const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
+  const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
+  return path.slice(slashIndex + 1, normalizedEnd);
 }

@@ -210,6 +210,8 @@ export const gitKeys = {
   recentRepositories: () => [...gitKeys.all, "recent-repositories"] as const,
   favoriteRepositories: () =>
     [...gitKeys.all, "favorite-repositories"] as const,
+  gitJobs: (repoPath: string | null | undefined) =>
+    [...gitKeys.all, "jobs", repoPath ?? null] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -601,6 +603,12 @@ export const gitQueries = {
       queryFn: () => gitApi.listFavoriteRepositories(),
     }),
 
+  gitJobs: (repoPath?: string | null) =>
+    queryOptions({
+      queryKey: gitKeys.gitJobs(repoPath),
+      queryFn: () => gitApi.listGitJobs(repoPath ?? null),
+    }),
+
   status: (repoPath: string | null) =>
     queryOptions({
       queryKey: gitKeys.repositorySnapshot(repoPath),
@@ -923,7 +931,7 @@ export const gitMutations = {
 
   cloneRepository: (
     queryClient: QueryClient,
-    setActiveRepoPath: (path: string | null) => void,
+    _setActiveRepoPath: (path: string | null) => void,
   ) =>
     mutationOptions({
       mutationFn: ({
@@ -939,14 +947,12 @@ export const gitMutations = {
           `${url} → ${destination}`,
           destination,
         ),
-      onSuccess: async (data, _variables, context) => {
-        queryClient.setQueryData(
-          gitKeys.repositorySnapshot(data.repositoryInfo.path),
-          data,
-        );
-        setActiveRepoPath(data.repositoryInfo.path);
+      onSuccess: async (job, _variables, context) => {
         await refreshRepositoryLists(queryClient, context);
-        finishGitActionNotice(context, "Clone complete.");
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -1444,7 +1450,7 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  mergeBranch: (queryClient: QueryClient, repoPath: string | null) =>
+  mergeBranch: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (source: string) => gitApi.mergeBranch(repoPath!, source),
       onMutate: (source) =>
@@ -1453,20 +1459,12 @@ export const gitMutations = {
           `${source} into current branch`,
           repoPath,
         ),
-      onSuccess: async (_data, source, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          `${source} merged into the current branch.`,
-        );
+      onSuccess: (job, _source, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _source, context) => failGitActionNotice(context, error),
     }),
-
-  mergeWithOptions: (queryClient: QueryClient, repoPath: string | null) =>
+  mergeWithOptions: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (request: MergeWithOptionsRequest) =>
         gitApi.mergeWithOptions(repoPath!, request),
@@ -1481,15 +1479,8 @@ export const gitMutations = {
           ].filter(Boolean).join(" · "),
           repoPath,
         ),
-      onSuccess: async (_data, { source }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          `${source} merged with the selected options.`,
-        );
+      onSuccess: (job, _request, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
@@ -1649,7 +1640,7 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  fetch: (queryClient: QueryClient, repoPath: string | null) =>
+  fetch: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (remote?: string) => gitApi.fetch(repoPath!, remote),
       onMutate: (remote) =>
@@ -1658,22 +1649,13 @@ export const gitMutations = {
           remote ? `Remote: ${remote}` : "Fetching from configured remotes…",
           repoPath,
         ),
-      onSuccess: async (_data, _remote, context) => {
-        await refreshGitStateAfterAction(
-          queryClient,
-          repoPath,
-          context,
-          "remote",
-        );
-        finishGitActionNotice(
-          context,
-          "Fetch complete and affected Git views refreshed.",
-        );
+      onSuccess: (job, _remote, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _remote, context) => failGitActionNotice(context, error),
     }),
 
-  pull: (queryClient: QueryClient, repoPath: string | null) =>
+  pull: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ remote, branch }: { remote?: string; branch?: string }) =>
         gitApi.pull(repoPath!, remote, branch),
@@ -1684,22 +1666,14 @@ export const gitMutations = {
             "Pulling current branch…",
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "remote",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          "Pull complete and affected Git views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
 
-  push: (queryClient: QueryClient, repoPath: string | null) =>
+  push: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ remote, branch }: { remote?: string; branch?: string }) =>
         gitApi.push(repoPath!, remote, branch),
@@ -1710,17 +1684,8 @@ export const gitMutations = {
             "Pushing current branch…",
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(
-          queryClient,
-          repoPath,
-          context,
-          "remote",
-        );
-        finishGitActionNotice(
-          context,
-          "Push complete and affected Git views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2081,7 +2046,7 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  pruneWorktrees: (queryClient: QueryClient, repoPath: string | null) =>
+  pruneWorktrees: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.pruneWorktrees(repoPath!),
       onMutate: () =>
@@ -2090,12 +2055,8 @@ export const gitMutations = {
           "Removing stale worktree metadata…",
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context);
-        finishGitActionNotice(
-          context,
-          "Worktrees pruned and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2160,17 +2121,13 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  repairWorktree: (queryClient: QueryClient, repoPath: string | null) =>
+  repairWorktree: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (path: string) => gitApi.repairWorktree(repoPath!, path),
       onMutate: (path) =>
         startGitActionNotice("Repairing worktree", path, repoPath),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context);
-        finishGitActionNotice(
-          context,
-          "Worktree repair completed and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2181,7 +2138,7 @@ export const gitMutations = {
       mutationFn: (path: string) => gitApi.repairWorktreeDryRun(repoPath!, path),
     }),
 
-  updateSubmodule: (queryClient: QueryClient, repoPath: string | null) =>
+  updateSubmodule: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ path, recursive }: { path: string; recursive: boolean }) =>
         gitApi.updateSubmodule(repoPath!, path, recursive),
@@ -2191,12 +2148,8 @@ export const gitMutations = {
           recursive ? `${path} recursively` : path,
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context);
-        finishGitActionNotice(
-          context,
-          "Submodule updated and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2225,7 +2178,7 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  submoduleInitUpdate: (queryClient: QueryClient, repoPath: string | null) =>
+  submoduleInitUpdate: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ path, recursive, remote }: SubmoduleInitUpdateRequest) =>
         gitApi.submoduleInitUpdate(repoPath!, path, recursive, remote),
@@ -2241,12 +2194,8 @@ export const gitMutations = {
             .join(" · "),
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context);
-        finishGitActionNotice(
-          context,
-          "Submodule init/update completed and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2273,7 +2222,7 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
-  syncSubmodules: (queryClient: QueryClient, repoPath: string | null) =>
+  syncSubmodules: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ recursive }: { recursive: boolean }) =>
         gitApi.syncSubmodules(repoPath!, recursive),
@@ -2285,12 +2234,8 @@ export const gitMutations = {
             : "Syncing configured submodules…",
           repoPath,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context);
-        finishGitActionNotice(
-          context,
-          "Submodules synced and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2329,7 +2274,7 @@ export const gitMutations = {
         gitApi.previewRebase(repoPath!, request),
     }),
 
-  rebaseOnto: (queryClient: QueryClient, repoPath: string | null) =>
+  rebaseOnto: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (request: StartRebaseRequest) => gitApi.rebaseOnto(repoPath!, request),
       onMutate: ({ branch, upstream, onto, autostash }) =>
@@ -2344,18 +2289,13 @@ export const gitMutations = {
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
-      onSuccess: async (_data, _request, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "rebase",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(context, "Rebase started and repository views refreshed.");
+      onSuccess: (job, _request, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
 
-  rebaseUpstream: (queryClient: QueryClient, repoPath: string | null) =>
+  rebaseUpstream: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (request: StartRebaseRequest) => gitApi.rebaseUpstream(repoPath!, request),
       onMutate: ({ branch, upstream, autostash }) =>
@@ -2369,13 +2309,8 @@ export const gitMutations = {
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
-      onSuccess: async (_data, _request, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "rebase",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(context, "Rebase started and repository views refreshed.");
+      onSuccess: (job, _request, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
@@ -2396,7 +2331,7 @@ export const gitMutations = {
       onError: (error, _enabled, context) => failGitActionNotice(context, error),
     }),
 
-  continueRebase: (queryClient: QueryClient, repoPath: string | null) =>
+  continueRebase: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.continueRebase(repoPath!),
       onMutate: () =>
@@ -2406,22 +2341,14 @@ export const gitMutations = {
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "rebase",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          "Rebase advanced and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
 
-  abortRebase: (queryClient: QueryClient, repoPath: string | null) =>
+  abortRebase: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.abortRebase(repoPath!),
       onMutate: () =>
@@ -2431,22 +2358,14 @@ export const gitMutations = {
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "rebase",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          "Rebase aborted and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
 
-  skipRebase: (queryClient: QueryClient, repoPath: string | null) =>
+  skipRebase: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.skipRebase(repoPath!),
       onMutate: () =>
@@ -2456,16 +2375,8 @@ export const gitMutations = {
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
-      onSuccess: async (_data, _variables, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, [
-          "rebase",
-          "refs",
-          "worktree",
-        ]);
-        finishGitActionNotice(
-          context,
-          "Commit skipped and repository views refreshed.",
-        );
+      onSuccess: (job, _variables, context) => {
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),

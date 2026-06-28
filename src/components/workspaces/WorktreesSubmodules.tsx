@@ -413,9 +413,9 @@ export function WorktreesSubmodules() {
     if (!window.confirm(`Repair Git metadata for worktree at ${row.path}?${detail}`)) return;
     setActionError(null);
     repairWorktree.mutate(row.path, {
-      onSuccess: (lines) => {
+      onSuccess: (job) => {
         setRepairPreviewPath(row.path);
-        setRepairPreviewLines(lines);
+        setRepairPreviewLines([`${job.title} queued. Track progress in the command log.`]);
       },
     });
   };
