@@ -187,9 +187,20 @@ pub fn run() {
 
 #[cfg(target_os = "linux")]
 fn configure_linux_webkit_environment() {
-    // WebKitGTK's accelerated compositing path can render a blank AppImage window on some
-    // Linux GPU/session combinations. Set conservative defaults before Tauri creates the
-    // webview; user-provided environment values still win.
+    // AppImage runs can otherwise load host GIO modules against bundled GLib/WebKitGTK
+    // libraries. That mismatch has produced blank windows on newer Linux desktops.
+    if std::env::var_os("GIO_MODULE_DIR").is_none() {
+        if let Some(app_dir) = std::env::var_os("APPDIR") {
+            let gio_modules = std::path::PathBuf::from(app_dir)
+                .join("usr/lib/x86_64-linux-gnu/gio/modules");
+            if gio_modules.is_dir() {
+                std::env::set_var("GIO_MODULE_DIR", gio_modules);
+            }
+        }
+    }
+
+    // WebKitGTK's accelerated compositing path can also render a blank AppImage window on
+    // some Linux GPU/session combinations. User-provided environment values still win.
     for (key, value) in [
         ("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
         ("WEBKIT_DISABLE_COMPOSITING_MODE", "1"),
