@@ -18,8 +18,6 @@ type AppStoreWithOpenRepos = {
   openRepoPaths?: string[];
 };
 
-const jobNoticeIds = new Map<string, string>();
-
 export function GitStateWatcher() {
   const activeRepoPath = useAppStore((state) => state.activeRepoPath);
   const openRepoPaths = useAppStore((state) => state.openRepoPaths);
@@ -74,13 +72,14 @@ export function GitJobEventListener() {
   useEffect(() => {
     void gitApi.listGitJobs().then(hydrateJobs).catch(() => undefined);
 
+    const jobNoticeIds = new Map<string, string>();
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
     void listen<GitJobEvent>(GIT_JOB_EVENT_NAME, (event) => {
       const payload = event.payload;
       ingestEvent(payload);
-      updateJobNotice(payload, startNotice, updateNotice, finishNotice);
+      updateJobNotice(payload, jobNoticeIds, startNotice, updateNotice, finishNotice);
 
     }).then((cleanup) => {
       if (disposed) {
@@ -110,6 +109,7 @@ function normalizeWatchedRepoPaths(state: AppStoreWithOpenRepos) {
 
 function updateJobNotice(
   event: GitJobEvent,
+  jobNoticeIds: Map<string, string>,
   startNotice: ReturnType<typeof useNoticeStore.getState>["startNotice"],
   updateNotice: ReturnType<typeof useNoticeStore.getState>["updateNotice"],
   finishNotice: ReturnType<typeof useNoticeStore.getState>["finishNotice"],
@@ -134,6 +134,7 @@ function updateJobNotice(
       jobNoticeDetail(event),
       event.error ? "Open the command log for stdout, stderr, command arguments, and the final error." : null,
     );
+    jobNoticeIds.delete(event.jobId);
     return;
   }
 

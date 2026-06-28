@@ -15,6 +15,7 @@ use tauri::{AppHandle, Emitter};
 
 pub const GIT_JOB_EVENT: &str = "giteye://git-job-event";
 const GIT_STATE_CHANGED_EVENT: &str = "git-state-changed";
+const MAX_RETAINED_TERMINAL_JOBS_PER_REPO: usize = 200;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -145,6 +146,7 @@ impl GitJobRunnerState {
                     if let Ok(mut cancellations) = cancellations.lock() {
                         cancellations.remove(&job_id_for_thread);
                     }
+                    trim_retained_jobs(&jobs, &request.repo_path);
                     return;
                 }
             };
@@ -158,6 +160,7 @@ impl GitJobRunnerState {
                 if let Ok(mut cancellations) = cancellations.lock() {
                     cancellations.remove(&job_id_for_thread);
                 }
+                trim_retained_jobs(&jobs, &request.repo_path);
                 return;
             }
 
@@ -260,6 +263,8 @@ impl GitJobRunnerState {
                     }
                 }
             }
+
+            trim_retained_jobs(&jobs, &request.repo_path);
         });
 
         let jobs = self.jobs.lock().map_err(lock_error)?;
@@ -403,6 +408,38 @@ fn get_job_from(
     jobs.lock().ok().and_then(|jobs| jobs.get(job_id).cloned())
 }
 
+fn trim_retained_jobs(jobs: &Arc<Mutex<HashMap<String, GitJobRecord>>>, repo_path: &str) {
+    let Ok(mut jobs) = jobs.lock() else {
+        return;
+    };
+    trim_retained_jobs_for_repo(&mut jobs, repo_path, MAX_RETAINED_TERMINAL_JOBS_PER_REPO);
+}
+
+fn trim_retained_jobs_for_repo(
+    jobs: &mut HashMap<String, GitJobRecord>,
+    repo_path: &str,
+    max_terminal_jobs: usize,
+) {
+    let mut terminal_job_ids: Vec<_> = jobs
+        .values()
+        .filter(|job| job.repo_path == repo_path && is_terminal_status(&job.status))
+        .map(|job| (job.created_at, job.job_id.clone()))
+        .collect();
+
+    terminal_job_ids.sort_by(|left, right| right.cmp(left));
+
+    for (_, job_id) in terminal_job_ids.into_iter().skip(max_terminal_jobs) {
+        jobs.remove(&job_id);
+    }
+}
+
+fn is_terminal_status(status: &GitJobStatus) -> bool {
+    matches!(
+        status,
+        GitJobStatus::Succeeded | GitJobStatus::Failed | GitJobStatus::Canceled
+    )
+}
+
 fn repo_state_reason(reason: &str) -> Option<RepoStateReason> {
     match reason {
         "worktree" => Some(RepoStateReason::Worktree),
@@ -428,6 +465,7 @@ fn lock_error<T>(error: std::sync::PoisonError<T>) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration as ChronoDuration;
     use std::time::Instant;
 
     #[test]
@@ -456,5 +494,60 @@ mod tests {
         );
 
         drop(held_guard);
+    }
+
+    #[test]
+    fn trim_retained_jobs_caps_terminal_jobs_per_repo() {
+        let repo_path = "/repo";
+        let other_repo = "/other";
+        let now = Utc::now();
+        let mut jobs = HashMap::new();
+
+        for index in 0..4 {
+            let job = test_job(
+                &format!("done-{index}"),
+                repo_path,
+                GitJobStatus::Succeeded,
+                now + ChronoDuration::seconds(index),
+            );
+            jobs.insert(job.job_id.clone(), job);
+        }
+        let running = test_job("running", repo_path, GitJobStatus::Running, now);
+        jobs.insert(running.job_id.clone(), running);
+        let other = test_job("other", other_repo, GitJobStatus::Succeeded, now);
+        jobs.insert(other.job_id.clone(), other);
+
+        trim_retained_jobs_for_repo(&mut jobs, repo_path, 2);
+
+        assert!(!jobs.contains_key("done-0"));
+        assert!(!jobs.contains_key("done-1"));
+        assert!(jobs.contains_key("done-2"));
+        assert!(jobs.contains_key("done-3"));
+        assert!(jobs.contains_key("running"));
+        assert!(jobs.contains_key("other"));
+    }
+
+    fn test_job(
+        job_id: &str,
+        repo_path: &str,
+        status: GitJobStatus,
+        created_at: chrono::DateTime<Utc>,
+    ) -> GitJobRecord {
+        GitJobRecord {
+            job_id: job_id.to_string(),
+            repo_path: repo_path.to_string(),
+            kind: "test".to_string(),
+            title: "Test".to_string(),
+            status,
+            command: "git".to_string(),
+            args: Vec::new(),
+            created_at,
+            started_at: None,
+            finished_at: None,
+            exit_code: None,
+            error: None,
+            invalidation_reasons: Vec::new(),
+            logs: Vec::new(),
+        }
     }
 }

@@ -207,6 +207,23 @@ impl GitCli {
     }
 }
 
+pub fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::GitError(format!("{label} is required")));
+    }
+    if value.starts_with('-') {
+        return Err(AppError::GitError(format!(
+            "{label} must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
+
+pub fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
+    GitCli::run(repo_path, &["status", "--porcelain"]).map(|status| !status.trim().is_empty())
+}
+
 fn read_stream<R>(
     channel: &'static str,
     stream: R,

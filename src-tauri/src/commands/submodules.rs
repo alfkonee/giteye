@@ -19,10 +19,18 @@ pub fn update_submodule(
     path: String,
     recursive: bool,
 ) -> Result<GitJobSummary, AppError> {
-    let mut args = vec!["submodule".to_string(), "update".to_string()];
+    let path = path.trim().to_string();
+    submodule_service::validate_relative_path(&path)?;
+
+    let mut args = vec![
+        "submodule".to_string(),
+        "update".to_string(),
+        "--init".to_string(),
+    ];
     if recursive {
         args.push("--recursive".to_string());
     }
+    args.push("--".to_string());
     args.push(path);
     let request = GitJobRequest::new(repo_path, "submodule.update", "Update submodule", args)
         .with_invalidation_reasons(vec!["worktree", "refs"]);
@@ -86,6 +94,8 @@ pub fn submodule_init_update(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
+        submodule_service::validate_relative_path(&path)?;
+        args.push("--".to_string());
         args.push(path);
     }
     let request = GitJobRequest::new(

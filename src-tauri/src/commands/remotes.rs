@@ -1,4 +1,5 @@
 use crate::errors::AppError;
+use crate::git::cli::required_git_arg;
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::git::remote_service;
 use crate::models::{GitJobSummary, Remote};
@@ -18,7 +19,7 @@ pub fn fetch(
     remote: Option<String>,
 ) -> Result<GitJobSummary, AppError> {
     let mut args = vec!["fetch".to_string()];
-    if let Some(remote) = non_empty(remote) {
+    if let Some(remote) = optional_git_arg(remote, "remote")? {
         args.push(remote);
     }
     let request = GitJobRequest::new(repo_path, "fetch", "Fetch remote updates", args)
@@ -35,10 +36,10 @@ pub fn pull(
     branch: Option<String>,
 ) -> Result<GitJobSummary, AppError> {
     let mut args = vec!["pull".to_string()];
-    if let Some(remote) = non_empty(remote) {
+    if let Some(remote) = optional_git_arg(remote, "remote")? {
         args.push(remote);
     }
-    if let Some(branch) = non_empty(branch) {
+    if let Some(branch) = optional_git_arg(branch, "branch")? {
         args.push(branch);
     }
     let request = GitJobRequest::new(repo_path, "pull", "Pull remote changes", args)
@@ -55,10 +56,10 @@ pub fn push(
     branch: Option<String>,
 ) -> Result<GitJobSummary, AppError> {
     let mut args = vec!["push".to_string()];
-    if let Some(remote) = non_empty(remote) {
+    if let Some(remote) = optional_git_arg(remote, "remote")? {
         args.push(remote);
     }
-    if let Some(branch) = non_empty(branch) {
+    if let Some(branch) = optional_git_arg(branch, "branch")? {
         args.push(branch);
     }
     let request = GitJobRequest::new(repo_path, "push", "Push local commits", args)
@@ -66,10 +67,15 @@ pub fn push(
     jobs.start_job(app, request)
 }
 
-fn non_empty(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+fn optional_git_arg(value: Option<String>, label: &str) -> Result<Option<String>, AppError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(required_git_arg(value, label)?.to_string()))
 }
 
 #[tauri::command]

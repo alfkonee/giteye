@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use crate::git::cli::GitCli;
+use crate::git::cli::{required_git_arg, GitCli};
 use crate::models::rebase::{
     ConflictContent, ConflictFile, GitOperationSummary, OperationConflict, RebasePreviewItem,
     RebaseState, RebaseTodoItem, RerereStatus,
@@ -234,19 +234,6 @@ fn parse_rebase_preview_line(line: &str) -> Option<RebasePreviewItem> {
         commit: commit.to_string(),
         message: message.to_string(),
     })
-}
-
-fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(AppError::GitError(format!("{label} is required")));
-    }
-    if value.starts_with('-') {
-        return Err(AppError::GitError(format!(
-            "{label} must not start with '-'"
-        )));
-    }
-    Ok(value)
 }
 
 fn read_git_state_file(repo_path: &Path, name: &str) -> Result<Option<String>, AppError> {

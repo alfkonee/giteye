@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use crate::git::cli::GitCli;
+use crate::git::cli::{required_git_arg, GitCli};
 use crate::models::{
     AmendPreview, CommitSummary, ReflogEntry, ResetMode, ResetPreview, ResetPreviewFile,
 };
@@ -245,19 +245,6 @@ fn ensure_clean_worktree(repo_path: &Path, operation: &str) -> Result<(), AppErr
             "Working tree must be clean before {operation}"
         )))
     }
-}
-
-fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(AppError::GitError(format!("{label} is required")));
-    }
-    if value.starts_with('-') {
-        return Err(AppError::GitError(format!(
-            "{label} must not start with '-'"
-        )));
-    }
-    Ok(value)
 }
 
 #[cfg(test)]

@@ -455,7 +455,7 @@ fn checked_submodule_path(repo_path: &Path, path: &str) -> Result<PathBuf, AppEr
         .map_err(|error| AppError::IoError(error.to_string()))
 }
 
-fn validate_relative_path(path: &str) -> Result<(), AppError> {
+pub(crate) fn validate_relative_path(path: &str) -> Result<(), AppError> {
     let candidate = Path::new(path);
     if path.is_empty()
         || candidate.is_absolute()
