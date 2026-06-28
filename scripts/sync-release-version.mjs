@@ -56,7 +56,7 @@ const cargoLockPath = "src-tauri/Cargo.lock";
 if (existsSync(resolve(repoRoot, cargoLockPath))) {
   replaceRequired(
     cargoLockPath,
-    /(^\[\[package\]\]\nname = "giteye"\nversion = )"[^"]+"/m,
+    /(^\[\[package\]\]\r?\nname = "giteye"\r?\nversion = )"[^"]+"/m,
     `$1"${version}"`,
   );
 }
