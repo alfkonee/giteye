@@ -166,7 +166,13 @@ fn detect_submodule_parent(path: &Path) -> Option<RepositoryParent> {
         .strip_prefix(&parent_path)
         .ok()
         .filter(|relative| !relative.as_os_str().is_empty())
-        .map(|relative| relative.to_string_lossy().to_string())
+        .map(|relative| {
+            relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
         .unwrap_or_else(|| GitCli::repo_name_from_path(path));
 
     Some(RepositoryParent {
@@ -708,6 +714,8 @@ mod tests {
         git(path, &["init", "-b", "main"]);
         git(path, &["config", "user.name", "GitEye Test"]);
         git(path, &["config", "user.email", "test@giteye.local"]);
+        git(path, &["config", "core.autocrlf", "false"]);
+        git(path, &["config", "core.eol", "lf"]);
         fs::write(path.join("README.md"), "# source\n").expect("write source file");
         git(path, &["add", "README.md"]);
         git(path, &["commit", "-m", "Initial commit"]);
