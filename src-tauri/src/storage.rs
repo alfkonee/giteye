@@ -43,7 +43,7 @@ fn normalize_repo_path(path: &str) -> String {
         .canonicalize()
         .unwrap_or(path_buf)
         .to_string_lossy()
-        .trim_end_matches(std::path::MAIN_SEPARATOR)
+        .trim_end_matches(&['/', '\\'][..])
         .to_string()
 }
 

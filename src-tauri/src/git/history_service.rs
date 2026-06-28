@@ -310,6 +310,8 @@ mod tests {
         git(path, &["init", "-b", "main"]);
         git(path, &["config", "user.name", "GitEye Test"]);
         git(path, &["config", "user.email", "test@giteye.local"]);
+        git(path, &["config", "core.autocrlf", "false"]);
+        git(path, &["config", "core.eol", "lf"]);
     }
 
     fn commit_file(path: &Path, file: &str, contents: &str, message: &str) -> String {

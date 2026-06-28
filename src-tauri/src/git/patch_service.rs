@@ -284,6 +284,8 @@ mod tests {
         repo.git(&["init"]);
         repo.git(&["config", "user.email", "test@example.com"]);
         repo.git(&["config", "user.name", "Test User"]);
+        repo.git(&["config", "core.autocrlf", "false"]);
+        repo.git(&["config", "core.eol", "lf"]);
         repo.git(&["add", "file.txt"]);
         repo.git(&["commit", "-m", "initial"]);
 

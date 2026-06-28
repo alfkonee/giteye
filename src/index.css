@@ -21,6 +21,13 @@
   --color-bg-selected-muted: rgba(47, 111, 219, 0.18);
   --color-bg-inset: #0a1018;
   --color-bg-overlay: rgba(4, 8, 13, 0.76);
+  --color-window-chrome: rgba(8, 13, 20, 0.96);
+  --color-window-chrome-border: #172233;
+  --color-window-title: #f3f8ff;
+  --color-window-subtitle: #78879a;
+  --color-window-control-hover: rgba(255, 255, 255, 0.08);
+  --color-window-control-active: rgba(63, 132, 245, 0.18);
+  --color-window-control-close-hover: rgba(255, 107, 107, 0.22);
 
   /* Borders and dividers */
   --color-border: #243244;
@@ -120,7 +127,8 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --size-toolbar: 50px;
+  --size-toolbar: 44px;
+  --size-window-chrome: 38px;
   --size-statusbar: 28px;
   --size-row-compact: 30px;
   --size-row: 36px;
@@ -161,6 +169,13 @@
   --color-bg-selected-muted: rgba(36, 107, 219, 0.12);
   --color-bg-inset: #e8edf4;
   --color-bg-overlay: rgba(248, 250, 252, 0.82);
+  --color-window-chrome: rgba(247, 249, 252, 0.96);
+  --color-window-chrome-border: #dbe4ef;
+  --color-window-title: #111827;
+  --color-window-subtitle: #6f7f92;
+  --color-window-control-hover: rgba(17, 24, 39, 0.08);
+  --color-window-control-active: rgba(36, 107, 219, 0.14);
+  --color-window-control-close-hover: rgba(204, 54, 54, 0.16);
 
   --color-border: #cdd7e4;
   --color-border-muted: #dde5ef;
@@ -333,6 +348,64 @@ samp {
   min-width: min(100vw, 1240px);
   min-height: min(100vh, 800px);
   background: var(--color-bg-primary);
+  isolation: isolate;
+}
+
+.giteye-window-chrome {
+  min-height: var(--size-window-chrome);
+  border-bottom: 1px solid var(--color-window-chrome-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-window-chrome) 96%, white 4%) 0%, var(--color-window-chrome) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+[data-giteye-drag-region] {
+  cursor: default;
+}
+
+[data-giteye-no-drag],
+.giteye-window-control,
+button,
+input,
+textarea,
+select,
+a {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.giteye-window-control {
+  display: inline-flex;
+  width: 30px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-window-subtitle);
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.giteye-window-control:hover {
+  border-color: var(--color-border-muted);
+  background: var(--color-window-control-hover);
+  color: var(--color-window-title);
+}
+
+.giteye-window-control:active {
+  background: var(--color-window-control-active);
+  transform: translateY(1px);
+}
+
+.giteye-window-control[data-tone="close"]:hover {
+  border-color: var(--color-danger-border);
+  background: var(--color-window-control-close-hover);
+  color: var(--color-danger);
 }
 
 .giteye-toolbar {

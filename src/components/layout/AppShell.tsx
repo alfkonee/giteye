@@ -1,6 +1,7 @@
 import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { PanelLayout } from "./PanelLayout";
+import { AppChrome } from "./AppChrome";
 import { RepositoryTabs } from "./RepositoryTabs";
 import { useAppStore } from "../../stores/app-store";
 import { ErrorCallout } from "../common/ErrorCallout";
@@ -20,37 +21,40 @@ export function AppShell() {
 
   const repoInfo = snapshot?.repositoryInfo;
   const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
-
+  const repoName = repoInfo?.name ?? fallbackRepoName ?? "Repository";
+  const chromeTitle = repoInfo?.currentBranch ? `GitEye · ${repoName} · ${repoInfo.currentBranch}` : `GitEye · ${repoName}`;
 
   return (
-    <div className="giteye-shell flex h-full w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-      <RepositoryTabs />
-      <Toolbar
-        repoName={repoInfo?.name ?? fallbackRepoName}
-        currentBranch={repoInfo?.currentBranch}
-        isClean={repoInfo?.isClean}
-        submoduleParent={repoInfo?.submoduleParent ?? null}
-      />
-      {error ? (
-        <div className="border-b border-[var(--color-border)] p-3">
-          <ErrorCallout message="Failed to load repository snapshot" />
+    <AppChrome title={chromeTitle} subtitle={viewLabel(activeView)}>
+      <div className="flex h-full min-h-0 w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+        <RepositoryTabs />
+        <Toolbar
+          repoName={repoInfo?.name ?? fallbackRepoName}
+          currentBranch={repoInfo?.currentBranch}
+          isClean={repoInfo?.isClean}
+          submoduleParent={repoInfo?.submoduleParent ?? null}
+        />
+        {error ? (
+          <div className="border-b border-[var(--color-border)] p-3">
+            <ErrorCallout message="Failed to load repository snapshot" />
+          </div>
+        ) : null}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <PanelLayout />
+          </div>
         </div>
-      ) : null}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <Sidebar />
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <PanelLayout />
-        </div>
+        <StatusBar
+          repoName={repoInfo?.name ?? fallbackRepoName}
+          branchName={repoInfo?.currentBranch}
+          isClean={repoInfo?.isClean}
+          submoduleParent={repoInfo?.submoduleParent ?? null}
+          activeView={activeView}
+          isRebasing={Boolean(rebaseState?.inProgress)}
+        />
       </div>
-      <StatusBar
-        repoName={repoInfo?.name ?? fallbackRepoName}
-        branchName={repoInfo?.currentBranch}
-        isClean={repoInfo?.isClean}
-        submoduleParent={repoInfo?.submoduleParent ?? null}
-        activeView={activeView}
-        isRebasing={Boolean(rebaseState?.inProgress)}
-      />
-    </div>
+    </AppChrome>
   );
 }
 
@@ -105,9 +109,12 @@ function StatusBar({
   );
 }
 
-
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
   const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
   return path.slice(slashIndex + 1, normalizedEnd);
+}
+
+function viewLabel(view: ViewType) {
+  return getViewDefinition(view).label;
 }
