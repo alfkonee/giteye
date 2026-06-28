@@ -66,6 +66,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
 
+      - name: Resolve Tauri bundle args
+        id: tauri-args
+        shell: bash
+        run: |
+          args='${{ matrix.tauri-args }}'
+          if [[ '${{ runner.os }}' == 'Windows' && '${{ github.event.release.tag_name }}' == *-* ]]; then
+            # MSI rejects non-numeric semver pre-release identifiers like alpha.1.
+            # Keep pre-release Windows artifacts semver-aligned by publishing NSIS only.
+            args='--bundles nsis'
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
@@ -77,4 +89,4 @@ jobs:
           releaseId: ${{ github.event.release.id }}
           tagName: ${{ github.event.release.tag_name }}
           tauriScript: bunx tauri
-          args: ${{ matrix.tauri-args }}
+          args: ${{ steps.tauri-args.outputs.args }}
