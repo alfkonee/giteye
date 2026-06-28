@@ -21,6 +21,7 @@ import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { AppChrome } from "../layout/AppChrome";
+import { RepositoryTabs } from "../layout/RepositoryTabs";
 
 type RepositoryCard = {
   name: string;
@@ -33,6 +34,7 @@ export function RepositoryWelcome() {
   const [path, setPath] = useState("");
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const openRepoPaths = useAppStore((s) => s.openRepoPaths);
   const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const initMutation = useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
   const cloneMutation = useMutation(gitMutations.cloneRepository(queryClient, setActiveRepoPath));
@@ -90,7 +92,7 @@ export function RepositoryWelcome() {
   return (
     <AppChrome title="GitEye · Repo Hub" subtitle="No repository open">
       <div className="flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-      <aside className="flex w-[264px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
+        <aside className="flex w-[264px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <button className="flex h-9 w-full items-center gap-3 rounded-lg bg-[var(--color-bg-selected)]/15 px-3 text-left text-sm font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-accent)]/20">
             <Home className="h-4 w-4 text-[var(--color-accent)]" />
@@ -110,14 +112,27 @@ export function RepositoryWelcome() {
 
           <div className="my-5 h-px bg-[var(--color-border-muted)]" />
           <SectionLabel>Workspaces</SectionLabel>
-          <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
-            <p className="font-medium text-[var(--color-text-primary)]">No workspaces yet</p>
-            <p className="mt-1 leading-5">Open a repository to begin organizing local work.</p>
-            <button disabled className="mt-3 flex h-8 w-full cursor-not-allowed items-center gap-2 rounded-md px-2 text-left text-[var(--color-text-muted)] opacity-60" title="Workspace provider management is not configured yet.">
-              <Plus className="h-4 w-4" />
-              New Workspace
-            </button>
-          </div>
+          {openRepoPaths.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {openRepoPaths.map((repoPath) => (
+                <button
+                  key={repoPath}
+                  type="button"
+                  onClick={() => setActiveRepoPath(repoPath)}
+                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                  title={repoPath}
+                >
+                  <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                  <span className="truncate">{basename(repoPath)}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
+              <p className="font-medium text-[var(--color-text-primary)]">No repository sessions yet</p>
+              <p className="mt-1 leading-5">Open a repository to begin organizing local work.</p>
+            </div>
+          )}
 
           <div className="my-5 h-px bg-[var(--color-border-muted)]" />
           <SectionLabel>Accounts</SectionLabel>
@@ -136,11 +151,12 @@ export function RepositoryWelcome() {
 
         <div className="border-t border-[var(--color-border-muted)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
           <GitBranch className="mr-2 inline h-3.5 w-3.5" />
-          No repository open
+          {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} repository session${openRepoPaths.length === 1 ? "" : "s"} open`}
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col">
+        <RepositoryTabs />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="mx-auto max-w-[980px]">
@@ -549,4 +565,10 @@ function Shortcut({ keys, label }: { keys: string; label: string }) {
       {label}
     </span>
   );
+}
+
+function basename(path: string) {
+  const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
+  const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
+  return path.slice(slashIndex + 1, normalizedEnd);
 }

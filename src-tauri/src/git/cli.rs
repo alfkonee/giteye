@@ -1,6 +1,11 @@
 use crate::errors::AppError;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 pub struct GitCliOutput {
     pub status_code: i32,
@@ -124,6 +129,68 @@ impl GitCli {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
+    /// Runs git with piped stdout/stderr, forwarding each output line while preserving blocking helpers.
+    pub fn run_streaming(
+        repo_path: &Path,
+        args: &[String],
+        cancel_flag: Arc<AtomicBool>,
+        on_output: Arc<dyn Fn(&'static str, String) + Send + Sync>,
+    ) -> Result<GitCliOutput, AppError> {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(repo_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::GitNotFound
+                } else {
+                    AppError::IoError(e.to_string())
+                }
+            })?;
+
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| AppError::IoError("Failed to open git stdout".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| AppError::IoError("Failed to open git stderr".to_string()))?;
+
+        let stdout_callback = Arc::clone(&on_output);
+        let stdout_reader = thread::spawn(move || read_stream("stdout", stdout, stdout_callback));
+        let stderr_callback = Arc::clone(&on_output);
+        let stderr_reader = thread::spawn(move || read_stream("stderr", stderr, stderr_callback));
+
+        let status = loop {
+            if cancel_flag.load(Ordering::SeqCst) {
+                let _ = child.kill();
+            }
+            match child
+                .try_wait()
+                .map_err(|e| AppError::IoError(e.to_string()))?
+            {
+                Some(status) => break status,
+                None => thread::sleep(Duration::from_millis(100)),
+            }
+        };
+
+        let stdout = stdout_reader
+            .join()
+            .unwrap_or_else(|_| "stdout reader panicked".to_string());
+        let stderr = stderr_reader
+            .join()
+            .unwrap_or_else(|_| "stderr reader panicked".to_string());
+
+        Ok(GitCliOutput {
+            status_code: status.code().unwrap_or(-1),
+            stdout,
+            stderr,
+        })
+    }
+
     pub fn is_git_available() -> bool {
         Command::new("git")
             .arg("--version")
@@ -138,4 +205,49 @@ impl GitCli {
             .unwrap_or("unknown")
             .to_string()
     }
+}
+
+pub fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::GitError(format!("{label} is required")));
+    }
+    if value.starts_with('-') {
+        return Err(AppError::GitError(format!(
+            "{label} must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
+
+pub fn has_worktree_changes(repo_path: &Path) -> Result<bool, AppError> {
+    GitCli::run(repo_path, &["status", "--porcelain"]).map(|status| !status.trim().is_empty())
+}
+
+fn read_stream<R>(
+    channel: &'static str,
+    stream: R,
+    on_output: Arc<dyn Fn(&'static str, String) + Send + Sync>,
+) -> String
+where
+    R: std::io::Read,
+{
+    let mut captured = String::new();
+    for line in BufReader::new(stream).lines() {
+        match line {
+            Ok(line) => {
+                captured.push_str(&line);
+                captured.push('\n');
+                on_output(channel, line);
+            }
+            Err(error) => {
+                let line = error.to_string();
+                captured.push_str(&line);
+                captured.push('\n');
+                on_output(channel, line);
+                break;
+            }
+        }
+    }
+    captured
 }

@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use crate::git::cli::GitCli;
+use crate::git::cli::{required_git_arg, GitCli};
 use crate::models::GitTag;
 use std::path::Path;
 
@@ -143,19 +143,6 @@ fn required_tag_name<'a>(repo_path: &Path, name: &'a str) -> Result<&'a str, App
     GitCli::run(repo_path, &["check-ref-format", &ref_name])
         .map_err(|_| AppError::GitError(format!("tag name is not a valid Git ref name: {name}")))?;
     Ok(name)
-}
-
-fn required_git_arg<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(AppError::GitError(format!("{label} is required")));
-    }
-    if value.starts_with('-') {
-        return Err(AppError::GitError(format!(
-            "{label} must not start with '-'"
-        )));
-    }
-    Ok(value)
 }
 
 fn run_git(repo_path: &Path, args: &[String]) -> Result<String, AppError> {

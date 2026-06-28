@@ -2,12 +2,14 @@ import { Toolbar } from "./Toolbar";
 import { Sidebar } from "./Sidebar";
 import { PanelLayout } from "./PanelLayout";
 import { AppChrome } from "./AppChrome";
+import { RepositoryTabs } from "./RepositoryTabs";
 import { useAppStore } from "../../stores/app-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
 import { Circle, GitBranch } from "lucide-react";
 import type { RepositoryParent, ViewType } from "../../types/git";
+import { getViewDefinition } from "../../lib/view-registry";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -22,10 +24,10 @@ export function AppShell() {
   const repoName = repoInfo?.name ?? fallbackRepoName ?? "Repository";
   const chromeTitle = repoInfo?.currentBranch ? `GitEye · ${repoName} · ${repoInfo.currentBranch}` : `GitEye · ${repoName}`;
 
-
   return (
     <AppChrome title={chromeTitle} subtitle={viewLabel(activeView)}>
       <div className="flex h-full min-h-0 w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+        <RepositoryTabs />
         <Toolbar
           repoName={repoInfo?.name ?? fallbackRepoName}
           currentBranch={repoInfo?.currentBranch}
@@ -102,21 +104,17 @@ function StatusBar({
           Rebase active
         </span>
       )}
-      <span className="ml-auto capitalize">{viewLabel(activeView)}</span>
+      <span className="ml-auto capitalize">{getViewDefinition(activeView).label}</span>
     </div>
   );
-}
-
-function viewLabel(view: ViewType) {
-  if (view === "rebase-conflicts") {
-    return "merge & rebase";
-  }
-
-  return view.split("-").join(" ");
 }
 
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
   const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
   return path.slice(slashIndex + 1, normalizedEnd);
+}
+
+function viewLabel(view: ViewType) {
+  return getViewDefinition(view).label;
 }

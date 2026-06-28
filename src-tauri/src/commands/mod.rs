@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod diff;
 pub mod github;
 pub mod history;
+pub mod jobs;
 pub mod lfs;
 pub mod patch;
 pub mod rebase;

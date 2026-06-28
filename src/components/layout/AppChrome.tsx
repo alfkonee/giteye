@@ -24,7 +24,16 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
       return;
     }
 
-    const action: WindowChromeAction = event.detail === 2 ? "toggleMaximize" : "drag";
+    if (event.detail > 1) {
+      if (event.detail === 2) {
+        void runWindowChromeAction("toggleMaximize").catch((error) => {
+          console.warn("Unable to run window action toggleMaximize", error);
+        });
+      }
+      return;
+    }
+
+    const action: WindowChromeAction = "drag";
     void runWindowChromeAction(action).catch((error) => {
       console.warn(`Unable to run window action ${action}`, error);
     });

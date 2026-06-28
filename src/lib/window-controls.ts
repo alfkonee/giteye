@@ -8,8 +8,7 @@ export function getWindowControlPlacement(): WindowControlPlacement {
     return "right";
   }
 
-  const platformLabel = `${navigator.platform} ${navigator.userAgent}`.toLowerCase();
-  return platformLabel.includes("mac") ? "left" : "right";
+  return navigator.userAgent.toLowerCase().includes("mac") ? "left" : "right";
 }
 
 export async function runWindowChromeAction(action: WindowChromeAction) {

@@ -16,6 +16,7 @@ pub fn run() {
 
     builder
         .manage(watcher::RepositoryWatcherState::default())
+        .manage(git::job_runner::GitJobRunnerState::default())
         .setup(|_app| {
             if !git::cli::GitCli::is_git_available() {
                 eprintln!("Warning: Git is not installed or not in PATH");
@@ -34,6 +35,10 @@ pub fn run() {
             commands::repository::list_recent_repositories,
             commands::repository::list_favorite_repositories,
             commands::repository::set_repository_favorite,
+            commands::jobs::list_git_jobs,
+            commands::jobs::get_git_job,
+            commands::jobs::cancel_git_job,
+            commands::jobs::clear_git_job_log,
             watcher::start_repository_watch,
             watcher::stop_repository_watch,
             commands::status::get_status,

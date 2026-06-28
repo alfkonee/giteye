@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, History, Info, Loader2, Trash2, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { useNoticeStore, type Notice, type OperationTranscriptEntry } from "../../stores/notice-store";
+import { useJobStore } from "../../stores/job-store";
 
 export function NoticeCenter() {
   const notices = useNoticeStore((state) => state.notices);
@@ -36,7 +37,7 @@ export function NoticeCenter() {
     <aside
       aria-live="polite"
       aria-label="Action notices"
-      className="pointer-events-none fixed bottom-8 right-4 z-[80] flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-20 right-4 z-[80] flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
       {transcriptOpen && (
         <OperationTranscriptPanel
@@ -57,6 +58,7 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
   const isPending = notice.status === "pending";
   const elapsedSeconds = Math.max(0, Math.floor(((notice.finishedAt ?? now) - notice.createdAt) / 1_000));
   const statusDetail = isPending ? runningDetail(notice.detail, elapsedSeconds) : notice.detail;
+  const openCommandLog = useJobStore((state) => state.setCommandLogOpen);
 
   return (
     <div
@@ -100,6 +102,15 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
                 <p className="mt-2 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
                   {notice.recoveryHint}
                 </p>
+              )}
+              {notice.action?.target === "command-log" && (
+                <button
+                  type="button"
+                  onClick={() => openCommandLog(true, notice.action?.jobId ?? null)}
+                  className="mt-2 rounded-md border border-[var(--color-accent)]/35 px-2 py-1 text-xs font-medium text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent)]/10"
+                >
+                  {notice.action.label}
+                </button>
               )}
             </div>
             <button
