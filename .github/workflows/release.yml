@@ -90,3 +90,25 @@ jobs:
           tagName: ${{ github.event.release.tag_name }}
           tauriScript: bunx tauri
           args: ${{ steps.tauri-args.outputs.args }}
+
+  finalize-assets:
+    name: Verify release artifact versions
+    runs-on: ubuntu-22.04
+    needs: build
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify release assets match tag version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_RELEASE_ID: ${{ github.event.release.id }}
+        run: bun scripts/verify-release-assets.mjs "${{ github.event.release.tag_name }}"

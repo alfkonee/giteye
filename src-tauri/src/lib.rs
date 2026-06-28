@@ -7,6 +7,8 @@ mod watcher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    configure_linux_webkit_environment();
+
     let mut builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
 
     #[cfg(debug_assertions)]
@@ -182,3 +184,21 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(target_os = "linux")]
+fn configure_linux_webkit_environment() {
+    // WebKitGTK's accelerated compositing path can render a blank AppImage window on some
+    // Linux GPU/session combinations. Set conservative defaults before Tauri creates the
+    // webview; user-provided environment values still win.
+    for (key, value) in [
+        ("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
+        ("WEBKIT_DISABLE_COMPOSITING_MODE", "1"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_linux_webkit_environment() {}
