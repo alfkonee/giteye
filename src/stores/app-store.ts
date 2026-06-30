@@ -63,6 +63,8 @@ export interface AppStore {
 
   selectedBranchName: string | null;
   setSelectedBranchName: (name: string | null) => void;
+  pendingAdvancedBranchName: string | null;
+  setPendingAdvancedBranchName: (name: string | null) => void;
 
   selectedCommitHash: string | null;
   setSelectedCommitHash: (hash: string | null) => void;
@@ -112,6 +114,7 @@ type ActiveSessionState = Pick<
   | "activeView"
   | "selected"
   | "selectedBranchName"
+  | "pendingAdvancedBranchName"
   | "selectedCommitHash"
   | "selectedCommitFilePath"
   | "selectedFilePath"
@@ -138,6 +141,7 @@ function activeStateFromSession(
     activeView: session.activeView,
     selected,
     selectedBranchName: selected.branchName,
+    pendingAdvancedBranchName: null,
     selectedCommitHash: selected.commitHash,
     selectedCommitFilePath: selected.commitFilePath,
     selectedFilePath: selected.filePath,
@@ -159,6 +163,7 @@ function emptyActiveState(): ActiveSessionState {
     activeView: DEFAULT_REPOSITORY_VIEW,
     selected,
     selectedBranchName: null,
+    pendingAdvancedBranchName: null,
     selectedCommitHash: null,
     selectedCommitFilePath: null,
     selectedFilePath: null,
@@ -284,6 +289,8 @@ export const useAppStore = create<AppStore>((set) => ({
         { selected },
       );
     }),
+  setPendingAdvancedBranchName: (name) =>
+    set({ pendingAdvancedBranchName: name }),
 
   setSelectedCommitHash: (hash) =>
     set((state) => {
