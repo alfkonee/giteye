@@ -518,11 +518,7 @@ pub fn merge_pull_request(
 ) -> Result<(), AppError> {
     let (_, _) = github_repository(repo_path)?;
     let number_string = number.to_string();
-    let merge_flag = match method {
-        "merge" => "--merge",
-        "rebase" => "--rebase",
-        _ => "--squash",
-    };
+    let merge_flag = merge_method_flag(method)?;
     let mut args = vec![
         "pr".to_string(),
         "merge".to_string(),
@@ -538,6 +534,17 @@ pub fn merge_pull_request(
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_required_process("gh", &arg_refs, repo_path, GH_TIMEOUT)?;
     Ok(())
+}
+
+fn merge_method_flag(method: &str) -> Result<&'static str, AppError> {
+    match method {
+        "merge" => Ok("--merge"),
+        "rebase" => Ok("--rebase"),
+        "squash" => Ok("--squash"),
+        _ => Err(AppError::GitError(format!(
+            "Unsupported pull request merge method: {method}"
+        ))),
+    }
 }
 
 pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError> {
@@ -1214,7 +1221,8 @@ fn canonical_repo_key(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_review_comment_side, parse_github_remote};
+    use super::{merge_method_flag, normalize_review_comment_side, parse_github_remote};
+    use crate::errors::AppError;
 
     #[test]
     fn parses_github_remote_urls() {
@@ -1241,5 +1249,17 @@ mod tests {
         assert_eq!(normalize_review_comment_side("RIGHT").unwrap(), "RIGHT");
         assert_eq!(normalize_review_comment_side("left").unwrap(), "LEFT");
         assert!(normalize_review_comment_side("BOTH").is_err());
+    }
+
+    #[test]
+    fn validates_pull_request_merge_methods() {
+        assert_eq!(merge_method_flag("merge").unwrap(), "--merge");
+        assert_eq!(merge_method_flag("rebase").unwrap(), "--rebase");
+        assert_eq!(merge_method_flag("squash").unwrap(), "--squash");
+
+        let error = merge_method_flag("fast-forward").expect_err("unsupported method rejected");
+        assert!(
+            matches!(error, AppError::GitError(message) if message.contains("Unsupported pull request merge method"))
+        );
     }
 }
