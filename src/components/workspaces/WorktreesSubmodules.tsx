@@ -122,6 +122,18 @@ function previewList(paths: string[]) {
   return `${listed}${suffix}`;
 }
 
+function worktreeRemovalDetails(row: WorktreeRow, dryRunLines: string[]) {
+  const stateLines = [
+    `Status: ${row.status}`,
+    `Modified files: ${row.modifiedFiles}`,
+    `Staged files: ${row.stagedFiles}`,
+    row.isLocked ? `Locked: ${row.lockReason || "yes"}` : "Locked: no",
+    row.prunable ? "Prunable: yes" : "Prunable: no",
+  ];
+  const dryRun = dryRunLines.length > 0 ? dryRunLines.join("\n") : "Dry run did not report additional details.";
+  return `${stateLines.join("\n")}\n\nDry run:\n${dryRun}`;
+}
+
 function toWorktreeRow(worktree: Worktree, activeRepoPath: string): WorktreeRow {
   const branch = worktree.branch ?? (worktree.isDetached ? `detached ${shortHash(worktree.head)}` : "—");
   const dirty = worktree.modifiedFiles > 0 || worktree.stagedFiles > 0;
@@ -302,6 +314,7 @@ export function WorktreesSubmodules() {
   const pruneWorktreesDryRun = useMutation(gitMutations.pruneWorktreesDryRun(activeRepoPath));
   const createWorktree = useMutation(gitMutations.createWorktree(queryClient, activeRepoPath));
   const removeWorktree = useMutation(gitMutations.removeWorktree(queryClient, activeRepoPath));
+  const removeWorktreeDryRun = useMutation(gitMutations.removeWorktreeDryRun(activeRepoPath));
   const moveWorktree = useMutation(gitMutations.moveWorktree(queryClient, activeRepoPath));
   const lockWorktree = useMutation(gitMutations.lockWorktree(queryClient, activeRepoPath));
   const unlockWorktree = useMutation(gitMutations.unlockWorktree(queryClient, activeRepoPath));
@@ -341,8 +354,8 @@ export function WorktreesSubmodules() {
   const isSubmoduleMutating = addSubmodule.isPending || updateSubmodule.isPending || syncSubmodules.isPending || bumpSubmodule.isPending || submoduleInitUpdate.isPending || submoduleSetBranch.isPending;
   const mutationError = addSubmodule.error ?? updateSubmodule.error ?? syncSubmodules.error ?? bumpSubmodule.error ?? submoduleInitUpdate.error ?? submoduleSetBranch.error ?? foreachStatusQuery.error;
   const canMutateSubmodules = submoduleRows.length > 0 && !isSubmoduleMutating;
-  const isWorktreeMutating = createWorktree.isPending || removeWorktree.isPending || pruneWorktrees.isPending || moveWorktree.isPending || lockWorktree.isPending || unlockWorktree.isPending || repairWorktree.isPending;
-  const worktreeError = actionError ?? formatMutationError(createWorktree.error ?? removeWorktree.error ?? openRepository.error ?? pruneWorktrees.error ?? pruneWorktreesDryRun.error ?? moveWorktree.error ?? lockWorktree.error ?? unlockWorktree.error ?? repairWorktree.error ?? repairWorktreeDryRun.error);
+  const isWorktreeMutating = createWorktree.isPending || removeWorktreeDryRun.isPending || removeWorktree.isPending || pruneWorktrees.isPending || moveWorktree.isPending || lockWorktree.isPending || unlockWorktree.isPending || repairWorktree.isPending;
+  const worktreeError = actionError ?? formatMutationError(createWorktree.error ?? removeWorktreeDryRun.error ?? removeWorktree.error ?? openRepository.error ?? pruneWorktrees.error ?? pruneWorktreesDryRun.error ?? moveWorktree.error ?? lockWorktree.error ?? unlockWorktree.error ?? repairWorktree.error ?? repairWorktreeDryRun.error);
 
   const openCreateWorktreeDialog = () => {
     setActionError(null);
@@ -434,10 +447,25 @@ export function WorktreesSubmodules() {
     });
   };
 
-  const handleRemoveWorktree = (worktreePath: string, force: boolean) => {
+  const handleRemoveWorktree = async (row: WorktreeRow, force: boolean) => {
+    const worktreePath = row.path;
     const mode = force ? "force remove" : "remove";
-    if (!window.confirm(`${mode[0].toUpperCase()}${mode.slice(1)} worktree at ${worktreePath}?`)) return;
     setActionError(null);
+    let dryRunLines: string[];
+    try {
+      dryRunLines = await removeWorktreeDryRun.mutateAsync({ path: worktreePath, force });
+    } catch (error) {
+      setActionError(formatMutationError(error));
+      return;
+    }
+
+    const details = worktreeRemovalDetails(row, dryRunLines);
+    if (!window.confirm(`${mode[0].toUpperCase()}${mode.slice(1)} worktree at ${worktreePath}?\n\n${details}`)) return;
+    if (force && (row.modifiedFiles > 0 || row.stagedFiles > 0 || row.isLocked)) {
+      const typedPath = window.prompt(`Force removing this worktree can discard dirty or locked state. Type the full path to confirm:\n\n${worktreePath}`);
+      if (typedPath !== worktreePath) return;
+    }
+
     removeWorktree.mutate({ path: worktreePath, force });
   };
 
@@ -604,8 +632,8 @@ export function WorktreesSubmodules() {
                     <ActionButton disabled={isWorktreeMutating} onClick={(event) => { event.stopPropagation(); handleLockWorktree(row); }}>Lock</ActionButton>
                   )}
                   <ActionButton disabled={isWorktreeMutating} onClick={(event) => { event.stopPropagation(); handleRepairWorktree(row); }}>Repair</ActionButton>
-                  <ActionButton disabled={row.isCurrent || removeWorktree.isPending} onClick={(event) => { event.stopPropagation(); handleRemoveWorktree(row.path, false); }} title={row.isCurrent ? "Current worktree cannot be removed here" : "Remove worktree"}>Remove</ActionButton>
-                  <ActionButton tone="danger" disabled={row.isCurrent || removeWorktree.isPending} onClick={(event) => { event.stopPropagation(); handleRemoveWorktree(row.path, true); }} title={row.isCurrent ? "Current worktree cannot be removed here" : "Force remove worktree"}><MoreHorizontal className="h-3 w-3" /></ActionButton>
+                  <ActionButton disabled={row.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={(event) => { event.stopPropagation(); void handleRemoveWorktree(row, false); }} title={row.isCurrent ? "Current worktree cannot be removed here" : "Remove worktree"}>Remove</ActionButton>
+                  <ActionButton tone="danger" disabled={row.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={(event) => { event.stopPropagation(); void handleRemoveWorktree(row, true); }} title={row.isCurrent ? "Current worktree cannot be removed here" : "Force remove worktree"}><MoreHorizontal className="h-3 w-3" /></ActionButton>
                 </span>
               </div>
             ))
