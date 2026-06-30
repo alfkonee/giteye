@@ -1,7 +1,7 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::DiffResult;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::process::Command;
 
 fn count_diff_stats(diff_text: &str) -> (u32, u32) {
@@ -16,16 +16,72 @@ fn count_diff_stats(diff_text: &str) -> (u32, u32) {
     (additions, deletions)
 }
 
+fn validate_repo_relative_file_path(file_path: &str) -> Result<(), AppError> {
+    if file_path.is_empty() {
+        return Err(AppError::InvalidPath(
+            "file path cannot be empty".to_string(),
+        ));
+    }
+
+    let path = Path::new(file_path);
+    if path.is_absolute() {
+        return Err(AppError::InvalidPath(format!(
+            "file path must be relative to the repository: {file_path}"
+        )));
+    }
+
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                return Err(AppError::InvalidPath(format!(
+                    "file path cannot escape the repository: {file_path}"
+                )));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(AppError::InvalidPath(format!(
+                    "file path must be relative to the repository: {file_path}"
+                )));
+            }
+            Component::CurDir | Component::Normal(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_existing_path_inside_repo(repo_path: &Path, file_path: &str) -> Result<(), AppError> {
+    validate_repo_relative_file_path(file_path)?;
+
+    let repo_root = repo_path
+        .canonicalize()
+        .map_err(|error| AppError::InvalidPath(error.to_string()))?;
+    let candidate = repo_path
+        .join(file_path)
+        .canonicalize()
+        .map_err(|error| AppError::InvalidPath(error.to_string()))?;
+
+    if !candidate.starts_with(&repo_root) {
+        return Err(AppError::InvalidPath(format!(
+            "file path cannot escape the repository: {file_path}"
+        )));
+    }
+
+    Ok(())
+}
+
 pub fn get_file_diff(
     repo_path: &Path,
     file_path: &str,
     staged: bool,
 ) -> Result<DiffResult, AppError> {
+    validate_repo_relative_file_path(file_path)?;
+
     let diff_text = if staged {
         GitCli::run(repo_path, &["diff", "--cached", "--", file_path])?
     } else {
         let tracked_diff = GitCli::run(repo_path, &["diff", "--", file_path])?;
         if tracked_diff.is_empty() && is_untracked(repo_path, file_path)? {
+            ensure_existing_path_inside_repo(repo_path, file_path)?;
             untracked_file_diff(repo_path, file_path)?
         } else {
             tracked_diff
@@ -155,5 +211,35 @@ mod tests {
         assert!(diff.diff_text.contains("+hello"));
         assert_eq!(diff.additions, 2);
         assert_eq!(diff.deletions, 0);
+    }
+
+    #[test]
+    fn file_diff_rejects_absolute_paths() {
+        let temp = TestDir::new("absolute-path");
+        let repo = temp.path.join("repo");
+        fs::create_dir_all(&repo).expect("create repo");
+        git(&repo, &["init", "-b", "main"]);
+
+        let outside = temp.path.join("outside.txt");
+        fs::write(&outside, "secret\n").expect("write outside file");
+
+        let error = get_file_diff(&repo, outside.to_str().expect("utf-8 outside path"), false)
+            .expect_err("absolute path rejected");
+
+        assert!(matches!(error, AppError::InvalidPath(_)));
+    }
+
+    #[test]
+    fn file_diff_rejects_parent_traversal_paths() {
+        let temp = TestDir::new("parent-traversal");
+        let repo = temp.path.join("repo");
+        fs::create_dir_all(&repo).expect("create repo");
+        git(&repo, &["init", "-b", "main"]);
+        fs::write(temp.path.join("outside.txt"), "secret\n").expect("write outside file");
+
+        let error =
+            get_file_diff(&repo, "../outside.txt", false).expect_err("parent traversal rejected");
+
+        assert!(matches!(error, AppError::InvalidPath(_)));
     }
 }
