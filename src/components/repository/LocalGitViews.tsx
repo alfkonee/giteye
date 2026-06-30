@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, GitBranch, Globe2, HardDrive, Pencil, Plus, RefreshCw, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { formatDryRunPreview } from "../../lib/git-preview";
+import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { Branch, GitTag, LfsTrackPattern, Remote, StashEntry } from "../../types/git";
 
@@ -335,18 +336,54 @@ export function StashesView() {
   const applyStash = useMutation(gitMutations.applyStash(queryClient, activeRepoPath));
   const popStash = useMutation(gitMutations.popStash(queryClient, activeRepoPath));
   const dropStash = useMutation(gitMutations.dropStash(queryClient, activeRepoPath));
+  const previewStash = useMutation({
+    mutationFn: (stashName: string) => gitApi.previewStash(activeRepoPath!, stashName),
+  });
   const [message, setMessage] = useState("");
   const [includeUntracked, setIncludeUntracked] = useState(true);
 
   const stashes = stashesQuery.data ?? [];
-  const isMutating = createStash.isPending || applyStash.isPending || popStash.isPending || dropStash.isPending;
-  const error = errorMessage(stashesQuery.error ?? createStash.error ?? applyStash.error ?? popStash.error ?? dropStash.error);
+  const isMutating = createStash.isPending || previewStash.isPending || applyStash.isPending || popStash.isPending || dropStash.isPending;
+  const error = errorMessage(stashesQuery.error ?? createStash.error ?? previewStash.error ?? applyStash.error ?? popStash.error ?? dropStash.error);
 
   const create = () => {
     createStash.mutate(
       { message: message.trim() || undefined, includeUntracked },
       { onSuccess: () => setMessage("") },
     );
+  };
+
+  const previewAndConfirmStash = async (stash: StashEntry, action: "apply" | "pop") => {
+    if (!activeRepoPath) return;
+
+    let preview: string[];
+    try {
+      preview = await previewStash.mutateAsync(stash.name);
+    } catch (error) {
+      window.alert(`Unable to preview ${stash.name}: ${errorMessage(error) ?? "Unknown error"}`);
+      return;
+    }
+
+    const actionLabel = action === "apply" ? "Apply" : "Pop";
+    const removalWarning = action === "pop" ? "\n\nPop removes the stash entry after a successful application." : "";
+    const previewText = preview.length > 0 ? preview.join("\n") : "No file-level preview was returned.";
+    if (!window.confirm(`${actionLabel} ${stash.name}?\n\n${stash.message || "Stashed changes"}${removalWarning}\n\nPreview:\n${previewText}`)) {
+      return;
+    }
+
+    if (action === "apply") {
+      applyStash.mutate(stash.name);
+    } else {
+      popStash.mutate(stash.name);
+    }
+  };
+
+  const confirmDropStash = (stash: StashEntry) => {
+    if (!window.confirm(`Drop ${stash.name}?\n\n${stash.message || "Stashed changes"}\n\nThis removes the stash entry. Recovery may require reflog/manual Git recovery if this was accidental.`)) {
+      return;
+    }
+
+    dropStash.mutate(stash.name);
   };
 
   return (
@@ -371,7 +408,7 @@ export function StashesView() {
         {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
         {stashesQuery.isLoading ? <EmptyState message="Loading stashes…" /> : stashes.length === 0 ? <EmptyState message="No stashes in this repository." /> : (
           <div className="grid gap-3">
-            {stashes.map((stash) => <StashCard key={stash.name} stash={stash} disabled={isMutating} onApply={() => applyStash.mutate(stash.name)} onPop={() => popStash.mutate(stash.name)} onDrop={() => dropStash.mutate(stash.name)} />)}
+            {stashes.map((stash) => <StashCard key={stash.name} stash={stash} disabled={isMutating} onApply={() => void previewAndConfirmStash(stash, "apply")} onPop={() => void previewAndConfirmStash(stash, "pop")} onDrop={() => confirmDropStash(stash)} />)}
           </div>
         )}
       </main>
