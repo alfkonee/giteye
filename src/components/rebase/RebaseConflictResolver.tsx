@@ -99,6 +99,38 @@ function moveTodoItem(items: RebaseTodoItem[], index: number, direction: -1 | 1)
   return next;
 }
 
+function todoItemsEqual(left: RebaseTodoItem[], right: RebaseTodoItem[]) {
+  if (left.length !== right.length) return false;
+
+  return left.every((item, index) => {
+    const other = right[index];
+    return item.action === other.action && item.commit === other.commit && item.message === other.message;
+  });
+}
+
+function formatTodoDraftSummary(saved: RebaseTodoItem[], draft: RebaseTodoItem[]) {
+  const allChangedLines = draft
+    .map((item, index) => {
+      const previous = saved[index];
+      if (previous && previous.action === item.action && previous.commit === item.commit && previous.message === item.message) {
+        return null;
+      }
+
+      const before = previous ? `${index + 1}. ${previous.action} ${shortHash(previous.commit)} ${previous.message}` : `${index + 1}. <new>`;
+      const after = `${index + 1}. ${item.action} ${shortHash(item.commit)} ${item.message}`;
+      return `${before}\n→ ${after}`;
+    })
+    .filter(Boolean);
+  const changedLines = allChangedLines.slice(0, 8);
+
+  if (changedLines.length === 0) {
+    return "No todo changes detected.";
+  }
+
+  const overflow = allChangedLines.length > 8 ? `\n…plus ${allChangedLines.length - 8} more row(s).` : "";
+  return `${changedLines.join("\n\n")}${overflow}`;
+}
+
 function DiffPane({ title, rev, lines, tone }: { title: string; rev: string; lines: string[]; tone: "deleted" | "added" | "result" }) {
   const color = tone === "deleted" ? "var(--color-deleted-bg)" : tone === "added" ? "rgba(88,166,255,0.12)" : "var(--color-added-bg)";
   return (
@@ -197,6 +229,7 @@ export function RebaseConflictResolver() {
   const setSelectedConflictPath = useAppStore((s) => s.setSelectedConflictPath);
   const firstConflictPath = liveConflictFiles[0]?.path ?? null;
   const [todoDraft, setTodoDraft] = useState<RebaseTodoItem[]>([]);
+  const [lastSavedTodo, setLastSavedTodo] = useState<RebaseTodoItem[]>([]);
 
   useEffect(() => {
     if (!hasLiveRebase) {
@@ -210,7 +243,9 @@ export function RebaseConflictResolver() {
   }, [firstConflictPath, hasLiveRebase, liveConflictFiles, selectedConflictPath, setSelectedConflictPath]);
 
   useEffect(() => {
-    setTodoDraft(rebaseState?.todo ?? []);
+    const nextTodo = rebaseState?.todo ?? [];
+    setTodoDraft(nextTodo);
+    setLastSavedTodo(nextTodo);
   }, [rebaseState?.todo]);
   const displayedConflictPath = selectedConflictPath ?? firstConflictPath;
   const conflictContentQuery = useQuery(gitQueries.conflictContent(activeRepoPath, displayedConflictPath));
@@ -238,14 +273,42 @@ export function RebaseConflictResolver() {
   const progressWidth = `${Math.min(100, Math.max(0, (currentStep / Math.max(totalSteps, 1)) * 100))}%`;
   const canEditTodo = canMutateRebase && !isActionPending && todoDraft.length > 0;
   const hasAutosquashItems = todoDraft.some((item) => autosquashDirective(item.message));
+  const hasTodoDraftChanges = !todoItemsEqual(todoDraft, lastSavedTodo);
 
   const persistTodo = (nextTodo: RebaseTodoItem[]) => {
-    if (!canMutateRebase || actions.updateTodo.isPending) {
+    if (!canEditTodo) {
       return;
     }
 
     setTodoDraft(nextTodo);
-    actions.updateTodo.mutate(nextTodo);
+  };
+
+  const applyTodoDraft = () => {
+    if (!canEditTodo || !hasTodoDraftChanges) {
+      return;
+    }
+
+    const destructiveWarning = todoDraft.some((item) => item.action === "drop" || item.action === "exec")
+      ? "\n\nWarning: this draft contains drop or exec actions. Review the preview before applying."
+      : "";
+    const confirmed = window.confirm(
+      `Apply interactive rebase todo changes to Git?\n\n${formatTodoDraftSummary(lastSavedTodo, todoDraft)}${destructiveWarning}`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    actions.updateTodo.mutate(todoDraft, {
+      onSuccess: () => setLastSavedTodo(todoDraft),
+    });
+  };
+
+  const revertTodoDraft = () => {
+    if (!hasTodoDraftChanges || actions.updateTodo.isPending) {
+      return;
+    }
+
+    setTodoDraft(lastSavedTodo);
   };
 
   const changeTodoAction = (index: number, action: string) => {
@@ -322,15 +385,20 @@ export function RebaseConflictResolver() {
             <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3"><h2 className="font-semibold">Interactive rebase todo</h2><ListChecks className="h-4 w-4 text-[var(--color-text-muted)]" /></div>
             <div className="flex items-center justify-between px-4 py-3 text-xs text-[var(--color-text-secondary)]">
               <span>{completedTodo.length} completed · {todoDraft.length} remaining</span>
-              <button
-                type="button"
-                disabled={!canEditTodo || !hasAutosquashItems}
-                onClick={applyAutosquash}
-                className="rounded bg-[var(--color-bg-surface)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {actions.updateTodo.isPending ? "Saving…" : "Autosquash"}
-              </button>
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!canEditTodo || !hasAutosquashItems}
+                  onClick={applyAutosquash}
+                  className="rounded bg-[var(--color-bg-surface)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Autosquash
+                </button>
+                <button type="button" disabled={!hasTodoDraftChanges || actions.updateTodo.isPending} onClick={revertTodoDraft} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50">Revert draft</button>
+                <button type="button" disabled={!canEditTodo || !hasTodoDraftChanges || actions.updateTodo.isPending} onClick={applyTodoDraft} className="rounded bg-[var(--color-accent)] px-2 py-1 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{actions.updateTodo.isPending ? "Applying…" : "Apply"}</button>
+              </span>
             </div>
+            {hasTodoDraftChanges ? <div className="border-t border-[var(--color-warning)]/30 bg-[color:rgba(210,153,34,0.08)] px-4 py-2 text-xs text-[var(--color-warning)]">Draft todo changes are local until you click Apply.</div> : null}
             {actions.updateTodo.error ? <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-xs text-[var(--color-danger)]">{actions.updateTodo.error instanceof Error ? actions.updateTodo.error.message : String(actions.updateTodo.error)}</div> : null}
             {liveTodo.length > 0 ? liveTodo.map((item, index) => {
               const draftIndex = index - completedTodo.length;
@@ -348,7 +416,7 @@ export function RebaseConflictResolver() {
                 />
               );
             }) : <div className="border-t border-[var(--color-border-muted)] p-4 text-sm text-[var(--color-text-muted)]">No rebase todo items returned.</div>}
-            <div className="border-t border-[var(--color-border-muted)] p-4"><div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3"><div className="text-xs text-[var(--color-text-muted)]">Next commit</div><p className="mt-2 font-mono text-sm">{todoDraft[0]?.message ?? "Waiting for next rebase step"}</p></div><p className="mt-3 text-xs text-[var(--color-text-muted)]">Action changes, reorders, drops, and autosquash write the live git-rebase-todo file.</p></div>
+            <div className="border-t border-[var(--color-border-muted)] p-4"><div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3"><div className="text-xs text-[var(--color-text-muted)]">Next commit</div><p className="mt-2 font-mono text-sm">{todoDraft[0]?.message ?? "Waiting for next rebase step"}</p></div><p className="mt-3 text-xs text-[var(--color-text-muted)]">Action changes, reorders, drops, and autosquash stay in a draft until Apply writes the live git-rebase-todo file.</p></div>
           </section>
 
           <section className="min-h-0 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
