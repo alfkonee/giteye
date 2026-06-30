@@ -207,9 +207,6 @@ export function StackedPrBoard() {
     ),
   };
   const livePrs = githubOverview?.pullRequests ?? [];
-  const liveReviews = githubOverview?.reviews ?? [];
-  const liveActivity = githubOverview?.activity ?? [];
-  const liveChecks = githubOverview?.checkRuns ?? [];
   const selectedPrNumber = selectedPullRequestId
     ? Number(selectedPullRequestId)
     : null;
@@ -229,16 +226,26 @@ export function StackedPrBoard() {
     stackLandingOrder.length === openStackPrs.length;
   const stackLandingBlocked =
     openStackPrs.length > 1 && stackLandingOrder.length !== openStackPrs.length;
-  const reviewers = liveReviews.slice(0, 6).map(mapReview);
-  const timeline = liveActivity.slice(0, 6).map(mapActivity);
-  const passingChecks = liveChecks.filter(
+  const {
+    data: activePrDiff,
+    isLoading: activePrDiffLoading,
+    error: activePrDiffError,
+  } = useQuery(gitQueries.pullRequestDiff(activeRepoPath, activePrNumber));
+  const reviewers = (activePrDiff?.reviews ?? []).slice(0, 6).map(mapReview);
+  const timeline = (activePrDiff?.activity ?? []).slice(0, 6).map(mapActivity);
+  const activeChecks = activePrDiff?.checkRuns ?? [];
+  const passingChecks = activeChecks.filter(
     (check) =>
       (check.conclusion ?? check.state ?? "").toLowerCase() === "success",
   ).length;
   const checksLabel =
-    liveChecks.length > 0
-      ? `${passingChecks} / ${liveChecks.length} passing`
-      : "No checks reported";
+    activePrDiffLoading
+      ? "Loading checks…"
+      : activePrDiffError
+        ? "Checks unavailable"
+        : activeChecks.length > 0
+          ? `${passingChecks} / ${activeChecks.length} passing`
+          : "No checks reported";
   const reviewApprovals = reviewers.filter((reviewer) =>
     reviewer.status.toLowerCase().includes("approved"),
   ).length;
@@ -455,11 +462,10 @@ export function StackedPrBoard() {
                         </p>
                         <div className="mt-3 flex items-center gap-5 text-xs">
                           <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
-                            <CheckCircle2 className="h-4 w-4" /> {checksLabel}
+                            <CheckCircle2 className="h-4 w-4" /> {pr.mergeStateStatus ?? "Merge state unknown"}
                           </span>
                           <span className="text-[var(--color-text-secondary)]">
-                            {reviewers.length} review
-                            {reviewers.length === 1 ? "" : "s"}
+                            {pr.reviewDecision ?? "Review state unknown"}
                           </span>
                         </div>
                       </div>
@@ -622,7 +628,7 @@ export function StackedPrBoard() {
                   Details
                 </span>
                 <span>PRs {stack.length}</span>
-                <span>Checks {liveChecks.length}</span>
+                <span>Checks {activeChecks.length}</span>
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <h4 className="font-semibold">Reviewers</h4>
@@ -645,7 +651,7 @@ export function StackedPrBoard() {
                     </div>
                   ))
                 ) : (
-                  <EmptyState message="No reviews returned by GitHub." />
+                  <EmptyState message={activePrDiffLoading ? "Loading selected PR reviews…" : activePrDiffError ? "Selected PR reviews unavailable." : "No reviews returned by GitHub for the selected PR."} />
                 )}
               </div>
               <h4 className="mt-6 font-semibold">Labels</h4>
@@ -711,7 +717,7 @@ export function StackedPrBoard() {
                     </div>
                   ))
                 ) : (
-                  <EmptyState message="No timeline activity returned by GitHub." />
+                  <EmptyState message={activePrDiffLoading ? "Loading selected PR timeline…" : activePrDiffError ? "Selected PR timeline unavailable." : "No timeline activity returned by GitHub for the selected PR."} />
                 )}
               </div>
               <button
