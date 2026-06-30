@@ -67,7 +67,6 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     };
 
     if !gh_is_authenticated(repo_path) {
-        store_github_overview(cache_key, overview.clone());
         return overview;
     }
 
@@ -159,6 +158,13 @@ fn cached_github_overview(cache_key: &str) -> Option<RepositoryGithubOverview> {
 fn store_github_overview(cache_key: String, overview: RepositoryGithubOverview) {
     if let Ok(mut cache) = github_overview_cache().lock() {
         cache.insert(cache_key, overview);
+    }
+}
+
+fn clear_github_overview_cache(owner: &str, repo: &str) {
+    let cache_key_prefix = format!("{owner}/{repo}@");
+    if let Ok(mut cache) = github_overview_cache().lock() {
+        cache.retain(|cache_key, _| !cache_key.starts_with(&cache_key_prefix));
     }
 }
 
@@ -269,7 +275,7 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
 }
 
 pub fn checkout_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let number_string = number.to_string();
     run_required_process(
         "gh",
@@ -277,11 +283,12 @@ pub fn checkout_pull_request(repo_path: &Path, number: u64) -> Result<(), AppErr
         repo_path,
         GH_TIMEOUT,
     )?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
 pub fn update_pull_request_branch(repo_path: &Path, number: u64) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let number_string = number.to_string();
     run_required_process(
         "gh",
@@ -289,6 +296,7 @@ pub fn update_pull_request_branch(repo_path: &Path, number: u64) -> Result<(), A
         repo_path,
         GH_TIMEOUT,
     )?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -298,7 +306,7 @@ pub fn request_pull_request_review(
     reviewers: &[String],
     teams: &[String],
 ) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     if reviewers.is_empty() && teams.is_empty() {
         return Err(AppError::GitError(
             "At least one reviewer or team is required".to_string(),
@@ -326,6 +334,7 @@ pub fn request_pull_request_review(
     }
 
     run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -335,7 +344,7 @@ pub fn submit_pull_request_review(
     event: &str,
     body: Option<&str>,
 ) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let number_string = number.to_string();
     let body = body.map(str::trim).filter(|body| !body.is_empty());
     let review_flag = match event {
@@ -362,6 +371,7 @@ pub fn submit_pull_request_review(
     }
 
     run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -417,6 +427,7 @@ pub fn submit_pull_request_line_comment(
     ];
 
     run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -480,7 +491,7 @@ fn edit_pull_request_labels(
     flag: &str,
     labels: &[String],
 ) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let label_list = labels
         .iter()
         .map(|label| label.trim())
@@ -506,6 +517,7 @@ fn edit_pull_request_labels(
         repo_path,
         GH_TIMEOUT,
     )?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -516,7 +528,7 @@ pub fn merge_pull_request(
     admin: bool,
     delete_branch: bool,
 ) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let number_string = number.to_string();
     let merge_flag = merge_method_flag(method)?;
     let mut args = vec![
@@ -533,6 +545,7 @@ pub fn merge_pull_request(
     }
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_required_process("gh", &arg_refs, repo_path, GH_TIMEOUT)?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -548,7 +561,7 @@ fn merge_method_flag(method: &str) -> Result<&'static str, AppError> {
 }
 
 pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError> {
-    let (_, _) = github_repository(repo_path)?;
+    let (owner, repo) = github_repository(repo_path)?;
     let number_string = number.to_string();
     run_required_process(
         "gh",
@@ -556,6 +569,7 @@ pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError>
         repo_path,
         GH_TIMEOUT,
     )?;
+    clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
 
@@ -1221,8 +1235,12 @@ fn canonical_repo_key(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_method_flag, normalize_review_comment_side, parse_github_remote};
+    use super::{
+        cached_github_overview, clear_github_overview_cache, merge_method_flag,
+        normalize_review_comment_side, parse_github_remote, store_github_overview,
+    };
     use crate::errors::AppError;
+    use crate::models::github::RepositoryGithubOverview;
 
     #[test]
     fn parses_github_remote_urls() {
@@ -1261,5 +1279,29 @@ mod tests {
         assert!(
             matches!(error, AppError::GitError(message) if message.contains("Unsupported pull request merge method"))
         );
+    }
+
+    #[test]
+    fn clears_github_overview_cache_for_repository_only() {
+        store_github_overview(
+            "giteye-cache-owner/giteye-cache-repo@abc".to_string(),
+            RepositoryGithubOverview::default(),
+        );
+        store_github_overview(
+            "giteye-cache-owner/giteye-cache-repo@def".to_string(),
+            RepositoryGithubOverview::default(),
+        );
+        store_github_overview(
+            "giteye-cache-owner/other-repo@abc".to_string(),
+            RepositoryGithubOverview::default(),
+        );
+
+        clear_github_overview_cache("giteye-cache-owner", "giteye-cache-repo");
+
+        assert!(cached_github_overview("giteye-cache-owner/giteye-cache-repo@abc").is_none());
+        assert!(cached_github_overview("giteye-cache-owner/giteye-cache-repo@def").is_none());
+        assert!(cached_github_overview("giteye-cache-owner/other-repo@abc").is_some());
+
+        clear_github_overview_cache("giteye-cache-owner", "other-repo");
     }
 }
