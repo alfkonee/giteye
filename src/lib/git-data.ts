@@ -2051,6 +2051,12 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
+  removeWorktreeDryRun: (repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ path, force }: { path: string; force: boolean }) =>
+        gitApi.removeWorktreeDryRun(repoPath!, path, force),
+    }),
+
   pruneWorktrees: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.pruneWorktrees(repoPath!),
