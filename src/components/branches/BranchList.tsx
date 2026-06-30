@@ -35,6 +35,7 @@ function splitRemoteBranch(branch: Branch) {
 export function BranchList() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setPendingAdvancedBranchName = useAppStore((s) => s.setPendingAdvancedBranchName);
   const queryClient = useQueryClient();
   const { data: branches, isLoading } = useQuery(gitQueries.branches(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
@@ -372,7 +373,10 @@ export function BranchList() {
         onCreateFromBranch={createBranchFrom}
         onFastForward={fastForwardBranch}
         onMerge={mergeBranch}
-        onAdvancedMergeRebase={() => setActiveView("rebase-conflicts")}
+        onAdvancedMergeRebase={(branch) => {
+          setPendingAdvancedBranchName(branch.shortName);
+          setActiveView("rebase-conflicts");
+        }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
       />
