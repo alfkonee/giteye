@@ -24,6 +24,26 @@ if (!semverPattern.test(version)) {
   throw new Error(`Release tag ${tag} does not contain a valid semver version`);
 }
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const versionPattern = escapeRegExp(version);
+const isPrerelease = version.includes("-");
+const expectedAssetFamilies = [
+  { name: "Linux AppImage", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*\\.AppImage$`) },
+  { name: "Linux Debian package", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*\\.deb$`) },
+  { name: "Linux RPM package", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*\\.rpm$`) },
+  { name: "Windows NSIS installer", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*\\.exe$`) },
+  ...(
+    isPrerelease
+      ? []
+      : [{ name: "Windows MSI installer", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*\\.msi$`) }]
+  ),
+  { name: "macOS Apple Silicon app archive", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*aarch64.*\\.app\\.tar\\.gz$`) },
+  { name: "macOS Intel app archive", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*(x64|x86_64).*\\.app\\.tar\\.gz$`) },
+  { name: "macOS Apple Silicon DMG", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*aarch64.*\\.dmg$`) },
+  { name: "macOS Intel DMG", pattern: new RegExp(`^GitEye[_-].*${versionPattern}.*(x64|x86_64).*\\.dmg$`) },
+];
+const expectedAssetPatterns = expectedAssetFamilies.map((family) => family.pattern);
+
 async function github(path, init = {}) {
   const response = await fetch(`https://api.github.com${path}`, {
     ...init,
@@ -76,6 +96,26 @@ const invalidAssets = assets
 
 if (invalidAssets.length > 0) {
   throw new Error(`Release assets missing version ${version}: ${invalidAssets.join(", ")}`);
+}
+
+const gitEyeAssets = assets.map((asset) => asset.name).filter((name) => name.startsWith("GitEye"));
+
+if (gitEyeAssets.length === 0) {
+  throw new Error(`Release has no GitEye assets for ${version}`);
+}
+
+const missingFamilies = expectedAssetFamilies
+  .filter((family) => !gitEyeAssets.some((name) => family.pattern.test(name)))
+  .map((family) => family.name);
+
+if (missingFamilies.length > 0) {
+  throw new Error(`Release is missing expected GitEye asset families for ${version}: ${missingFamilies.join(", ")}`);
+}
+
+const unexpectedAssets = gitEyeAssets.filter((name) => !expectedAssetPatterns.some((pattern) => pattern.test(name)));
+
+if (unexpectedAssets.length > 0) {
+  throw new Error(`Release contains unexpected GitEye assets for ${version}: ${unexpectedAssets.join(", ")}`);
 }
 
 for (const renamed of renamedAssets) {
