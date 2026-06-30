@@ -340,6 +340,28 @@ impl GitJobRunnerState {
         Ok(summaries)
     }
 
+    pub fn with_repo_mutation_lock<T, F>(
+        &self,
+        repo_path: &str,
+        operation: F,
+    ) -> Result<T, AppError>
+    where
+        F: FnOnce() -> Result<T, AppError>,
+    {
+        let repo_lock = self.repo_lock(repo_path)?;
+        let _guard = match repo_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                return Err(AppError::GitError(
+                    "Repository has another Git operation in progress".to_string(),
+                ));
+            }
+            Err(TryLockError::Poisoned(error)) => error.into_inner(),
+        };
+
+        operation()
+    }
+
     fn repo_lock(&self, repo_path: &str) -> Result<Arc<Mutex<()>>, AppError> {
         let mut locks = self.repo_mutation_locks.lock().map_err(lock_error)?;
         Ok(Arc::clone(
@@ -556,6 +578,32 @@ mod tests {
         assert!(jobs.contains_key("done-3"));
         assert!(jobs.contains_key("running"));
         assert!(jobs.contains_key("other"));
+    }
+
+    #[test]
+    fn with_repo_mutation_lock_rejects_concurrent_mutation() {
+        let state = GitJobRunnerState::default();
+        let lock = state.repo_lock("/repo").expect("repo lock");
+        let _held_guard = lock.lock().expect("lock should be available");
+
+        let error = state
+            .with_repo_mutation_lock("/repo", || Ok(()))
+            .expect_err("busy repo rejected");
+
+        assert!(
+            matches!(error, AppError::GitError(message) if message.contains("another Git operation"))
+        );
+    }
+
+    #[test]
+    fn with_repo_mutation_lock_runs_when_repo_is_available() {
+        let state = GitJobRunnerState::default();
+
+        let value = state
+            .with_repo_mutation_lock("/repo", || Ok(42))
+            .expect("available repo mutation runs");
+
+        assert_eq!(value, 42);
     }
 
     #[test]
