@@ -24,19 +24,12 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
       return;
     }
 
-    if (event.detail > 1) {
-      if (event.detail === 2) {
-        void runWindowChromeAction("toggleMaximize").catch((error) => {
-          console.warn("Unable to run window action toggleMaximize", error);
-        });
-      }
+    if (event.detail === 2) {
+      void runWindowChromeAction("toggleMaximize").catch((error) => {
+        console.warn("Unable to run window action toggleMaximize", error);
+      });
       return;
     }
-
-    const action: WindowChromeAction = "drag";
-    void runWindowChromeAction(action).catch((error) => {
-      console.warn(`Unable to run window action ${action}`, error);
-    });
   };
 
   return (
@@ -50,7 +43,7 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
           {controlPlacement === "left" ? <WindowControls placement={controlPlacement} /> : <WindowBrand />}
         </div>
 
-        <div className="flex min-w-0 items-center justify-center gap-2 px-3 text-center" data-giteye-drag-region>
+        <div className="flex min-w-0 items-center justify-center gap-2 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
           <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
           <span className="min-w-0 truncate text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-window-title)]">
             {title}
@@ -74,7 +67,7 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
 
 function WindowBrand() {
   return (
-    <div className="hidden min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region>
+    <div className="hidden min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region data-tauri-drag-region>
       <span className="h-2 w-2 rounded-full bg-[var(--color-accent)] shadow-[0_0_16px_var(--color-accent)]" />
       <span className="truncate">GitEye</span>
     </div>

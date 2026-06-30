@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-export type WindowChromeAction = "close" | "drag" | "minimize" | "toggleMaximize";
+export type WindowChromeAction = "close" | "minimize" | "toggleMaximize";
 export type WindowControlPlacement = "left" | "right";
 
 export function getWindowControlPlacement(): WindowControlPlacement {
@@ -17,9 +17,6 @@ export async function runWindowChromeAction(action: WindowChromeAction) {
   switch (action) {
     case "close":
       await appWindow.close();
-      break;
-    case "drag":
-      await appWindow.startDragging();
       break;
     case "minimize":
       await appWindow.minimize();
