@@ -273,6 +273,14 @@ export function RebaseConflictResolver() {
       return;
     }
 
+    const sideLabel = side === "ours" ? "current" : "incoming";
+    const confirmed = window.confirm(
+      `Use the ${sideLabel} version for ${displayedConflictPath}?\n\nThis overwrites the result file with that side of the conflict and stages the file as resolved. Any manual edits currently in the result file will be lost.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     actions.checkoutConflictSide.mutate({ filePath: displayedConflictPath, side });
   };
 
