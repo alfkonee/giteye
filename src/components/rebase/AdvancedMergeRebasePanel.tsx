@@ -28,6 +28,8 @@ const MERGE_STRATEGY_OPTIONS: Array<{ value: "" | MergeStrategyOption; label: st
 
 export function AdvancedMergeRebasePanel() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const pendingAdvancedBranchName = useAppStore((s) => s.pendingAdvancedBranchName);
+  const setPendingAdvancedBranchName = useAppStore((s) => s.setPendingAdvancedBranchName);
   const queryClient = useQueryClient();
   const { data: branches = [] } = useQuery(gitQueries.branches(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
@@ -46,14 +48,22 @@ export function AdvancedMergeRebasePanel() {
   const current = snapshot?.repositoryInfo.currentBranch ?? branches.find((branch) => branch.isCurrent)?.shortName ?? "";
   const mergeSources = refs.filter((ref) => ref !== current);
   const currentBranchInfo = branches.find((branch) => branch.shortName === current);
-  const [mergeSource, setMergeSource] = useState("");
+  const [mergeSource, setMergeSource] = useState(pendingAdvancedBranchName ?? "");
   const [strategyOption, setStrategyOption] = useState<"" | MergeStrategyOption>("");
   const [noFf, setNoFf] = useState(false);
   const [squash, setSquash] = useState(false);
   const [rebaseBranch, setRebaseBranch] = useState("");
-  const [rebaseUpstream, setRebaseUpstream] = useState("");
+  const [rebaseUpstream, setRebaseUpstream] = useState(pendingAdvancedBranchName ?? "");
   const [rebaseOnto, setRebaseOnto] = useState("");
   const [autostash, setAutostash] = useState(true);
+
+  useEffect(() => () => setPendingAdvancedBranchName(null), [setPendingAdvancedBranchName]);
+
+  useEffect(() => {
+    if (!pendingAdvancedBranchName) return;
+    setMergeSource(pendingAdvancedBranchName);
+    setRebaseUpstream(pendingAdvancedBranchName);
+  }, [pendingAdvancedBranchName]);
 
   useEffect(() => {
     if (!mergeSource && mergeSources[0]) setMergeSource(mergeSources[0]);
@@ -158,6 +168,7 @@ export function AdvancedMergeRebasePanel() {
           </button>
         </div>
         {actionError ? <div className="mt-3 rounded-md border border-[var(--color-danger)]/40 bg-[color:rgba(248,81,73,0.1)] px-3 py-2 text-xs text-[var(--color-danger)]">{actionError instanceof Error ? actionError.message : String(actionError)}</div> : null}
+        {pendingAdvancedBranchName ? <div className="mt-3 rounded-md border border-[var(--color-accent)]/30 bg-[color:rgba(31,111,235,0.12)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">Opened from branch action: <span className="font-semibold text-[var(--color-text-primary)]">{pendingAdvancedBranchName}</span>. Merge source and rebase upstream are prefilled from that branch; edit them before running an operation if needed.</div> : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
