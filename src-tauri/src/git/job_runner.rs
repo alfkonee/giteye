@@ -105,7 +105,7 @@ impl GitJobRunnerState {
             title: request.title.clone(),
             status: GitJobStatus::Queued,
             command: "git".to_string(),
-            args: request.args.clone(),
+            args: redact_git_job_args(&request.args),
             created_at: Utc::now(),
             started_at: None,
             finished_at: None,
@@ -180,7 +180,7 @@ impl GitJobRunnerState {
                 };
                 let log_line = GitJobLogLine {
                     channel,
-                    line,
+                    line: redact_git_output(&line),
                     timestamp: Utc::now(),
                 };
                 update_job(
@@ -222,7 +222,7 @@ impl GitJobRunnerState {
                             .unwrap_or_else(|| {
                                 format!("git exited with status {}", output.status_code)
                             });
-                        job.error = Some(message);
+                        job.error = Some(redact_git_output(&message));
                     }
                     Err(error) if canceled => {
                         job.status = GitJobStatus::Canceled;
@@ -458,6 +458,72 @@ fn first_non_empty(value: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn redact_git_job_args(args: &[String]) -> Vec<String> {
+    args.iter().map(|arg| redact_git_arg(arg)).collect()
+}
+
+fn redact_git_arg(value: &str) -> String {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("authorization:")
+        || lower.contains("http.extraheader")
+        || lower.starts_with("credential.helper=")
+    {
+        return "<redacted>".to_string();
+    }
+
+    redact_url_userinfo(value)
+}
+
+fn redact_git_output(value: &str) -> String {
+    let mut redacted = String::with_capacity(value.len());
+    let mut token = String::new();
+
+    for character in value.chars() {
+        if character.is_whitespace() {
+            if !token.is_empty() {
+                redacted.push_str(&redact_git_arg(&token));
+                token.clear();
+            }
+            redacted.push(character);
+        } else {
+            token.push(character);
+        }
+    }
+
+    if !token.is_empty() {
+        redacted.push_str(&redact_git_arg(&token));
+    }
+
+    redacted
+}
+
+fn redact_url_userinfo(value: &str) -> String {
+    let Some(scheme_end) = value.find("://") else {
+        return value.to_string();
+    };
+    let authority_start = scheme_end + 3;
+    let authority_suffix_start = value[authority_start..]
+        .find(['/', '?', '#'])
+        .map(|index| authority_start + index)
+        .unwrap_or(value.len());
+    let authority = &value[authority_start..authority_suffix_start];
+    let Some(userinfo_end) = authority.rfind('@') else {
+        return value.to_string();
+    };
+
+    let host = &authority[userinfo_end + 1..];
+    if host.is_empty() {
+        return value.to_string();
+    }
+
+    format!(
+        "{}{}{}",
+        &value[..authority_start],
+        host,
+        &value[authority_suffix_start..]
+    )
+}
+
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> AppError {
     AppError::IoError(error.to_string())
 }
@@ -525,6 +591,43 @@ mod tests {
         assert!(jobs.contains_key("done-3"));
         assert!(jobs.contains_key("running"));
         assert!(jobs.contains_key("other"));
+    }
+
+    #[test]
+    fn redact_git_job_args_strips_url_userinfo() {
+        let args = vec![
+            "clone".to_string(),
+            "https://token@github.com/org/repo.git".to_string(),
+            "https://user:password@example.com/repo.git".to_string(),
+            "https://user@example.com/repo.git".to_string(),
+            "ssh://git@github.com/org/repo.git".to_string(),
+            "git@github.com:org/repo.git".to_string(),
+            "https://github.com/org/repo.git".to_string(),
+            "http.extraheader=Authorization: Bearer secret".to_string(),
+        ];
+
+        let redacted = redact_git_job_args(&args);
+
+        assert_eq!(redacted[0], "clone");
+        assert_eq!(redacted[1], "https://github.com/org/repo.git");
+        assert_eq!(redacted[2], "https://example.com/repo.git");
+        assert_eq!(redacted[3], "https://example.com/repo.git");
+        assert_eq!(redacted[4], "ssh://github.com/org/repo.git");
+        assert_eq!(redacted[5], "git@github.com:org/repo.git");
+        assert_eq!(redacted[6], "https://github.com/org/repo.git");
+        assert_eq!(redacted[7], "<redacted>");
+    }
+
+    #[test]
+    fn redact_git_output_strips_credentials_from_log_lines() {
+        let redacted = redact_git_output(
+            "fatal: Authentication failed for 'https://user:password@example.com/org/repo.git/'",
+        );
+
+        assert_eq!(
+            redacted,
+            "fatal: Authentication failed for 'https://example.com/org/repo.git/'"
+        );
     }
 
     fn test_job(
