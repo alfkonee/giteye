@@ -30,8 +30,7 @@ pub fn stage_file(
     jobs.with_repo_mutation_lock(&repo_path, || {
         GitCli::run(Path::new(&repo_path), &["add", "--", &file_path])?;
         Ok(())
-    })?;
-    Ok(())
+    })
 }
 
 #[tauri::command]
@@ -46,8 +45,7 @@ pub fn unstage_file(
             &["restore", "--staged", "--", &file_path],
         )?;
         Ok(())
-    })?;
-    Ok(())
+    })
 }
 
 #[tauri::command]
@@ -55,8 +53,7 @@ pub fn stage_all(repo_path: String, jobs: State<'_, GitJobRunnerState>) -> Resul
     jobs.with_repo_mutation_lock(&repo_path, || {
         GitCli::run(Path::new(&repo_path), &["add", "-A"])?;
         Ok(())
-    })?;
-    Ok(())
+    })
 }
 
 #[tauri::command]
@@ -64,8 +61,7 @@ pub fn unstage_all(repo_path: String, jobs: State<'_, GitJobRunnerState>) -> Res
     jobs.with_repo_mutation_lock(&repo_path, || {
         GitCli::run(Path::new(&repo_path), &["reset", "HEAD"])?;
         Ok(())
-    })?;
-    Ok(())
+    })
 }
 
 #[tauri::command]
@@ -77,6 +73,5 @@ pub fn commit(
     jobs.with_repo_mutation_lock(&repo_path, || {
         GitCli::run(Path::new(&repo_path), &["commit", "-m", &message])?;
         Ok(())
-    })?;
-    Ok(())
+    })
 }
