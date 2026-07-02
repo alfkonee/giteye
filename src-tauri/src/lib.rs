@@ -25,6 +25,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app_settings::get_app_settings,
+            commands::app_settings::save_app_settings,
             commands::repository::open_repository,
             commands::repository::init_repository,
             commands::repository::clone_repository,
@@ -190,8 +192,8 @@ fn configure_linux_webkit_environment() {
     // libraries. That mismatch has produced blank windows on newer Linux desktops.
     if std::env::var_os("GIO_MODULE_DIR").is_none() {
         if let Some(app_dir) = std::env::var_os("APPDIR") {
-            let gio_modules = std::path::PathBuf::from(app_dir)
-                .join("usr/lib/x86_64-linux-gnu/gio/modules");
+            let gio_modules =
+                std::path::PathBuf::from(app_dir).join("usr/lib/x86_64-linux-gnu/gio/modules");
             if gio_modules.is_dir() {
                 std::env::set_var("GIO_MODULE_DIR", gio_modules);
             }

@@ -89,7 +89,7 @@ export function SettingsPlaceholder() {
             <SettingsHeader
               icon={<Monitor className="h-4 w-4" />}
               title="Appearance"
-              description="Tune the desktop shell for your environment."
+              description="Tune the desktop shell for your environment. Theme and diff mode are saved automatically."
             />
             <div className="divide-y divide-[var(--color-border-muted)]">
               <div className="flex items-center justify-between gap-4 px-4 py-3">
