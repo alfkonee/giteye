@@ -21,7 +21,7 @@ pub struct FavoriteRepo {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct AppSettings {
     pub theme: String,
     pub git_executable_path: Option<String>,
@@ -343,5 +343,15 @@ mod tests {
         assert_eq!(settings.user_name, None);
         assert_eq!(settings.user_email.as_deref(), Some("user@example.com"));
         assert_eq!(settings.diff_mode, "unified");
+    }
+
+    #[test]
+    fn app_settings_deserializes_partial_files_with_defaults() {
+        let settings = serde_json::from_str::<AppSettings>(r#"{"theme":"light"}"#)
+            .expect("partial settings use defaults");
+
+        assert_eq!(settings.theme, "light");
+        assert_eq!(settings.diff_mode, "unified");
+        assert_eq!(settings.git_executable_path, None);
     }
 }
