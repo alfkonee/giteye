@@ -32,6 +32,7 @@ type PaletteItem = {
   keywords: string;
   icon: LucideIcon;
   disabled?: boolean;
+  isActive?: boolean;
   priority: number;
   run: () => void;
 };
@@ -217,6 +218,7 @@ export function CommandPalette() {
   }
 
   const activeItem = results[activeIndex] ?? null;
+  const activeOptionId = activeItem ? paletteOptionId(activeItem.id) : undefined;
   const runItem = (item: PaletteItem | null) => {
     if (!item || item.disabled) {
       return;
@@ -240,6 +242,10 @@ export function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-results"
+            aria-activedescendant={activeOptionId}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -267,7 +273,7 @@ export function CommandPalette() {
           <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[10px] text-[var(--color-text-muted)]">Esc</kbd>
         </div>
 
-        <div className="max-h-[min(560px,65vh)] overflow-y-auto p-2">
+        <div id="command-palette-results" role="listbox" aria-label="Command palette results" className="max-h-[min(560px,65vh)] overflow-y-auto p-2">
           {results.length === 0 ? (
             <div className="grid place-items-center gap-2 px-6 py-10 text-center">
               <Search className="h-6 w-6 text-[var(--color-text-muted)]" />
@@ -323,6 +329,7 @@ function PaletteResultList({
           disabled={item.disabled}
           icon={<item.icon className="h-4 w-4" />}
           item={item}
+          optionId={paletteOptionId(item.id)}
           onHover={() => onHover(index)}
           onRun={() => onRun(item)}
         />
@@ -336,6 +343,7 @@ function PaletteResult({
   disabled,
   icon,
   item,
+  optionId,
   onHover,
   onRun,
 }: {
@@ -343,12 +351,17 @@ function PaletteResult({
   disabled?: boolean;
   icon: ReactNode;
   item: PaletteItem;
+  optionId: string;
   onHover: () => void;
   onRun: () => void;
 }) {
   return (
     <button
+      id={optionId}
       type="button"
+      role="option"
+      aria-selected={active}
+      aria-disabled={disabled}
       disabled={disabled}
       onMouseEnter={onHover}
       onClick={onRun}
@@ -368,7 +381,7 @@ function PaletteResult({
           {item.detail}
         </span>
       </span>
-      {item.kind === "repository" && item.detail.includes("Active") ? (
+      {item.kind === "repository" && item.isActive ? (
         <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--color-success)]" />
       ) : null}
     </button>
@@ -406,6 +419,7 @@ function buildRepositoryItems({
     keywords: `${repo.name} ${repo.path} ${repo.source} repository workspace session`,
     icon: repo.source === "open" ? GitBranch : FolderGit2,
     disabled: repositoryMutationPending && repo.source !== "open",
+    isActive: repo.isActive,
     priority: repo.isActive ? 110 : repo.source === "open" ? 104 : repo.source === "favorite" ? 100 : 94,
     run: () => openRepositoryPath(repo.path),
   }));
@@ -454,8 +468,7 @@ export function rankPaletteItems(items: PaletteItem[], query: string) {
   const normalizedQuery = normalize(query);
   if (!normalizedQuery) {
     return [...items]
-      .sort((left, right) => effectivePriority(right) - effectivePriority(left) || left.label.localeCompare(right.label))
-      .slice(0, MAX_RESULTS);
+      .sort((left, right) => effectivePriority(right) - effectivePriority(left) || left.label.localeCompare(right.label));
   }
 
   const queryParts = normalizedQuery.split(" ").filter(Boolean);
@@ -479,6 +492,10 @@ function scorePaletteItem(item: PaletteItem, query: string, queryParts: string[]
 
 function effectivePriority(item: PaletteItem) {
   return item.disabled ? item.priority - 200 : item.priority;
+}
+
+function paletteOptionId(itemId: string) {
+  return `command-palette-option-${itemId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
 export function nextEnabledIndex(items: PaletteItem[], currentIndex: number, direction: 1 | -1) {
