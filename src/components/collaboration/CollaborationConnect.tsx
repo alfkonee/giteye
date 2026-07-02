@@ -86,6 +86,14 @@ export function CollaborationConnect() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActiveView("ci-status")}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Open CI Status
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveView("review-studio")}
                   className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
                 >

@@ -79,6 +79,7 @@ src/                          src-tauri/src/
 - **Rebase/conflicts**: Inspect active rebase state, edit remaining todo actions/order, autosquash fixup/squash commits, accept current/incoming side, mark files resolved, continue/skip/abort through background jobs where long-running
 - **Background Git jobs**: Clone, fetch, pull, push, merge/rebase, submodule update/sync/init, and worktree repair/prune run through a Tauri job runner with per-repo mutation serialization, cancellation, streamed stdout/stderr, and command-log history
 - **GitHub PR review**: Load live PRs, labels, review requests, selected-PR checks/reviews/timeline, filtered PR diffs/comments, inline diff line comments, stack landing order/action, label add/remove prompts, review request prompts, and approve/comment/request-changes actions through `gh`
+- **GitHub CI status**: Inspect workflow check runs for the current branch and selected pull request, including pass/fail/pending buckets, workflow grouping, duration metadata, filtering, and direct check links
 
 ### UI
 - Dark-first developer aesthetic (Catppuccin Mocha-inspired palette)
@@ -110,7 +111,7 @@ src/                          src-tauri/src/
 | GitLab/Bitbucket integrations | Phase 2+ |
 | AI-assisted commit messages | Phase 2+ |
 | Command palette (cmdk) | Phase 2+ |
-| CI status | Future |
+| CI status | Implemented for GitHub workflow checks |
 | Theme switching (light/dark) | Implemented in app state |
 | Async/cancellable Git operations | Implemented for long-running GitEye-triggered jobs |
 
