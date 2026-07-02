@@ -230,6 +230,7 @@ export function StackedPrBoard() {
     data: activePrDiff,
     isLoading: activePrDiffLoading,
     error: activePrDiffError,
+    refetch: refetchActivePrDiff,
   } = useQuery(gitQueries.pullRequestDiff(activeRepoPath, activePrNumber));
   const reviewers = (activePrDiff?.reviews ?? []).slice(0, 6).map(mapReview);
   const timeline = (activePrDiff?.activity ?? []).slice(0, 6).map(mapActivity);
@@ -304,6 +305,10 @@ export function StackedPrBoard() {
     if (!activePr) return;
     setSelectedPullRequestId(String(activePr.number));
     setActiveView("review-studio");
+  };
+  const refreshPullRequestMetadata = () => {
+    void refetchGithubOverview();
+    void refetchActivePrDiff();
   };
 
   const handleLandStack = async () => {
@@ -405,13 +410,13 @@ export function StackedPrBoard() {
                   {providerDetail}
                 </span>
                 <button
-                  onClick={() => void refetchGithubOverview()}
+                  onClick={refreshPullRequestMetadata}
                   className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)]"
                 >
                   Refresh
                 </button>
                 <button
-                  onClick={() => void refetchGithubOverview()}
+                  onClick={refreshPullRequestMetadata}
                   className="rounded-md border border-[var(--color-border)] p-1.5 text-[var(--color-accent)]"
                 >
                   <Layers3 className="h-4 w-4" />
@@ -461,8 +466,8 @@ export function StackedPrBoard() {
                           {pr.body}
                         </p>
                         <div className="mt-3 flex items-center gap-5 text-xs">
-                          <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
-                            <CheckCircle2 className="h-4 w-4" /> {pr.mergeStateStatus ?? "Merge state unknown"}
+                          <span className={`inline-flex items-center gap-1 ${(pr.mergeStateStatus ?? "").toLowerCase() === "clean" ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}`}>
+                            {(pr.mergeStateStatus ?? "").toLowerCase() === "clean" ? <CheckCircle2 className="h-4 w-4" /> : <CircleDot className="h-4 w-4" />} {pr.mergeStateStatus ?? "Merge state unknown"}
                           </span>
                           <span className="text-[var(--color-text-secondary)]">
                             {pr.reviewDecision ?? "Review state unknown"}
@@ -730,7 +735,7 @@ export function StackedPrBoard() {
                 Open PR timeline on GitHub
               </button>
               <button
-                onClick={() => void refetchGithubOverview()}
+                onClick={refreshPullRequestMetadata}
                 className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)]"
               >
                 <MoreHorizontal className="h-4 w-4" /> Refresh PR metadata
