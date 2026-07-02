@@ -292,15 +292,15 @@ export function DiffReviewStudio() {
   const closePrMutation = useMutation(
     gitMutations.closePullRequest(queryClient, activeRepoPath),
   );
-  const checkRows = (prDiff?.checkRuns ?? githubOverview?.checkRuns ?? []).map(
+  const checkRows = (prDiff?.checkRuns ?? []).map(
     statusFromCheck,
   );
-  const reviewRows = (prDiff?.reviews ?? githubOverview?.reviews ?? []).map(
+  const reviewRows = (prDiff?.reviews ?? []).map(
     (review) => reviewFromSummary(review, currentPr?.author),
   );
   const activityRows = [
     ...(prDiff?.comments ?? []).map(commentFromSummary),
-    ...(prDiff?.activity ?? githubOverview?.activity ?? [])
+    ...(prDiff?.activity ?? [])
       .slice(0, 8)
       .map(activityFromSummary),
   ];
