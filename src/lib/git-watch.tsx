@@ -1,11 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../stores/app-store";
 import { useJobStore } from "../stores/job-store";
 import { useNoticeStore, type NoticeStatus } from "../stores/notice-store";
 import type { GitJobEvent, GitJobStatus } from "../types/git";
-import { invalidateGitStateByReason } from "./git-data";
+import { gitKeys, invalidateGitStateByReason } from "./git-data";
 import { GIT_JOB_EVENT_NAME, gitApi } from "./tauri-api";
 
 interface GitStateChangedPayload {
@@ -68,6 +68,7 @@ export function GitJobEventListener() {
   const startNotice = useNoticeStore((state) => state.startNotice);
   const updateNotice = useNoticeStore((state) => state.updateNotice);
   const finishNotice = useNoticeStore((state) => state.finishNotice);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     void gitApi.listGitJobs().then(hydrateJobs).catch(() => undefined);
@@ -80,7 +81,7 @@ export function GitJobEventListener() {
       const payload = event.payload;
       ingestEvent(payload);
       updateJobNotice(payload, jobNoticeIds, startNotice, updateNotice, finishNotice);
-
+      refreshRepositoryListsForCompletedClone(queryClient, payload);
     }).then((cleanup) => {
       if (disposed) {
         cleanup();
@@ -93,9 +94,18 @@ export function GitJobEventListener() {
       disposed = true;
       unlisten?.();
     };
-  }, [finishNotice, hydrateJobs, ingestEvent, startNotice, updateNotice]);
+  }, [finishNotice, hydrateJobs, ingestEvent, queryClient, startNotice, updateNotice]);
 
   return null;
+}
+
+function refreshRepositoryListsForCompletedClone(queryClient: QueryClient, event: GitJobEvent) {
+  if (event.kind !== "clone" || event.status !== "succeeded") return;
+
+  void Promise.all([
+    queryClient.invalidateQueries({ queryKey: gitKeys.recentRepositories() }),
+    queryClient.invalidateQueries({ queryKey: gitKeys.favoriteRepositories() }),
+  ]);
 }
 
 function normalizeWatchedRepoPaths(state: AppStoreWithOpenRepos) {
