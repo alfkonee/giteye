@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitApi } from "./tauri-api";
 import { useAppStore } from "../stores/app-store";
 import { DEFAULT_SETTINGS } from "../types/app";
@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from "../types/app";
 const APP_SETTINGS_QUERY_KEY = ["app-settings"] as const;
 
 export function AppSettingsSync() {
+  const queryClient = useQueryClient();
   const theme = useAppStore((state) => state.theme);
   const diffMode = useAppStore((state) => state.diffMode);
   const [hydrated, setHydrated] = useState(false);
@@ -19,6 +20,9 @@ export function AppSettingsSync() {
   });
   const { mutate: saveAppSettings } = useMutation({
     mutationFn: gitApi.saveAppSettings,
+    onSuccess: (settings) => {
+      queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, settings);
+    },
   });
 
   useEffect(() => {
@@ -44,13 +48,13 @@ export function AppSettingsSync() {
     }
     const timeout = window.setTimeout(() => {
       saveAppSettings({
-        ...DEFAULT_SETTINGS,
+        ...(settingsQuery.data ?? DEFAULT_SETTINGS),
         theme,
         diffMode,
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [diffMode, hydrated, saveAppSettings, theme]);
+  }, [diffMode, hydrated, saveAppSettings, settingsQuery.data, theme]);
 
   return null;
 }

@@ -238,9 +238,11 @@ pub fn load_app_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, A
         return Ok(AppSettings::default());
     }
     let data = fs::read_to_string(&path).map_err(|e| AppError::StorageError(e.to_string()))?;
-    let settings = serde_json::from_str::<AppSettings>(&data).unwrap_or_default();
-    let settings = normalize_app_settings(settings);
-    write_app_settings(app_handle, &settings)?;
+    let raw_settings = serde_json::from_str::<AppSettings>(&data).ok();
+    let settings = normalize_app_settings(raw_settings.clone().unwrap_or_default());
+    if raw_settings.as_ref() != Some(&settings) {
+        write_app_settings(app_handle, &settings)?;
+    }
     Ok(settings)
 }
 
