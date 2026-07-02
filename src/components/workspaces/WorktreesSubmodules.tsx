@@ -463,7 +463,10 @@ export function WorktreesSubmodules() {
     if (!window.confirm(`${mode[0].toUpperCase()}${mode.slice(1)} worktree at ${worktreePath}?\n\n${details}`)) return;
     if (force && (row.modifiedFiles > 0 || row.stagedFiles > 0 || row.isLocked)) {
       const typedPath = window.prompt(`Force removing this worktree can discard dirty or locked state. Type the full path to confirm:\n\n${worktreePath}`);
-      if (typedPath !== worktreePath) return;
+      if (typedPath !== worktreePath) {
+        setActionError("Force remove canceled: typed path did not match the worktree path.");
+        return;
+      }
     }
 
     removeWorktree.mutate({ path: worktreePath, force });
