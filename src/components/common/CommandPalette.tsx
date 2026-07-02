@@ -199,7 +199,7 @@ export function CommandPalette() {
   );
 
   const results = useMemo(
-    () => flattenPaletteSections(groupPaletteItemsBySection(rankPaletteItems(paletteItems, query))).slice(0, MAX_RESULTS),
+    () => flattenPaletteSections(groupPaletteItemsBySection(rankPaletteItems(paletteItems, query).slice(0, MAX_RESULTS))),
     [paletteItems, query],
   );
 
@@ -312,32 +312,30 @@ function PaletteResultList({
   onHover: (index: number) => void;
   onRun: (item: PaletteItem) => void;
 }) {
-  const groups = groupPaletteItemsBySection(items);
-  let itemIndex = 0;
+  let previousSection: string | null = null;
 
-  return groups.map((group) => (
-    <div key={group.section}>
-      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
-        {group.section}
+  return items.map((item, index) => {
+    const showSection = item.section !== previousSection;
+    previousSection = item.section;
+    return (
+      <div key={item.id}>
+        {showSection ? (
+          <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+            {item.section}
+          </div>
+        ) : null}
+        <PaletteResult
+          active={index === activeIndex}
+          disabled={item.disabled}
+          icon={<item.icon className="h-4 w-4" />}
+          item={item}
+          optionId={paletteOptionId(item.id)}
+          onHover={() => onHover(index)}
+          onRun={() => onRun(item)}
+        />
       </div>
-      {group.items.map((item) => {
-        const index = itemIndex;
-        itemIndex += 1;
-        return (
-          <PaletteResult
-            key={item.id}
-            active={index === activeIndex}
-            disabled={item.disabled}
-            icon={<item.icon className="h-4 w-4" />}
-            item={item}
-            optionId={paletteOptionId(item.id)}
-            onHover={() => onHover(index)}
-            onRun={() => onRun(item)}
-          />
-        );
-      })}
-    </div>
-  ));
+    );
+  });
 }
 
 export function groupPaletteItemsBySection(items: PaletteItem[]) {
@@ -380,9 +378,18 @@ function PaletteResult({
   onHover: () => void;
   onRun: () => void;
 }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (active) {
+      buttonRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [active]);
+
   return (
     <button
       id={optionId}
+      ref={buttonRef}
       type="button"
       role="option"
       aria-selected={active}
