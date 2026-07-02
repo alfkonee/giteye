@@ -242,4 +242,23 @@ mod tests {
 
         assert!(matches!(error, AppError::InvalidPath(_)));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_diff_rejects_untracked_symlink_escape() {
+        let temp = TestDir::new("symlink-escape");
+        let repo = temp.path.join("repo");
+        fs::create_dir_all(&repo).expect("create repo");
+        git(&repo, &["init", "-b", "main"]);
+
+        let outside = temp.path.join("outside.txt");
+        fs::write(&outside, "secret\n").expect("write outside file");
+        std::os::unix::fs::symlink(&outside, repo.join("outside-link.txt"))
+            .expect("create symlink");
+
+        let error = get_file_diff(&repo, "outside-link.txt", false)
+            .expect_err("symlink escape rejected");
+
+        assert!(matches!(error, AppError::InvalidPath(_)));
+    }
 }
