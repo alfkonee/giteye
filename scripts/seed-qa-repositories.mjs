@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(process.argv[2] ?? ".giteye-qa");
@@ -44,6 +44,17 @@ function seedDirtyRepo() {
   writeFileSync(join(repo, "untracked.txt"), "untracked\n");
   writeFileSync(join(repo, "staged.txt"), "staged\n");
   git(repo, ["add", "staged.txt"]);
+  return repo;
+}
+
+function seedStagedUnstagedSameFileRepo() {
+  const repo = initRepo("staged-unstaged-same-file-repo");
+  writeFileSync(join(repo, "same-file.txt"), "base\n");
+  git(repo, ["add", "same-file.txt"]);
+  git(repo, ["commit", "-m", "Add same-file fixture"]);
+  writeFileSync(join(repo, "same-file.txt"), "staged change\n");
+  git(repo, ["add", "same-file.txt"]);
+  writeFileSync(join(repo, "same-file.txt"), "unstaged change\n");
   return repo;
 }
 
@@ -98,16 +109,44 @@ function seedConflictRepo() {
   return repo;
 }
 
+function assertRepoExists(label, repo) {
+  if (!existsSync(join(repo, ".git"))) {
+    throw new Error(`${label} repository was not seeded at ${repo}`);
+  }
+}
+
+function assertStatusIncludes(label, repo, expectedLine) {
+  const status = git(repo, ["status", "--short"]);
+  if (!status.split(/\r?\n/).includes(expectedLine)) {
+    throw new Error(`${label} repository status did not include ${JSON.stringify(expectedLine)}.\nActual status:\n${status}`);
+  }
+}
+
+function verifySeededRepos(repos) {
+  for (const [label, repo] of Object.entries(repos)) {
+    assertRepoExists(label, repo);
+  }
+
+  assertStatusIncludes("dirty", repos.dirty, " M src.js");
+  assertStatusIncludes("dirty", repos.dirty, "A  staged.txt");
+  assertStatusIncludes("dirty", repos.dirty, "?? untracked.txt");
+  assertStatusIncludes("staged+unstaged", repos.stagedUnstaged, "MM same-file.txt");
+  assertStatusIncludes("conflict", repos.conflict, "UU conflict.txt");
+}
+
 const repos = {
   clean: initRepo("clean-repo"),
   dirty: seedDirtyRepo(),
+  stagedUnstaged: seedStagedUnstagedSameFileRepo(),
   worktree: seedWorktreeRepo(),
   submodule: seedSubmoduleRepo(),
   conflict: seedConflictRepo(),
 };
 
+verifySeededRepos(repos);
+
 console.log("GitEye QA repositories seeded:");
 for (const [state, repo] of Object.entries(repos)) {
   console.log(`- ${state}: ${repo}`);
 }
-console.log("\nOpen these paths from the Repo Hub to verify clean/dirty/worktree/submodule/rebase conflict states.");
+console.log("\nOpen these paths from the Repo Hub to verify clean/dirty/staged+unstaged/worktree/submodule/rebase conflict states.");
