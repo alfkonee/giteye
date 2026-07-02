@@ -25,9 +25,47 @@ function decodeDiffPathToken(token: string) {
 }
 
 function pathFromDiffHeader(line: string, side: "left" | "right") {
-  const match = /^diff --git (.+) (.+)$/.exec(line);
-  if (!match) return null;
-  return decodeDiffPathToken(match[side === "left" ? 1 : 2]);
+  const prefix = "diff --git ";
+  if (!line.startsWith(prefix)) return null;
+  const payload = line.slice(prefix.length);
+  const paths = splitDiffHeaderPathTokens(payload);
+  return paths ? decodeDiffPathToken(paths[side === "left" ? 0 : 1]) : null;
+}
+
+function splitDiffHeaderPathTokens(payload: string): [string, string] | null {
+  if (payload.startsWith('"')) {
+    const firstEnd = findQuotedTokenEnd(payload, 0);
+    if (firstEnd < 0) return null;
+    const secondStart = payload.slice(firstEnd + 1).search(/\S/);
+    if (secondStart < 0) return null;
+    const start = firstEnd + 1 + secondStart;
+    const secondEnd = payload.startsWith('"', start)
+      ? findQuotedTokenEnd(payload, start)
+      : payload.length - 1;
+    if (secondEnd < start) return null;
+    return [payload.slice(0, firstEnd + 1), payload.slice(start, secondEnd + 1)];
+  }
+
+  const separator = payload.lastIndexOf(" b/");
+  if (separator > 0) return [payload.slice(0, separator), payload.slice(separator + 1)];
+  const fallbackSeparator = payload.lastIndexOf(" ");
+  if (fallbackSeparator < 1) return null;
+  return [payload.slice(0, fallbackSeparator), payload.slice(fallbackSeparator + 1)];
+}
+
+function findQuotedTokenEnd(value: string, start: number) {
+  let escaped = false;
+  for (let index = start + 1; index < value.length; index += 1) {
+    const character = value[index];
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === '"') {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function pathFromFileHeader(line: string) {

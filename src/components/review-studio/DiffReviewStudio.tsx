@@ -324,8 +324,8 @@ export function DiffReviewStudio() {
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
   const prFetchWarning = prDiff?.fetchError ?? null;
   const selectedFile =
-    changedFiles.find((file) => file.path === selectedFilePath) ??
-    changedFiles[0] ??
+    visibleChangedFiles.find((file) => file.path === selectedFilePath) ??
+    visibleChangedFiles[0] ??
     null;
   const selectedPatch = findPullRequestFilePatch(filePatches, selectedFile?.path);
   const selectedDiffText = selectedPatch?.patchText ?? null;
@@ -451,9 +451,21 @@ export function DiffReviewStudio() {
 
   useEffect(() => {
     setSelectedFilePath(firstChangedFilePath);
+    setFileFilter("");
     setLineCommentTarget(null);
     setLineCommentBody("");
   }, [currentPr?.number, firstChangedFilePath]);
+
+  useEffect(() => {
+    if (visibleChangedFiles.length === 0) {
+      if (selectedFilePath) setSelectedFilePath(null);
+      return;
+    }
+    if (selectedFilePath && visibleChangedFiles.some((file) => file.path === selectedFilePath)) {
+      return;
+    }
+    setSelectedFilePath(visibleChangedFiles[0].path);
+  }, [selectedFilePath, visibleChangedFiles]);
 
   useEffect(() => {
     if (!lineCommentTarget || lineCommentTarget.filePath === selectedFile?.path) return;
