@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
+import { openCommandPalette } from "../../lib/command-palette";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { AppChrome } from "../layout/AppChrome";
@@ -172,8 +173,13 @@ export function RepositoryWelcome() {
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
                     <input
+                      value=""
+                      readOnly
+                      onFocus={openCommandPalette}
+                      onClick={openCommandPalette}
                       placeholder="Search repos..."
                       className="h-9 w-64 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] pl-9 pr-11 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
+                      aria-label="Open command palette"
                     />
                     <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
                   </div>

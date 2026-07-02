@@ -88,6 +88,7 @@ src/                          src-tauri/src/
 - Collapsible sidebar grouped around core local Git views, with collaboration/provider views separated from local workflows
 - Toolbar showing repo name, branch, clean/dirty status, remote status shortcut, and diff mode toggle
 - Toolbar command search executes local navigation, refresh, remote sync, and diff-mode actions
+- Global command palette (Ctrl/⌘K) searches repository sessions, recent/favorite repositories, views, and core app commands from any screen
 - In-app command log drawer for GitEye-triggered background job metadata, stdout/stderr, final status, and output clearing
 - Commit history with TanStack Virtual for large lists
 - Diff viewer with syntax-colored unified diff fallback
@@ -109,7 +110,7 @@ src/                          src-tauri/src/
 |---|---|
 | GitLab/Bitbucket integrations | Phase 2+ |
 | AI-assisted commit messages | Phase 2+ |
-| Command palette (cmdk) | Phase 2+ |
+| Command palette | Implemented with native React overlay |
 | CI status | Future |
 | Theme switching (light/dark) | Implemented in app state |
 | Async/cancellable Git operations | Implemented for long-running GitEye-triggered jobs |
