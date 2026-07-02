@@ -257,6 +257,13 @@ export function StackedPrBoard() {
     ? stackLandingSafetyProblems(stackLandingOrder)
     : [];
   const canSafelyLandStack = canLandStack && stackLandingSafetyIssues.length === 0;
+  const stackLandingUnavailableReason = stackLandingBlocked
+    ? "Cannot derive a linear stack from PR head/base branches."
+    : !canLandStack
+      ? "Need at least two open or draft pull requests in the stack."
+      : stackLandingSafetyIssues.length > 0
+        ? stackLandingSafetyIssues.join(" ")
+        : undefined;
   const {
     data: activePrDiff,
     isLoading: activePrDiffLoading,
@@ -344,10 +351,7 @@ export function StackedPrBoard() {
 
   const handleLandStack = async () => {
     if (!canSafelyLandStack) {
-      const details = stackLandingBlocked
-        ? "Cannot derive a linear stack from PR head/base branches."
-        : stackLandingSafetyIssues.join("\n");
-      window.alert(`Cannot land stack yet.\n\n${details}`);
+      window.alert(`Cannot land stack yet.\n\n${stackLandingUnavailableReason ?? "Refresh PR metadata and try again."}`);
       return;
     }
     if (!window.confirm(formatStackLandingPreflight(stackLandingOrder))) {
@@ -409,13 +413,7 @@ export function StackedPrBoard() {
           <button
             disabled={!canSafelyLandStack || prActionPending}
             onClick={() => void handleLandStack()}
-            title={
-              stackLandingBlocked
-                ? "Cannot derive a linear stack from PR head/base branches."
-                : stackLandingSafetyIssues.length > 0
-                  ? stackLandingSafetyIssues.join(" ")
-                : undefined
-            }
+            title={stackLandingUnavailableReason}
             className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Layers3 className="h-4 w-4" /> Land Stack
@@ -571,7 +569,7 @@ export function StackedPrBoard() {
                   </span>
                 ) : (
                   <span className="text-[var(--color-text-muted)]">
-                    need at least two open non-draft PRs
+                    need at least two open or draft PRs
                   </span>
                 )}
               </div>
