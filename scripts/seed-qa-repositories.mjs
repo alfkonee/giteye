@@ -117,7 +117,7 @@ function assertRepoExists(label, repo) {
 
 function assertStatusIncludes(label, repo, expectedLine) {
   const status = git(repo, ["status", "--short"]);
-  if (!status.split("\n").includes(expectedLine)) {
+  if (!status.split(/\r?\n/).includes(expectedLine)) {
     throw new Error(`${label} repository status did not include ${JSON.stringify(expectedLine)}.\nActual status:\n${status}`);
   }
 }
