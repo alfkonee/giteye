@@ -31,6 +31,18 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function formatPreviewForDialog(lines: string[]) {
+  if (lines.length === 0) {
+    return "No file-level preview was returned.";
+  }
+
+  const visibleLines = lines.slice(0, 80);
+  const suffix = lines.length > visibleLines.length
+    ? `\n…${lines.length - visibleLines.length} more preview line(s) omitted.`
+    : "";
+  return `${visibleLines.join("\n")}${suffix}`;
+}
+
 function Header({ icon, title, detail, action }: { icon: ReactNode; title: string; detail: string; action?: ReactNode }) {
   return (
     <header className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-5 py-4">
@@ -358,15 +370,17 @@ export function StashesView() {
 
     let preview: string[];
     try {
+      previewStash.reset();
       preview = await previewStash.mutateAsync(stash.name);
     } catch (error) {
       window.alert(`Unable to preview ${stash.name}: ${errorMessage(error) ?? "Unknown error"}`);
+      previewStash.reset();
       return;
     }
 
     const actionLabel = action === "apply" ? "Apply" : "Pop";
     const removalWarning = action === "pop" ? "\n\nPop removes the stash entry after a successful application." : "";
-    const previewText = preview.length > 0 ? preview.join("\n") : "No file-level preview was returned.";
+    const previewText = formatPreviewForDialog(preview);
     if (!window.confirm(`${actionLabel} ${stash.name}?\n\n${stash.message || "Stashed changes"}${removalWarning}\n\nPreview:\n${previewText}`)) {
       return;
     }
