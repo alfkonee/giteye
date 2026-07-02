@@ -120,6 +120,33 @@ function deriveLandingOrder(prs: StackPrRow[]) {
   return ordered;
 }
 
+function stackLandingSafetyProblems(prs: StackPrRow[]) {
+  return prs.flatMap((pr) => {
+    const problems: string[] = [];
+    const reviewState = (pr.reviewDecision ?? "").toLowerCase();
+    const mergeState = (pr.mergeStateStatus ?? "").toLowerCase();
+    if (pr.state.toLowerCase() === "draft") {
+      problems.push(`#${pr.number} is still a draft.`);
+    }
+    if (reviewState !== "approved") {
+      problems.push(`#${pr.number} review state is ${pr.reviewDecision ?? "unknown"}.`);
+    }
+    if (mergeState !== "clean") {
+      problems.push(`#${pr.number} merge state is ${pr.mergeStateStatus ?? "unknown"}.`);
+    }
+
+    return problems;
+  });
+}
+
+function formatStackLandingPreflight(prs: StackPrRow[]) {
+  const rows = prs
+    .map((pr, index) => `${index + 1}. #${pr.number} ${pr.branch} → ${pr.base}\n   review: ${pr.reviewDecision ?? "unknown"}; merge: ${pr.mergeStateStatus ?? "unknown"}; state: ${pr.state}`)
+    .join("\n");
+
+  return `Squash-merge ${prs.length} pull requests in dependency order?\n\nMerge method: squash\nDelete branches: no\nAdmin bypass: no\n\n${rows}\n\nRefresh the stack if any PR changed since this preflight.`;
+}
+
 const mapReview = (review: ReviewSummary): ReviewerRow => ({
   name: review.author ?? "GitHub reviewer",
   status: stateLabel(review.state),
@@ -219,13 +246,24 @@ export function StackedPrBoard() {
     const active = row.number === activePrNumber;
     return { ...row, active, badge: active ? "Selected" : undefined };
   });
-  const openStackPrs = stack.filter((pr) => pr.state.toLowerCase() === "open");
-  const stackLandingOrder = deriveLandingOrder(openStackPrs);
+  const stackLandingCandidates = stack.filter((pr) => ["open", "draft"].includes(pr.state.toLowerCase()));
+  const stackLandingOrder = deriveLandingOrder(stackLandingCandidates);
   const canLandStack =
     stackLandingOrder.length > 1 &&
-    stackLandingOrder.length === openStackPrs.length;
+    stackLandingOrder.length === stackLandingCandidates.length;
   const stackLandingBlocked =
-    openStackPrs.length > 1 && stackLandingOrder.length !== openStackPrs.length;
+    stackLandingCandidates.length > 1 && stackLandingOrder.length !== stackLandingCandidates.length;
+  const stackLandingSafetyIssues = canLandStack
+    ? stackLandingSafetyProblems(stackLandingOrder)
+    : [];
+  const canSafelyLandStack = canLandStack && stackLandingSafetyIssues.length === 0;
+  const stackLandingUnavailableReason = stackLandingBlocked
+    ? "Cannot derive a linear stack from PR head/base branches."
+    : !canLandStack
+      ? "Need at least two open or draft pull requests in the stack."
+      : stackLandingSafetyIssues.length > 0
+        ? stackLandingSafetyIssues.join(" ")
+        : undefined;
   const {
     data: activePrDiff,
     isLoading: activePrDiffLoading,
@@ -312,19 +350,19 @@ export function StackedPrBoard() {
   };
 
   const handleLandStack = async () => {
-    if (!canLandStack) return;
-    const order = stackLandingOrder.map((pr) => `#${pr.number}`).join(" → ");
-    if (
-      !window.confirm(
-        `Squash-merge ${stackLandingOrder.length} pull requests in dependency order (${order})?`,
-      )
-    ) {
+    if (!canSafelyLandStack) {
+      window.alert(`Cannot land stack yet.\n\n${stackLandingUnavailableReason ?? "Refresh PR metadata and try again."}`);
+      return;
+    }
+    if (!window.confirm(formatStackLandingPreflight(stackLandingOrder))) {
       return;
     }
     for (const pr of stackLandingOrder) {
       await prActions.merge.mutateAsync({
         number: pr.number,
         method: "squash",
+        admin: false,
+        deleteBranch: false,
       });
     }
   };
@@ -373,13 +411,9 @@ export function StackedPrBoard() {
             <CheckCircle2 className="h-4 w-4" /> Squash Merge PR
           </button>
           <button
-            disabled={!canLandStack || prActionPending}
+            disabled={!canSafelyLandStack || prActionPending}
             onClick={() => void handleLandStack()}
-            title={
-              stackLandingBlocked
-                ? "Cannot derive a linear stack from PR head/base branches."
-                : undefined
-            }
+            title={stackLandingUnavailableReason}
             className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Layers3 className="h-4 w-4" /> Land Stack
@@ -535,7 +569,7 @@ export function StackedPrBoard() {
                   </span>
                 ) : (
                   <span className="text-[var(--color-text-muted)]">
-                    need at least two open non-draft PRs
+                    need at least two open or draft PRs
                   </span>
                 )}
               </div>
