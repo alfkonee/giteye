@@ -48,12 +48,12 @@ export function AdvancedMergeRebasePanel() {
   const current = snapshot?.repositoryInfo.currentBranch ?? branches.find((branch) => branch.isCurrent)?.shortName ?? "";
   const mergeSources = refs.filter((ref) => ref !== current);
   const currentBranchInfo = branches.find((branch) => branch.shortName === current);
-  const [mergeSource, setMergeSource] = useState("");
+  const [mergeSource, setMergeSource] = useState(pendingAdvancedBranchName ?? "");
   const [strategyOption, setStrategyOption] = useState<"" | MergeStrategyOption>("");
   const [noFf, setNoFf] = useState(false);
   const [squash, setSquash] = useState(false);
   const [rebaseBranch, setRebaseBranch] = useState("");
-  const [rebaseUpstream, setRebaseUpstream] = useState("");
+  const [rebaseUpstream, setRebaseUpstream] = useState(pendingAdvancedBranchName ?? "");
   const [rebaseOnto, setRebaseOnto] = useState("");
   const [autostash, setAutostash] = useState(true);
 
