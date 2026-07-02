@@ -442,6 +442,11 @@ export function invalidateGitStateByReason(
     );
     invalidations.push(
       queryClient.invalidateQueries({
+        queryKey: gitKeys.rerereStatus(repoPath),
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
         queryKey: [...gitKeys.repository(repoPath), "conflict-content"],
       }),
     );
