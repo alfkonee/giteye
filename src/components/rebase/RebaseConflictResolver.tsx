@@ -109,17 +109,18 @@ function todoItemsEqual(left: RebaseTodoItem[], right: RebaseTodoItem[]) {
 }
 
 function formatTodoDraftSummary(saved: RebaseTodoItem[], draft: RebaseTodoItem[]) {
-  const allChangedLines = draft
-    .map((item, index) => {
-      const previous = saved[index];
-      if (previous && previous.action === item.action && previous.commit === item.commit && previous.message === item.message) {
-        return null;
-      }
+  const maxLength = Math.max(saved.length, draft.length);
+  const allChangedLines = Array.from({ length: maxLength }, (_, index) => {
+    const previous = saved[index] ?? null;
+    const item = draft[index] ?? null;
+    if (previous && item && previous.action === item.action && previous.commit === item.commit && previous.message === item.message) {
+      return null;
+    }
 
-      const before = previous ? `${index + 1}. ${previous.action} ${shortHash(previous.commit)} ${previous.message}` : `${index + 1}. <new>`;
-      const after = `${index + 1}. ${item.action} ${shortHash(item.commit)} ${item.message}`;
-      return `${before}\n→ ${after}`;
-    })
+    const before = previous ? `${index + 1}. ${previous.action} ${shortHash(previous.commit)} ${previous.message}` : `${index + 1}. <new>`;
+    const after = item ? `${index + 1}. ${item.action} ${shortHash(item.commit)} ${item.message}` : `${index + 1}. <removed>`;
+    return `${before}\n→ ${after}`;
+  })
     .filter(Boolean);
   const changedLines = allChangedLines.slice(0, 8);
 
@@ -304,7 +305,7 @@ export function RebaseConflictResolver() {
   };
 
   const revertTodoDraft = () => {
-    if (!hasTodoDraftChanges || actions.updateTodo.isPending) {
+    if (!hasTodoDraftChanges || isActionPending) {
       return;
     }
 
