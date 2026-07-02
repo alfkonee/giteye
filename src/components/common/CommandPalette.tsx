@@ -199,7 +199,7 @@ export function CommandPalette() {
   );
 
   const results = useMemo(
-    () => rankPaletteItems(paletteItems, query).slice(0, MAX_RESULTS),
+    () => flattenPaletteSections(groupPaletteItemsBySection(rankPaletteItems(paletteItems, query))).slice(0, MAX_RESULTS),
     [paletteItems, query],
   );
 
@@ -312,30 +312,55 @@ function PaletteResultList({
   onHover: (index: number) => void;
   onRun: (item: PaletteItem) => void;
 }) {
-  let previousSection: string | null = null;
+  const groups = groupPaletteItemsBySection(items);
+  let itemIndex = 0;
 
-  return items.map((item, index) => {
-    const showSection = item.section !== previousSection;
-    previousSection = item.section;
-    return (
-      <div key={item.id}>
-        {showSection ? (
-          <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
-            {item.section}
-          </div>
-        ) : null}
-        <PaletteResult
-          active={index === activeIndex}
-          disabled={item.disabled}
-          icon={<item.icon className="h-4 w-4" />}
-          item={item}
-          optionId={paletteOptionId(item.id)}
-          onHover={() => onHover(index)}
-          onRun={() => onRun(item)}
-        />
+  return groups.map((group) => (
+    <div key={group.section}>
+      <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+        {group.section}
       </div>
-    );
-  });
+      {group.items.map((item) => {
+        const index = itemIndex;
+        itemIndex += 1;
+        return (
+          <PaletteResult
+            key={item.id}
+            active={index === activeIndex}
+            disabled={item.disabled}
+            icon={<item.icon className="h-4 w-4" />}
+            item={item}
+            optionId={paletteOptionId(item.id)}
+            onHover={() => onHover(index)}
+            onRun={() => onRun(item)}
+          />
+        );
+      })}
+    </div>
+  ));
+}
+
+export function groupPaletteItemsBySection(items: PaletteItem[]) {
+  const sections: { section: string; items: PaletteItem[] }[] = [];
+  const sectionByName = new Map<string, PaletteItem[]>();
+
+  for (const item of items) {
+    const sectionItems = sectionByName.get(item.section);
+    if (sectionItems) {
+      sectionItems.push(item);
+      continue;
+    }
+
+    const nextSection = { section: item.section, items: [item] };
+    sections.push(nextSection);
+    sectionByName.set(item.section, nextSection.items);
+  }
+
+  return sections;
+}
+
+function flattenPaletteSections(sections: { section: string; items: PaletteItem[] }[]) {
+  return sections.flatMap((section) => section.items);
 }
 
 function PaletteResult({
