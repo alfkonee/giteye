@@ -9,6 +9,9 @@ export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const [message, setMessage] = useState("");
+  const [signOff, setSignOff] = useState(false);
+  const [noVerify, setNoVerify] = useState(false);
+  const [allowEmpty, setAllowEmpty] = useState(false);
   const queryClient = useQueryClient();
   const commitMutation = useMutation(gitMutations.commit(queryClient, activeRepoPath));
   const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
@@ -18,10 +21,12 @@ export function CommitBox() {
   const branchName = repoInfo?.currentBranch ?? "current branch";
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
+  const commitBlocked = !message.trim() || (!allowEmpty && stagedCount === 0);
 
   const handleCommit = () => {
-    if (!message.trim()) return;
-    commitMutation.mutate(message.trim(), {
+    const commitMessage = message.trim();
+    if (!commitMessage || (!allowEmpty && stagedCount === 0)) return;
+    commitMutation.mutate({ message: commitMessage, signOff, noVerify, allowEmpty }, {
       onSuccess: () => {
         setMessage("");
         setSelectedFile(null, false);
@@ -42,7 +47,7 @@ export function CommitBox() {
       return;
     }
     amendMutation.mutate(
-      { message: message.trim() || null },
+      { message: message.trim() || null, signOff, noVerify, allowEmpty },
       {
         onSuccess: () => {
           setMessage("");
@@ -88,6 +93,41 @@ export function CommitBox() {
           rows={3}
           className="w-full resize-none rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-2 text-[13px] leading-5 text-[var(--color-text-primary)] shadow-inner outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
         />
+        <div className="mt-2 grid gap-2 text-[11px] text-[var(--color-text-muted)] sm:grid-cols-3">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+            <input
+              type="checkbox"
+              checked={signOff}
+              onChange={(event) => setSignOff(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Sign-off <span className="text-[var(--color-text-subtle)]">(-s)</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+            <input
+              type="checkbox"
+              checked={noVerify}
+              onChange={(event) => setNoVerify(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Skip hooks <span className="text-[var(--color-text-subtle)]">(--no-verify)</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+            <input
+              type="checkbox"
+              checked={allowEmpty}
+              onChange={(event) => setAllowEmpty(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Allow empty <span className="text-[var(--color-text-subtle)]">(--allow-empty)</span>
+            </span>
+          </label>
+        </div>
         <div className="mt-2 flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
             {commitMutation.isPending
@@ -102,6 +142,8 @@ export function CommitBox() {
               ? "Committed!"
               : amendMutation.isSuccess
               ? "HEAD amended!"
+              : stagedCount === 0 && !allowEmpty
+              ? "Stage files first, or enable Allow empty for marker commits."
               : "Write a concise summary; add details on following lines."}
           </span>
           <div className="flex shrink-0 items-center gap-2">
@@ -118,7 +160,7 @@ export function CommitBox() {
             </button>
             <button
               onClick={handleCommit}
-              disabled={!message.trim() || commitMutation.isPending || amendMutation.isPending}
+              disabled={commitBlocked || commitMutation.isPending || amendMutation.isPending}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
                 "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",

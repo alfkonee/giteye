@@ -5,6 +5,7 @@ import type {
   BranchSummary,
   WorkspaceSummary,
   GitStatusFile,
+  CommitRequest,
   CommitSummary,
   CommitDetails,
   Branch,
@@ -167,8 +168,14 @@ export const gitApi = {
     invoke<void>("cancel_repository_github_work", { repoPath }),
   unstageAll: (repoPath: string) => invoke<void>("unstage_all", { repoPath }),
 
-  commit: (repoPath: string, message: string) =>
-    invoke<void>("commit", { repoPath, message }),
+  commit: (repoPath: string, request: CommitRequest) =>
+    invoke<void>("commit", {
+      repoPath,
+      message: request.message,
+      signOff: request.signOff ?? false,
+      noVerify: request.noVerify ?? false,
+      allowEmpty: request.allowEmpty ?? false,
+    }),
 
   // Commits
   getCommitHistory: (repoPath: string, limit?: number) =>
@@ -205,8 +212,18 @@ export const gitApi = {
       confirmDiscardChanges,
     }),
 
-  amendCommit: (repoPath: string, message?: string | null) =>
-    invoke<void>("amend_commit", { repoPath, message: message ?? null }),
+  amendCommit: (
+    repoPath: string,
+    message?: string | null,
+    options?: Omit<CommitRequest, "message">,
+  ) =>
+    invoke<void>("amend_commit", {
+      repoPath,
+      message: message ?? null,
+      signOff: options?.signOff ?? false,
+      noVerify: options?.noVerify ?? false,
+      allowEmpty: options?.allowEmpty ?? false,
+    }),
 
   previewAmend: (repoPath: string, message?: string | null) =>
     invoke<AmendPreview>("preview_amend", { repoPath, message: message ?? null }),

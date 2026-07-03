@@ -66,7 +66,7 @@ src/                          src-tauri/src/
 - **Repository workspace**: Open multiple local repos, switch between top-level repo tabs, preserve per-repo view/selection state, repo info (branch, clean/dirty, HEAD), recent repos
 - **Status**: Full status via `git status --porcelain=v2`, staged/unstaged file lists
 - **Working Tree**: Stage/unstage individual files, stage all, unstage all
-- **Commit**: Commit with message (Ctrl+Enter)
+- **Commit**: Commit with message (Ctrl+Enter), amend HEAD, sign off commits, bypass hooks when explicitly requested, and create empty marker commits
 - **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation)
 - **Commits**: History with virtualization, commit details, changed file list
 - **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view; long-running network operations run as background jobs with streamed logs

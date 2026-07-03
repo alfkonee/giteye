@@ -5,6 +5,13 @@ use crate::models::{
 };
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AmendOptions {
+    pub sign_off: bool,
+    pub no_verify: bool,
+    pub allow_empty: bool,
+}
+
 pub fn cherry_pick_commit(repo_path: &Path, commit_hash: &str) -> Result<(), AppError> {
     let commit_hash = required_git_arg(commit_hash, "commit hash")?;
     ensure_clean_worktree(repo_path, "cherry-picking")?;
@@ -67,18 +74,34 @@ pub fn preview_amend(repo_path: &Path, message: Option<&str>) -> Result<AmendPre
     })
 }
 
-pub fn amend_commit(repo_path: &Path, message: Option<&str>) -> Result<(), AppError> {
+pub fn amend_commit(
+    repo_path: &Path,
+    message: Option<&str>,
+    options: AmendOptions,
+) -> Result<(), AppError> {
     GitCli::run(repo_path, &["rev-parse", "--verify", "HEAD"])?;
+
+    let mut args = vec!["commit", "--amend"];
+    if options.sign_off {
+        args.push("--signoff");
+    }
+    if options.no_verify {
+        args.push("--no-verify");
+    }
+    if options.allow_empty {
+        args.push("--allow-empty");
+    }
 
     match message.map(str::trim).filter(|message| !message.is_empty()) {
         Some(message) => {
-            GitCli::run(repo_path, &["commit", "--amend", "-m", message])?;
+            args.extend(["-m", message]);
         }
         None => {
-            GitCli::run(repo_path, &["commit", "--amend", "--no-edit"])?;
+            args.push("--no-edit");
         }
     }
 
+    GitCli::run(repo_path, &args)?;
     Ok(())
 }
 
@@ -432,7 +455,7 @@ mod tests {
         fs::write(temp.path.join("README.md"), "amended\n").expect("write amended");
         git(&temp.path, &["add", "README.md"]);
 
-        amend_commit(&temp.path, Some("Amended message")).expect("amend");
+        amend_commit(&temp.path, Some("Amended message"), AmendOptions::default()).expect("amend");
 
         assert_eq!(
             git_output(&temp.path, &["log", "-1", "--format=%s"]),
@@ -442,6 +465,41 @@ mod tests {
             fs::read_to_string(temp.path.join("README.md")).expect("read"),
             "amended\n"
         );
+    }
+
+    #[test]
+    fn amend_commit_supports_signoff_and_no_verify() {
+        let temp = TestDir::new("amend-options");
+        init_repo(&temp.path);
+        commit_file(&temp.path, "README.md", "one\n", "Initial");
+        fs::create_dir_all(temp.path.join(".git/hooks")).expect("create hooks");
+        fs::write(
+            temp.path.join(".git/hooks/pre-commit"),
+            "#!/bin/sh\nexit 1\n",
+        )
+        .expect("write hook");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let hook = temp.path.join(".git/hooks/pre-commit");
+            let mut permissions = fs::metadata(&hook).expect("hook metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&hook, permissions).expect("make hook executable");
+        }
+
+        amend_commit(
+            &temp.path,
+            None,
+            AmendOptions {
+                sign_off: true,
+                no_verify: true,
+                allow_empty: true,
+            },
+        )
+        .expect("amend with options");
+
+        assert!(git_output(&temp.path, &["log", "-1", "--format=%b"])
+            .contains("Signed-off-by: GitEye Test <test@giteye.local>"));
     }
 
     #[test]
