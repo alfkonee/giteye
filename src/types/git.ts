@@ -436,6 +436,10 @@ export interface CheckRunSummary {
   name: string;
   state: string | null;
   conclusion: string | null;
+  bucket: string | null;
+  workflow: string | null;
+  event: string | null;
+  description: string | null;
   url: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -716,6 +720,7 @@ export type RepositoryViewType =
   | "tags"
   | "lfs"
   | "collaboration-connect"
+  | "ci-status"
   | "stacked-prs"
   | "review-studio"
   | "worktrees"

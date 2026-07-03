@@ -15,11 +15,13 @@ import {
   PlugZap,
   Search,
   Settings,
+  ShieldCheck,
   Tag,
   Wrench,
 } from "lucide-react";
 import type { ViewType } from "../types/git";
 import { BranchList } from "../components/branches/BranchList";
+import { CiStatusView } from "../components/ci/CiStatusView";
 import { CommitHistory } from "../components/commit-history/CommitHistory";
 import { CollaborationConnect } from "../components/collaboration/CollaborationConnect";
 import { AdvancedMergeRebasePanel } from "../components/rebase/AdvancedMergeRebasePanel";
@@ -166,6 +168,15 @@ export const viewDefinitions: ViewDefinition[] = [
     render: () => <CollaborationConnect />,
     collaboration: true,
     connectEntry: true,
+  },
+  {
+    id: "ci-status",
+    label: "CI Status",
+    description: "Inspect GitHub workflow checks for the current branch and selected PR",
+    group: "collaboration",
+    icon: ShieldCheck,
+    render: () => <CiStatusView />,
+    collaboration: true,
   },
   {
     id: "stacked-prs",
