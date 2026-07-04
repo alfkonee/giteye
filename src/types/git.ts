@@ -76,6 +76,13 @@ export interface CommitDetails {
   changedFiles: string[];
 }
 
+export interface CommitRequest {
+  message: string;
+  signOff?: boolean;
+  noVerify?: boolean;
+  allowEmpty?: boolean;
+}
+
 export type ResetMode = "soft" | "mixed" | "hard";
 
 export interface ResetPreviewFile {
