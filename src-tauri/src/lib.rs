@@ -36,6 +36,7 @@ pub fn run() {
             commands::repository::list_recent_repositories,
             commands::repository::list_favorite_repositories,
             commands::repository::set_repository_favorite,
+            commands::repository::remove_recent_repository,
             commands::jobs::list_git_jobs,
             commands::jobs::get_git_job,
             commands::jobs::cancel_git_job,
@@ -82,6 +83,9 @@ pub fn run() {
             commands::config::set_git_identity,
             commands::config::get_git_credential_config,
             commands::config::set_git_credential_helper,
+            commands::config::test_git_authentication,
+            commands::config::clear_credential_cache,
+            commands::config::run_custom_git_command,
             commands::lfs::get_lfs_status,
             commands::lfs::install_lfs,
             commands::lfs::track_lfs_pattern,
@@ -179,6 +183,10 @@ pub fn run() {
             commands::github::remove_pull_request_label,
             commands::github::merge_pull_request,
             commands::github::close_pull_request,
+            commands::ai::resolve_conflict_with_ai,
+            commands::ai::suggest_commit_message,
+            commands::settings_io::export_settings,
+            commands::settings_io::import_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

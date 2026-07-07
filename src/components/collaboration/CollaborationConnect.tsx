@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { GitPullRequest, PlugZap, RefreshCw, ShieldCheck } from "lucide-react";
+import { GitPullRequest, PlugZap, RefreshCw, ShieldCheck, Terminal } from "lucide-react";
 import { gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { EmptyState } from "../common/EmptyState";
@@ -116,11 +116,30 @@ export function CollaborationConnect() {
               </p>
               <p className="leading-6">
                 {overview?.providerAvailable === false
-                  ? "The GitHub provider is not available in the current backend session."
+                  ? "The GitHub provider (gh CLI) is not available in the current backend session. Install the GitHub CLI and authenticate to enable pull request reviews, CI status, and stacked PRs."
                   : overview?.isGithubRepository === false
-                    ? "No GitHub remote was detected for the active repository."
+                    ? "No GitHub remote was detected for the active repository. Add a GitHub remote to enable collaboration features."
                     : "Open this panel again after adding a supported provider remote or account."}
               </p>
+              <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-4">
+                <p className="text-xs font-semibold text-[var(--color-text-primary)]">
+                  How to connect GitHub
+                </p>
+                <div className="flex items-start gap-3">
+                  <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--color-text-secondary)]">
+                      GitEye uses the <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono text-[10px]">gh</code> CLI for GitHub integration. Authenticate in your terminal:
+                    </p>
+                    <code className="mt-1.5 block rounded bg-[var(--color-bg-surface)] px-3 py-2 font-mono text-xs text-[var(--color-text-primary)]">
+                      gh auth login
+                    </code>
+                    <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
+                      After authentication, return here and click "Check Again" to load pull requests, CI checks, and review data.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => void providerQuery.refetch()}

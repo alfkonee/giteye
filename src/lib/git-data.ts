@@ -989,6 +989,24 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
+  removeRecentRepository: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (repoPath: string) =>
+        gitApi.removeRecentRepository(repoPath),
+      onMutate: (repoPath) =>
+        startGitActionNotice(
+          "Removing from recents",
+          repoPath.split("/").pop() ?? repoPath,
+          repoPath,
+        ),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshRepositoryLists(queryClient, context);
+        finishGitActionNotice(context, "Removed from recent repositories.");
+      },
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
   stageFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.stageFile(repoPath!, filePath),

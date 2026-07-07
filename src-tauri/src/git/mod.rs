@@ -1,3 +1,4 @@
+pub mod ai_service;
 pub mod archaeology_service;
 pub mod branch_service;
 pub mod cli;

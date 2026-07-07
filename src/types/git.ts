@@ -735,7 +735,8 @@ export type RepositoryViewType =
   | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
-  | "settings";
+  | "settings"
+  | "custom-command";
 
 export type ViewType = RepositoryViewType;
 

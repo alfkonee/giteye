@@ -17,6 +17,7 @@ import {
   Settings,
   ShieldCheck,
   Tag,
+  Terminal,
   Wrench,
 } from "lucide-react";
 import type { ViewType } from "../types/git";
@@ -33,6 +34,7 @@ import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
 import { WorkingTree } from "../components/working-tree/WorkingTree";
+import { CustomCommandView } from "../components/repository/CustomCommandView";
 
 export type ViewGroupId = "core" | "repository" | "collaboration" | "system";
 
@@ -158,6 +160,14 @@ export const viewDefinitions: ViewDefinition[] = [
     group: "repository",
     icon: Wrench,
     render: () => <DiagnosticsView />,
+  },
+  {
+    id: "custom-command",
+    label: "Custom Command",
+    description: "Run arbitrary git commands in the repository",
+    group: "repository",
+    icon: Terminal,
+    render: () => <CustomCommandView />,
   },
   {
     id: "collaboration-connect",

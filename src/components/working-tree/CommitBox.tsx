@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
-import { GitCommitHorizontal, Sparkles } from "lucide-react";
+import { Sparkles, GitCommitHorizontal } from "lucide-react";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -17,6 +18,21 @@ export function CommitBox() {
   const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
   const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+
+  const aiSuggestionMutation = useMutation({
+    mutationFn: () => {
+      const stagedFiles = snapshot?.files.filter((f) => f.staged) ?? [];
+      const diffs = stagedFiles.map((f) => ({
+        filePath: f.path,
+        status: f.status,
+        diffText: `${f.status} ${f.path}${f.oldPath ? ` (from ${f.oldPath})` : ""}`,
+      }));
+      return gitApi.suggestCommitMessage(diffs);
+    },
+    onSuccess: (suggestion) => {
+      setMessage(suggestion);
+    },
+  });
 
   const branchName = repoInfo?.currentBranch ?? "current branch";
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
@@ -147,6 +163,18 @@ export function CommitBox() {
               : "Write a concise summary; add details on following lines."}
           </span>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => aiSuggestionMutation.mutate()}
+              disabled={stagedCount === 0 || aiSuggestionMutation.isPending || commitMutation.isPending || amendMutation.isPending}
+              title={stagedCount === 0 ? "Stage files first to generate a suggestion" : "Generate a commit message using AI"}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border border-[color:rgba(88,166,255,0.45)] px-3 py-1.5 text-[13px] font-semibold text-[var(--color-accent)] shadow-sm transition-colors hover:bg-[color:rgba(88,166,255,0.08)]",
+                "disabled:cursor-not-allowed disabled:opacity-40"
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {aiSuggestionMutation.isPending ? "Thinking…" : "Suggest"}
+            </button>
             <button
               onClick={handleAmend}
               disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
