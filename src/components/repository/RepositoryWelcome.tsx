@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Bell,
   CheckCircle2,
+  Circle,
   Clock,
   FolderGit2,
   FolderOpen,
@@ -13,10 +14,12 @@ import {
   Search,
   Sparkles,
   Star,
+  X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
+import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
@@ -32,19 +35,29 @@ type RepositoryCard = {
 
 export function RepositoryWelcome() {
   const [path, setPath] = useState("");
+  const [repoSearch, setRepoSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const openRepoPaths = useAppStore((s) => s.openRepoPaths);
+  const operationTranscript = useNoticeStore((s) => s.operationTranscript);
   const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const initMutation = useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
   const cloneMutation = useMutation(gitMutations.cloneRepository(queryClient, setActiveRepoPath));
   const { data: recents, isLoading: recentsLoading } = useQuery(gitQueries.recentRepositories());
   const { data: favorites, isLoading: favoritesLoading } = useQuery(gitQueries.favoriteRepositories());
   const favoriteMutation = useMutation(gitMutations.setRepositoryFavorite(queryClient));
+  const removeRecentMutation = useMutation(gitMutations.removeRecentRepository(queryClient));
   const [showAllRecents, setShowAllRecents] = useState(false);
-  const recentRepos = recents ?? [];
+  const repoSearchLower = repoSearch.trim().toLowerCase();
+  const recentRepos = (recents ?? []).filter(
+    (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
+  );
   const displayedRecentRepos = showAllRecents ? recentRepos : recentRepos.slice(0, 5);
-  const favoriteRepos = favorites ?? [];
+  const favoriteRepos = (favorites ?? []).filter(
+    (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
+  );
   const favoritePaths = new Set(favoriteRepos.map((repo) => repo.path));
   const recentCount = recentRepos.length;
   const latestRecent = recentRepos[0];
@@ -98,16 +111,32 @@ export function RepositoryWelcome() {
             <Home className="h-4 w-4 text-[var(--color-accent)]" />
             Repo Hub
           </button>
-          <button className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+          <button
+            type="button"
+            onClick={() => searchInputRef.current?.focus()}
+            className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
+          >
             <span className="inline-flex items-center gap-3">
               <Search className="h-4 w-4" />
               Search
             </span>
             <kbd className="rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
           </button>
-          <button className="mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]">
+          <button
+            type="button"
+            onClick={() => setShowNotifications((v) => !v)}
+            className={cn(
+              "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
+              showNotifications && "bg-[var(--color-bg-hover)] text-[var(--color-text-primary)]",
+            )}
+          >
             <Bell className="h-4 w-4" />
             Notifications
+            {operationTranscript.length > 0 && (
+              <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-accent)] px-1 text-[9px] font-bold leading-none text-white">
+                {Math.min(operationTranscript.length, 99)}
+              </span>
+            )}
           </button>
 
           <div className="my-5 h-px bg-[var(--color-border-muted)]" />
@@ -141,8 +170,8 @@ export function RepositoryWelcome() {
               <GitBranch className="h-4 w-4" />
               <span className="font-medium">No provider connected</span>
             </div>
-            <p className="mt-1 leading-5">Connect an account when provider data is available.</p>
-            <button disabled className="mt-3 flex h-8 w-full cursor-not-allowed items-center gap-2 rounded-md px-2 text-left text-[var(--color-text-muted)] opacity-60" title="Provider connection is unavailable in the current backend.">
+            <p className="mt-1 leading-5">Use "gh auth login" in your terminal, then open a repository to activate GitHub collaboration features. GitLab and Bitbucket support is planned for a future release.</p>
+            <button disabled className="mt-3 flex h-8 w-full cursor-not-allowed items-center gap-2 rounded-md px-2 text-left text-[var(--color-text-muted)] opacity-60" title="GitHub accounts are detected automatically when gh CLI is authenticated. GitLab and Bitbucket support is planned for a future release.">
               <Plus className="h-4 w-4" />
               Add Account
             </button>
@@ -154,6 +183,62 @@ export function RepositoryWelcome() {
           {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} repository session${openRepoPaths.length === 1 ? "" : "s"} open`}
         </div>
       </aside>
+
+        {showNotifications && (
+          <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
+            <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Notifications</h2>
+              <button
+                type="button"
+                onClick={() => setShowNotifications(false)}
+                className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {operationTranscript.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-muted)] px-4 py-8 text-center">
+                  <Bell className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">No operations logged</p>
+                  <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Git operations triggered while a repository is open will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {operationTranscript.slice(0, 20).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Circle
+                          className={cn(
+                            "h-2.5 w-2.5 shrink-0 fill-current",
+                            entry.status === "success" && "text-[var(--color-success)]",
+                            entry.status === "error" && "text-[var(--color-danger)]",
+                            entry.status === "info" && "text-[var(--color-accent)]",
+                          )}
+                        />
+                        <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
+                          {entry.title}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-[var(--color-text-secondary)]">
+                        {entry.detail}
+                      </p>
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--color-text-muted)]">
+                        <span>{formatRelativeTime(new Date(entry.createdAt).toISOString())}</span>
+                        {entry.repoPath && (
+                          <span className="truncate">{basename(entry.repoPath)}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
 
         <main className="flex min-w-0 flex-1 flex-col">
         <RepositoryTabs />
@@ -172,6 +257,9 @@ export function RepositoryWelcome() {
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
                     <input
+                      ref={searchInputRef}
+                      value={repoSearch}
+                      onChange={(event) => setRepoSearch(event.target.value)}
                       placeholder="Search repos..."
                       className="h-9 w-64 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] pl-9 pr-11 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
                     />
@@ -224,6 +312,7 @@ export function RepositoryWelcome() {
                   favoritePaths={favoritePaths}
                   onOpen={(repoPath) => openMutation.mutate(repoPath)}
                   onSetFavorite={handleSetFavorite}
+                  onRemoveRecent={(repoPath) => removeRecentMutation.mutate(repoPath)}
                 />
                 <FavoriteList
                   loading={favoritesLoading}
@@ -377,6 +466,7 @@ function RepositoryList({
   favoritePaths,
   onOpen,
   onSetFavorite,
+  onRemoveRecent,
 }: {
   title: string;
   loading: boolean;
@@ -387,7 +477,9 @@ function RepositoryList({
   favoritePaths: Set<string>;
   onOpen: (path: string) => void;
   onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
+  onRemoveRecent: (path: string) => void;
 }) {
+  const [menuRepo, setMenuRepo] = useState<RepositoryCard | null>(null);
   const canToggle = totalCount > 5;
 
   return (
@@ -424,7 +516,7 @@ function RepositoryList({
                 key={repo.path}
                 type="button"
                 onClick={() => onOpen(repo.path)}
-                className="group grid w-full grid-cols-[minmax(0,1fr)_92px_56px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+                className="group relative grid w-full grid-cols-[minmax(0,1fr)_92px_56px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
@@ -436,7 +528,7 @@ function RepositoryList({
                   </span>
                 </span>
                 <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
-                <span className="flex justify-end gap-1">
+                  <span className="flex justify-end gap-1">
                   <span
                     role="button"
                     tabIndex={0}
@@ -456,7 +548,46 @@ function RepositoryList({
                   >
                     <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-warning)]")} />
                   </span>
-                  <MoreHorizontal className="h-4 w-4 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
+                  <button
+                    type="button"
+                    title="More actions"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setMenuRepo(menuRepo?.path === repo.path ? null : repo);
+                    }}
+                    className="rounded-md p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                  {menuRepo?.path === repo.path && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setMenuRepo(null)} />
+                      <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMenuRepo(null);
+                            void navigator.clipboard.writeText(repo.path);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                        >
+                          Copy Path
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMenuRepo(null);
+                            onRemoveRecent(repo.path);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
+                        >
+                          Remove from Recents
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </span>
               </button>
             );

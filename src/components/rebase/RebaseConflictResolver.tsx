@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
+import { cn } from "../../lib/cn";
 import type { RebaseTodoItem } from "../../types/git";
 
 const splitLines = (content: string | null | undefined, emptyMessage: string) => {
@@ -262,6 +264,27 @@ export function RebaseConflictResolver() {
   const liveTodo = useMemo(() => [...completedTodo, ...todoDraft], [completedTodo, todoDraft]);
   const displayedConflicts = liveConflictFiles.map((file) => file.path);
   const conflictContent = conflictContentQuery.data;
+  const [aiResolution, setAiResolution] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const aiResolutionMutation = useMutation({
+    mutationFn: () => {
+      if (!conflictContent) throw new Error("No conflict content loaded");
+      return gitApi.resolveConflictWithAi(
+        conflictContent.base,
+        conflictContent.ours,
+        conflictContent.theirs,
+      );
+    },
+    onSuccess: (result) => {
+      setAiResolution(result);
+      setAiError(null);
+    },
+    onError: (error) => {
+      setAiError(String(error));
+      setAiResolution(null);
+    },
+  });
   const displayedCurrent = splitLines(conflictContent?.ours, conflictContentQuery.isLoading ? "Loading current version…" : "No current conflict content available.");
   const displayedIncoming = splitLines(conflictContent?.theirs, conflictContentQuery.isLoading ? "Loading incoming version…" : "No incoming conflict content available.");
   const displayedResult = splitLines(conflictContent?.result, conflictContentQuery.isLoading ? "Loading result version…" : "No result conflict content available.");
@@ -432,7 +455,41 @@ export function RebaseConflictResolver() {
           {displayedConflictPath ? <div className="grid min-h-0 flex-1 grid-cols-3 overflow-auto"><DiffPane title="Current (HEAD)" rev={shortHash(rebaseState?.origHead)} lines={displayedCurrent} tone="deleted" /><DiffPane title={`Incoming (${rebaseState?.headName ?? "rebased commit"})`} rev={shortHash(rebaseState?.onto)} lines={displayedIncoming} tone="added" /><DiffPane title="Result (edited)" rev="" lines={displayedResult} tone="result" /></div> : <div className="grid min-h-0 flex-1 place-items-center p-6 text-sm text-[var(--color-text-muted)]">No conflict content to display.</div>}
           <section className="grid border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] md:grid-cols-[1.1fr_0.9fr]">
             <div className="border-r border-[var(--color-border)] p-3"><div className="mb-3 flex gap-4 text-sm"><b>Conflict workflow</b><span className="text-[var(--color-text-secondary)]">Commit Message</span></div><div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-warning)]"><AlertTriangle className="h-4 w-4" /> Review the result pane, mark resolved, then continue.</div>{[["Inspect current changes", "Compare the HEAD side of the conflict", true], ["Inspect incoming changes", "Compare the rebased commit side", false], ["Edit result in your editor", "Save the resolved file before continuing", false]].map(([title, body, active]) => <div key={title as string} className={`mb-2 flex items-center gap-3 rounded-lg border p-3 text-sm ${active ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)]"}`}><CheckCircle2 className={active ? "h-4 w-4 text-[var(--color-accent)]" : "h-4 w-4 text-[var(--color-text-muted)]"} /><div><div>{title}</div><div className="text-xs text-[var(--color-text-muted)]">{body}</div></div></div>)}</div>
-            <div className="p-3"><div className="mb-3 flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" /> AI Assistant <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">Beta</span></div><div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 text-sm text-[var(--color-text-secondary)]"><p>AI conflict assistance shell is available here.</p><p className="mt-3">No assistant analysis, recommendations, or apply actions are wired in this view.</p><button disabled className="mt-4 inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-surface)] px-3 py-2 text-xs text-[var(--color-text-muted)]"><Wand2 className="h-4 w-4" /> Generate resolution</button></div></div>
+            <div className="p-3">
+              <div className="mb-3 flex items-center gap-2 font-semibold">
+                <Bot className="h-5 w-5" /> AI Assistant
+                <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">Beta</span>
+              </div>
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 text-sm text-[var(--color-text-secondary)]">
+                {aiError ? (
+                  <p className="text-[var(--color-danger)]">{aiError}</p>
+                ) : aiResolution ? (
+                  <div>
+                    <p className="text-[11px] text-[var(--color-success)]">AI generated resolution:</p>
+                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--color-bg-surface)] p-3 font-mono text-xs text-[var(--color-text-primary)]">{aiResolution}</pre>
+                  </div>
+                ) : (
+                  <>
+                    <p>AI can help resolve this merge conflict.</p>
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">Requires GITEYE_AI_API_KEY env var or ai_config.json.</p>
+                  </>
+                )}
+                <button
+                  onClick={() => { setAiResolution(null); setAiError(null); aiResolutionMutation.mutate(); }}
+                  disabled={!conflictContent || aiResolutionMutation.isPending}
+                  className={cn(
+                    "mt-4 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs",
+                    conflictContent
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
+                      : "cursor-not-allowed border-[var(--color-border)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                  )}
+                >
+                  <Wand2 className="h-4 w-4" />
+                  {aiResolutionMutation.isPending ? "Generating…" : "Generate resolution"}
+                </button>
+              </div>
+            </div>
           </section>
         </main>
 

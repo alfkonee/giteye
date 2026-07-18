@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User } from "lucide-react";
+import { Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import type { SshKey } from "../../types/git";
 
@@ -25,7 +26,59 @@ export function SettingsPlaceholder() {
   const [sshKeyName, setSshKeyName] = useState("id_giteye");
   const [sshKeyComment, setSshKeyComment] = useState("");
   const [copiedSshKey, setCopiedSshKey] = useState<string | null>(null);
+  const [authTestResult, setAuthTestResult] = useState<{ success: boolean; remote: string; message: string } | null>(null);
   const setDiffMode = useAppStore((s) => s.setDiffMode);
+
+  const testAuthMutation = useMutation({
+    mutationFn: () => gitApi.testGitAuthentication(activeRepoPath!, null),
+    onSuccess: (result) => setAuthTestResult(result),
+    onError: () => setAuthTestResult({ success: false, remote: "origin", message: "Unable to test authentication. Check your network connection." }),
+  });
+
+  const clearCredentialCacheMutation = useMutation({
+    mutationFn: () => gitApi.clearCredentialCache(activeRepoPath!, null),
+    onSuccess: (message) => setAuthTestResult({ success: true, remote: "", message }),
+  });
+
+  const [exportImportMessage, setExportImportMessage] = useState<string | null>(null);
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const filePath = await save({
+        title: "Export GitEye Settings",
+        defaultPath: "giteye-settings.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!filePath) return;
+      return gitApi.exportSettings(filePath, theme, diffMode);
+    },
+    onSuccess: (result) => setExportImportMessage(result ?? null),
+    onError: (error) => setExportImportMessage(`Export failed: ${error}`),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        title: "Import GitEye Settings",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        multiple: false,
+      });
+      if (!selected) return null;
+      const filePath = typeof selected === "string" ? selected : selected[0];
+      const bundle = await gitApi.importSettings(filePath);
+      return bundle;
+    },
+    onSuccess: (bundle) => {
+      if (!bundle) return;
+      if (bundle.theme) setTheme(bundle.theme as "dark" | "light");
+      if (bundle.diffMode) setDiffMode(bundle.diffMode as "unified" | "split");
+      void queryClient.invalidateQueries({ queryKey: ["git", "recent-repositories"] });
+      void queryClient.invalidateQueries({ queryKey: ["git", "favorite-repositories"] });
+      setExportImportMessage("Settings imported successfully. Restart any open repositories to apply all changes.");
+    },
+    onError: (error) => setExportImportMessage(`Import failed: ${error}`),
+  });
 
   const isDark = theme === "dark";
   const identityPending = identityLoading || setGitIdentity.isPending;
@@ -193,10 +246,37 @@ export function SettingsPlaceholder() {
                     Global: <span className="font-mono text-[var(--color-text-secondary)]">{credentialConfig?.globalHelpers.join(", ") || "unset"}</span>
                   </div>
                   <p className="text-[11px] text-[var(--color-text-muted)]">Shell-command helpers beginning with <span className="font-mono">!</span> are rejected. GitEye does not display or store credential secrets.</p>
+                  {authTestResult ? (
+                    <div className={cn("rounded-lg border p-3 text-[11px]", authTestResult.success ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/5 text-[var(--color-success)]" : "border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 text-[var(--color-warning)]")}>
+                      {authTestResult.message}
+                    </div>
+                  ) : null}
                   {credentialErrorText ? <p className="text-[var(--color-danger)]">{String(credentialErrorText)}</p> : null}
-                  <div className="flex justify-end gap-2">
-                    <button disabled={credentialPending} onClick={clearCredentialHelper} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
-                    <button disabled={credentialPending} onClick={saveCredentialHelper} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save helper</button>
+                  <div className="flex justify-between gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        disabled={credentialPending || testAuthMutation.isPending || !activeRepoPath}
+                        onClick={() => { setAuthTestResult(null); testAuthMutation.mutate(); }}
+                        className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Attempt a silent remote authentication check"
+                      >
+                        <Radio className="h-3.5 w-3.5" />
+                        {testAuthMutation.isPending ? "Testing…" : "Test Auth"}
+                      </button>
+                      <button
+                        disabled={credentialPending || clearCredentialCacheMutation.isPending || !activeRepoPath}
+                        onClick={() => { setAuthTestResult(null); clearCredentialCacheMutation.mutate(); }}
+                        className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Clear cached credentials for the origin remote host"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {clearCredentialCacheMutation.isPending ? "Clearing…" : "Clear Cache"}
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button disabled={credentialPending} onClick={clearCredentialHelper} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
+                      <button disabled={credentialPending} onClick={saveCredentialHelper} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save helper</button>
+                    </div>
                   </div>
                 </>
               )}
@@ -258,6 +338,42 @@ export function SettingsPlaceholder() {
             />
             <div className="px-4 py-3 text-[12px] text-[var(--color-text-muted)]">
               GitEye uses git from your system PATH.
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Download className="h-4 w-4" />}
+              title="Export / Import"
+              description="Back up and restore your GitEye settings."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <p className="text-[var(--color-text-secondary)]">
+                Export settings includes your theme, diff mode preferences, recent repositories, and favorites. SSH private keys and credential secrets are never exported.
+              </p>
+              {exportImportMessage ? (
+                <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-3 text-[11px] text-[var(--color-accent)]">
+                  {exportImportMessage}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  disabled={exportMutation.isPending || importMutation.isPending}
+                  onClick={() => { setExportImportMessage(null); exportMutation.mutate(); }}
+                  className="flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {exportMutation.isPending ? "Exporting…" : "Export Settings"}
+                </button>
+                <button
+                  disabled={exportMutation.isPending || importMutation.isPending}
+                  onClick={() => { setExportImportMessage(null); importMutation.mutate(); }}
+                  className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {importMutation.isPending ? "Importing…" : "Import Settings"}
+                </button>
+              </div>
             </div>
           </section>
         </div>

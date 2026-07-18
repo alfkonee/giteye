@@ -86,6 +86,54 @@ impl GitCli {
         })
     }
 
+    pub fn run_with_timeout(
+        repo_path: &Path,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<String, AppError> {
+        let mut child = Command::new("git")
+            .args(args)
+            .current_dir(repo_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::GitNotFound
+                } else {
+                    AppError::IoError(e.to_string())
+                }
+            })?;
+
+        let start = std::time::Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let output = child.wait_with_output()
+                        .map_err(|e| AppError::IoError(e.to_string()))?;
+                    if !status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        return Err(AppError::GitError(stderr.trim().to_string()));
+                    }
+                    return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+                }
+                Ok(None) => {
+                    if start.elapsed() > timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(AppError::GitError("Authentication test timed out. Check your network or credential configuration.".to_string()));
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Err(e) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(AppError::IoError(e.to_string()));
+                }
+            }
+        }
+    }
+
     pub fn run_with_input(
         repo_path: &Path,
         args: &[&str],

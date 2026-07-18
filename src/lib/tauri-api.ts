@@ -6,6 +6,7 @@ import type {
   BranchSummary,
   WorkspaceSummary,
   GitStatusFile,
+  CommitRequest,
   CommitSummary,
   CommitDetails,
   Branch,
@@ -134,6 +135,9 @@ export const gitApi = {
       favorite,
     }),
 
+  removeRecentRepository: (repoPath: string) =>
+    invoke<RecentRepo[]>("remove_recent_repository", { repoPath }),
+
   startRepositoryWatch: (repoPath: string) =>
     invoke<void>("start_repository_watch", { repoPath }),
 
@@ -174,8 +178,14 @@ export const gitApi = {
     invoke<void>("cancel_repository_github_work", { repoPath }),
   unstageAll: (repoPath: string) => invoke<void>("unstage_all", { repoPath }),
 
-  commit: (repoPath: string, message: string) =>
-    invoke<void>("commit", { repoPath, message }),
+  commit: (repoPath: string, request: CommitRequest) =>
+    invoke<void>("commit", {
+      repoPath,
+      message: request.message,
+      signOff: request.signOff ?? false,
+      noVerify: request.noVerify ?? false,
+      allowEmpty: request.allowEmpty ?? false,
+    }),
 
   // Commits
   getCommitHistory: (repoPath: string, limit?: number) =>
@@ -212,8 +222,18 @@ export const gitApi = {
       confirmDiscardChanges,
     }),
 
-  amendCommit: (repoPath: string, message?: string | null) =>
-    invoke<void>("amend_commit", { repoPath, message: message ?? null }),
+  amendCommit: (
+    repoPath: string,
+    message?: string | null,
+    options?: Omit<CommitRequest, "message">,
+  ) =>
+    invoke<void>("amend_commit", {
+      repoPath,
+      message: message ?? null,
+      signOff: options?.signOff ?? false,
+      noVerify: options?.noVerify ?? false,
+      allowEmpty: options?.allowEmpty ?? false,
+    }),
 
   previewAmend: (repoPath: string, message?: string | null) =>
     invoke<AmendPreview>("preview_amend", { repoPath, message: message ?? null }),
@@ -367,6 +387,18 @@ export const gitApi = {
     invoke<GitCredentialConfig>("set_git_credential_helper", {
       repoPath,
       helper,
+    }),
+
+  testGitAuthentication: (repoPath: string, remote?: string | null) =>
+    invoke<{ success: boolean; remote: string; message: string }>(
+      "test_git_authentication",
+      { repoPath, remote: remote ?? null },
+    ),
+
+  clearCredentialCache: (repoPath: string, host?: string | null) =>
+    invoke<string>("clear_credential_cache", {
+      repoPath,
+      host: host ?? null,
     }),
 
   getLfsStatus: (repoPath: string) =>
@@ -824,4 +856,22 @@ export const gitApi = {
 
   closePullRequest: (repoPath: string, number: number) =>
     invoke<void>("close_pull_request", { repoPath, number }),
+
+  exportSettings: (outputPath: string, theme: string, diffMode: string) =>
+    invoke<string>("export_settings", { outputPath, theme, diffMode }),
+
+  importSettings: (inputPath: string) =>
+    invoke<{ theme: string; diffMode: string }>("import_settings", { inputPath }),
+
+  runCustomGitCommand: (repoPath: string, args: string[]) =>
+    invoke<{ success: boolean; stdout: string; stderr: string; exitCode: number }>(
+      "run_custom_git_command",
+      { repoPath, args },
+    ),
+
+  resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
+    invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),
+
+  suggestCommitMessage: (diffs: Array<{ filePath: string; status: string; diffText: string }>) =>
+    invoke<string>("suggest_commit_message", { diffs }),
 };

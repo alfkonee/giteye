@@ -181,6 +181,17 @@ pub fn save_recent_repository(
     write_recent_repositories(app_handle, &recents)
 }
 
+pub fn remove_recent_repository(
+    app_handle: &tauri::AppHandle,
+    repo_path: &str,
+) -> Result<Vec<RecentRepo>, AppError> {
+    let normalized_path = normalize_repo_path(repo_path);
+    let mut recents = load_recent_repositories(app_handle)?;
+    recents.retain(|r| r.path != normalized_path);
+    write_recent_repositories(app_handle, &recents)?;
+    Ok(recents)
+}
+
 fn write_favorite_repositories(
     app_handle: &tauri::AppHandle,
     favorites: &[FavoriteRepo],

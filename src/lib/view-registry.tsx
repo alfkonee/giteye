@@ -15,11 +15,14 @@ import {
   PlugZap,
   Search,
   Settings,
+  ShieldCheck,
   Tag,
+  Terminal,
   Wrench,
 } from "lucide-react";
 import type { ViewType } from "../types/git";
 import { BranchList } from "../components/branches/BranchList";
+import { CiStatusView } from "../components/ci/CiStatusView";
 import { CommitHistory } from "../components/commit-history/CommitHistory";
 import { CollaborationConnect } from "../components/collaboration/CollaborationConnect";
 import { AdvancedMergeRebasePanel } from "../components/rebase/AdvancedMergeRebasePanel";
@@ -31,6 +34,7 @@ import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
 import { WorkingTree } from "../components/working-tree/WorkingTree";
+import { CustomCommandView } from "../components/repository/CustomCommandView";
 
 export type ViewGroupId = "core" | "repository" | "collaboration" | "system";
 
@@ -158,6 +162,14 @@ export const viewDefinitions: ViewDefinition[] = [
     render: () => <DiagnosticsView />,
   },
   {
+    id: "custom-command",
+    label: "Custom Command",
+    description: "Run arbitrary git commands in the repository",
+    group: "repository",
+    icon: Terminal,
+    render: () => <CustomCommandView />,
+  },
+  {
     id: "collaboration-connect",
     label: "Connect Provider",
     description: "Check provider capability without loading PR data eagerly",
@@ -166,6 +178,15 @@ export const viewDefinitions: ViewDefinition[] = [
     render: () => <CollaborationConnect />,
     collaboration: true,
     connectEntry: true,
+  },
+  {
+    id: "ci-status",
+    label: "CI Status",
+    description: "Inspect GitHub workflow checks for the current branch and selected PR",
+    group: "collaboration",
+    icon: ShieldCheck,
+    render: () => <CiStatusView />,
+    collaboration: true,
   },
   {
     id: "stacked-prs",

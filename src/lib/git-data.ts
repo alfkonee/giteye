@@ -12,6 +12,7 @@ import {
 } from "./tauri-api";
 import type {
   BlameFileRequest,
+  CommitRequest,
   CommitSearchRequest,
   FileHistoryRequest,
   GitGrepRequest,
@@ -175,7 +176,7 @@ export interface ResetToCommitRequest extends HistoryCommitRequest {
   confirmDiscardChanges: boolean;
 }
 
-export interface AmendCommitRequest {
+export interface AmendCommitRequest extends Omit<CommitRequest, "message"> {
   message?: string | null;
 }
 
@@ -988,6 +989,24 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
+  removeRecentRepository: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (repoPath: string) =>
+        gitApi.removeRecentRepository(repoPath),
+      onMutate: (repoPath) =>
+        startGitActionNotice(
+          "Removing from recents",
+          repoPath.split("/").pop() ?? repoPath,
+          repoPath,
+        ),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshRepositoryLists(queryClient, context);
+        finishGitActionNotice(context, "Removed from recent repositories.");
+      },
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
   stageFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.stageFile(repoPath!, filePath),
@@ -1147,11 +1166,11 @@ export const gitMutations = {
 
   commit: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (message: string) => gitApi.commit(repoPath!, message),
-      onMutate: (message) =>
+      mutationFn: (request: CommitRequest) => gitApi.commit(repoPath!, request),
+      onMutate: (request) =>
         startGitActionNotice(
           "Creating commit",
-          message.split("\n", 1)[0],
+          request.message.split("\n", 1)[0],
           repoPath,
         ),
       onSuccess: async (_data, _message, context) => {
@@ -1259,8 +1278,8 @@ export const gitMutations = {
 
   amendCommit: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ message }: AmendCommitRequest) =>
-        gitApi.amendCommit(repoPath!, message),
+      mutationFn: ({ message, signOff, noVerify, allowEmpty }: AmendCommitRequest) =>
+        gitApi.amendCommit(repoPath!, message, { signOff, noVerify, allowEmpty }),
       onMutate: ({ message }) =>
         startGitActionNotice(
           "Amending HEAD commit",

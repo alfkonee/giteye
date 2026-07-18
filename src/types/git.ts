@@ -76,6 +76,13 @@ export interface CommitDetails {
   changedFiles: string[];
 }
 
+export interface CommitRequest {
+  message: string;
+  signOff?: boolean;
+  noVerify?: boolean;
+  allowEmpty?: boolean;
+}
+
 export type ResetMode = "soft" | "mixed" | "hard";
 
 export interface ResetPreviewFile {
@@ -436,6 +443,10 @@ export interface CheckRunSummary {
   name: string;
   state: string | null;
   conclusion: string | null;
+  bucket: string | null;
+  workflow: string | null;
+  event: string | null;
+  description: string | null;
   url: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -716,6 +727,7 @@ export type RepositoryViewType =
   | "tags"
   | "lfs"
   | "collaboration-connect"
+  | "ci-status"
   | "stacked-prs"
   | "review-studio"
   | "worktrees"
@@ -723,7 +735,8 @@ export type RepositoryViewType =
   | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
-  | "settings";
+  | "settings"
+  | "custom-command";
 
 export type ViewType = RepositoryViewType;
 

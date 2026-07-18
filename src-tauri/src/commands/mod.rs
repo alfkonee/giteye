@@ -1,4 +1,5 @@
 pub mod app_settings;
+pub mod ai;
 pub mod archaeology;
 pub mod branches;
 pub mod commits;
@@ -13,6 +14,7 @@ pub mod patch;
 pub mod rebase;
 pub mod remotes;
 pub mod repository;
+pub mod settings_io;
 pub mod ssh;
 pub mod stashes;
 pub mod status;
