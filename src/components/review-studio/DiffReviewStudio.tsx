@@ -16,13 +16,18 @@ import {
 } from "../diff-viewer/UnifiedDiffFallback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import {
+  findPullRequestFilePatch,
+  mergePullRequestDiffFiles,
+  splitPullRequestDiff,
+  summarizePullRequestDiffFiles,
+} from "../../lib/pr-diff";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type {
   ActivityItem,
   CheckRunSummary,
   PullRequestSummary,
-  PullRequestFileDiff,
   ReviewCommentSummary,
   ReviewSummary,
 } from "../../types/git";
@@ -140,33 +145,6 @@ const commentFromSummary = (comment: ReviewCommentSummary): ActivityRow => ({
   url: comment.url,
 });
 
-const filesFromDiff = (
-  diffText: string | null | undefined,
-): PullRequestFileDiff[] => {
-  if (!diffText) return [];
-  const files: PullRequestFileDiff[] = [];
-  let current: PullRequestFileDiff | null = null;
-  for (const line of diffText.split("\n")) {
-    const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-    if (match) {
-      current = {
-        path: match[2],
-        additions: 0,
-        deletions: 0,
-        status: "modified",
-      };
-      files.push(current);
-      continue;
-    }
-    if (!current) continue;
-    if (line.startsWith("new file mode")) current.status = "added";
-    else if (line.startsWith("deleted file mode")) current.status = "deleted";
-    else if (line.startsWith("+") && !line.startsWith("+++")) current.additions += 1;
-    else if (line.startsWith("-") && !line.startsWith("---")) current.deletions += 1;
-  }
-  return files;
-};
-
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="rounded-lg border border-dashed border-[var(--color-border)] p-5 text-center text-sm text-[var(--color-text-muted)]">
@@ -219,6 +197,7 @@ export function DiffReviewStudio() {
     (s) => s.setSelectedPullRequestId,
   );
   const [prFilter, setPrFilter] = useState("");
+  const [fileFilter, setFileFilter] = useState("");
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [lineCommentTarget, setLineCommentTarget] =
     useState<DiffLineSelection | null>(null);
@@ -321,22 +300,46 @@ export function DiffReviewStudio() {
       ? "text-[var(--color-success)]"
       : "text-[var(--color-text-muted)]";
   const commentCount = activityRows.length + reviewRows.length;
-  const derivedChangedFiles = useMemo(
-    () => filesFromDiff(prDiff?.diffText),
+  const filePatches = useMemo(
+    () => splitPullRequestDiff(prDiff?.diffText),
     [prDiff?.diffText],
   );
-  const changedFiles =
-    prDiff?.files && prDiff.files.length > 0
-      ? prDiff.files
-      : derivedChangedFiles;
+  const derivedChangedFiles = useMemo(
+    () => summarizePullRequestDiffFiles(filePatches),
+    [filePatches],
+  );
+  const changedFiles = useMemo(
+    () => mergePullRequestDiffFiles(prDiff?.files, derivedChangedFiles),
+    [prDiff?.files, derivedChangedFiles],
+  );
+  const visibleChangedFiles = useMemo(() => {
+    const query = fileFilter.trim().toLowerCase();
+    if (!query) return changedFiles;
+    return changedFiles.filter((file) =>
+      [file.path, file.status].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [changedFiles, fileFilter]);
   const firstChangedFilePath = changedFiles[0]?.path ?? null;
   const diffErrorMessage = formatErrorMessage(prDiffError);
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
   const prFetchWarning = prDiff?.fetchError ?? null;
   const selectedFile =
-    changedFiles.find((file) => file.path === selectedFilePath) ??
-    changedFiles[0] ??
+    visibleChangedFiles.find((file) => file.path === selectedFilePath) ??
+    visibleChangedFiles[0] ??
     null;
+  const selectedPatch = findPullRequestFilePatch(filePatches, selectedFile?.path);
+  const selectedDiffText = selectedPatch?.patchText ?? null;
+  const commentCountsByPath = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const comment of prDiff?.comments ?? []) {
+      if (!comment.path) continue;
+      counts.set(comment.path, (counts.get(comment.path) ?? 0) + 1);
+    }
+    return counts;
+  }, [prDiff?.comments]);
+  const selectedFileCommentCount = selectedFile
+    ? commentCountsByPath.get(selectedFile.path) ?? 0
+    : 0;
   const pendingReviewers = currentPr?.reviewRequests ?? [];
   const labels = currentPr?.labels ?? [];
   const reviewActionPending =
@@ -448,9 +451,27 @@ export function DiffReviewStudio() {
 
   useEffect(() => {
     setSelectedFilePath(firstChangedFilePath);
+    setFileFilter("");
     setLineCommentTarget(null);
     setLineCommentBody("");
   }, [currentPr?.number, firstChangedFilePath]);
+
+  useEffect(() => {
+    if (visibleChangedFiles.length === 0) {
+      if (selectedFilePath) setSelectedFilePath(null);
+      return;
+    }
+    if (selectedFilePath && visibleChangedFiles.some((file) => file.path === selectedFilePath)) {
+      return;
+    }
+    setSelectedFilePath(visibleChangedFiles[0].path);
+  }, [selectedFilePath, visibleChangedFiles]);
+
+  useEffect(() => {
+    if (!lineCommentTarget || lineCommentTarget.filePath === selectedFile?.path) return;
+    setLineCommentTarget(null);
+    setLineCommentBody("");
+  }, [lineCommentTarget, selectedFile?.path]);
 
   return (
     <section className="grid h-full min-h-0 grid-cols-[260px_minmax(650px,1fr)_300px] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
@@ -504,17 +525,36 @@ export function DiffReviewStudio() {
           <div className="mt-4 mb-2 flex items-center gap-1 px-2 py-1 text-xs text-[var(--color-text-secondary)]">
             <FileCode2 className="h-4 w-4" /> Changed files
           </div>
+          <label className="mb-2 flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+            <Search className="h-3.5 w-3.5" />
+            <input
+              value={fileFilter}
+              onChange={(event) => setFileFilter(event.target.value)}
+              placeholder="Filter changed files"
+              className="min-w-0 flex-1 bg-transparent text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]"
+            />
+          </label>
           <div className="space-y-2">
             {changedFiles.length > 0 ? (
-              changedFiles.map((file) => (
+              visibleChangedFiles.length > 0 ? visibleChangedFiles.map((file) => (
                 <button
                   key={file.path}
                   type="button"
-                  onClick={() => setSelectedFilePath(file.path)}
+                  onClick={() => {
+                    setSelectedFilePath(file.path);
+                    setActiveTab("files");
+                  }}
                   className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selectedFile?.path === file.path ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
                 >
-                  <div className="truncate font-mono text-xs text-[var(--color-text-secondary)]">
-                    {file.path}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono text-xs text-[var(--color-text-secondary)]">
+                      {file.path}
+                    </span>
+                    {commentCountsByPath.get(file.path) ? (
+                      <span className="shrink-0 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[10px] text-[var(--color-accent)]">
+                        {commentCountsByPath.get(file.path)} comments
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-2 flex gap-3 text-xs">
                     <span className="text-[var(--color-success)]">
@@ -528,7 +568,9 @@ export function DiffReviewStudio() {
                     </span>
                   </div>
                 </button>
-              ))
+              )) : (
+                <EmptyState message="No changed files match this filter." />
+              )
             ) : livePrs.length > 0 ? (
               <EmptyState
                 message={
@@ -629,23 +671,38 @@ export function DiffReviewStudio() {
         {activeTab === "files" ? (
           <>
             <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-sm">
-              <span className="inline-flex items-center gap-2">
+              <span className="inline-flex min-w-0 items-center gap-2">
                 <FileCode2 className="h-4 w-4" />{" "}
-                {selectedFile?.path ?? "No file selected"}
+                <span className="truncate font-mono">
+                  {selectedFile?.path ?? "No file selected"}
+                </span>
+                {selectedFile ? (
+                  <span className="shrink-0 rounded-full bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">
+                    +{selectedFile.additions} / -{selectedFile.deletions}
+                  </span>
+                ) : null}
+                {selectedFileCommentCount > 0 ? (
+                  <span className="shrink-0 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-xs text-[var(--color-accent)]">
+                    {selectedFileCommentCount} line comment{selectedFileCommentCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
               </span>
               <span className="text-xs text-[var(--color-text-muted)]">
                 {prDiffLoading
                   ? "Loading GitHub diff…"
                   : currentPr
-                    ? `PR #${currentPr.number}`
+                    ? selectedPatch
+                      ? `${selectedPatch.status}${selectedPatch.oldPath ? ` from ${selectedPatch.oldPath}` : ""}`
+                      : `PR #${currentPr.number}`
                     : "No pull request selected"}
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden bg-[var(--color-bg-secondary)]">
-              {prDiff?.diffText ? (
+              {selectedDiffText ? (
                 <UnifiedDiffFallback
-                  diffText={prDiff.diffText}
-                  filePath={selectedFile?.path ?? `PR #${prDiff.number}`}
+                  diffText={selectedDiffText}
+                  filePath={selectedPatch?.path ?? selectedFile?.path ?? `PR #${prDiff?.number ?? "selected"}`}
+                  oldFilePath={selectedPatch?.oldPath}
                   mode="unified"
                   focusedFilePath={selectedFile?.path ?? undefined}
                   selectedLine={lineCommentTarget}
@@ -663,7 +720,9 @@ export function DiffReviewStudio() {
                           ? "Loading live pull request diff…"
                           : diffErrorMessage
                             ? diffErrorMessage
-                            : (prFetchWarning ?? "No diff text returned for this pull request.")
+                            : selectedFile
+                              ? prFetchWarning ?? "No text patch returned for the selected file. It may be binary, too large, or omitted by GitHub."
+                              : prFetchWarning ?? "No diff text returned for this pull request."
                         : providerDetail
                     }
                   />
