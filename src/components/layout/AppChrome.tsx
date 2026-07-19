@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { GitBranch, Minus, Square, X } from "lucide-react";
+import { Minus, Square, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import {
   getWindowControlPlacement,
@@ -43,9 +43,8 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
           {controlPlacement === "left" ? <WindowControls placement={controlPlacement} /> : <WindowBrand />}
         </div>
 
-        <div className="flex min-w-0 items-center justify-center gap-2 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
-          <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-          <span className="min-w-0 truncate text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-window-title)]">
+        <div className="flex min-w-0 items-center justify-center gap-1.5 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
+          <span className="min-w-0 truncate text-[12px] font-medium tracking-[-0.01em] text-[var(--color-window-title)]">
             {title}
           </span>
           {subtitle ? (
@@ -67,8 +66,8 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
 
 function WindowBrand() {
   return (
-    <div className="hidden min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region data-tauri-drag-region>
-      <span className="h-2 w-2 rounded-full bg-[var(--color-accent)] shadow-[0_0_16px_var(--color-accent)]" />
+    <div className="hidden min-w-0 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region data-tauri-drag-region>
+      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-text-subtle)]" />
       <span className="truncate">GitEye</span>
     </div>
   );

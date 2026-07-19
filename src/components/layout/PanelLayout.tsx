@@ -123,7 +123,8 @@ export function PanelLayout() {
         </div>
       </Panel>
       <PanelResizeHandle className="group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
-        <div className="absolute inset-y-0 -left-1 -right-1" />
+        <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+        <div className="absolute left-1/2 top-1/2 h-10 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-border-strong)] opacity-0 transition-opacity group-hover:opacity-80 group-active:bg-[var(--color-accent)] group-active:opacity-100" />
       </PanelResizeHandle>
       <Panel defaultSize={40} minSize={20}>
         <div className="h-full overflow-auto bg-[var(--color-bg-primary)]">

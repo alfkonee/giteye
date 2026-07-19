@@ -105,84 +105,91 @@ export function RepositoryWelcome() {
   return (
     <AppChrome title="GitEye · Repo Hub" subtitle="No repository open">
       <div className="flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-        <aside className="flex w-[264px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <button className="flex h-9 w-full items-center gap-3 rounded-lg bg-[var(--color-bg-selected)]/15 px-3 text-left text-sm font-semibold text-[var(--color-text-primary)] ring-1 ring-[var(--color-accent)]/20">
-            <Home className="h-4 w-4 text-[var(--color-accent)]" />
-            Repo Hub
-          </button>
-          <button
-            type="button"
-            onClick={() => searchInputRef.current?.focus()}
-            className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"
-          >
-            <span className="inline-flex items-center gap-3">
-              <Search className="h-4 w-4" />
-              Search
-            </span>
-            <kbd className="rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNotifications((v) => !v)}
-            className={cn(
-              "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
-              showNotifications && "bg-[var(--color-bg-hover)] text-[var(--color-text-primary)]",
-            )}
-          >
-            <Bell className="h-4 w-4" />
-            Notifications
-            {operationTranscript.length > 0 && (
-              <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-accent)] px-1 text-[9px] font-bold leading-none text-white">
-                {Math.min(operationTranscript.length, 99)}
-              </span>
-            )}
-          </button>
-
-          <div className="my-5 h-px bg-[var(--color-border-muted)]" />
-          <SectionLabel>Workspaces</SectionLabel>
-          {openRepoPaths.length > 0 ? (
-            <div className="mt-2 space-y-1">
-              {openRepoPaths.map((repoPath) => (
-                <button
-                  key={repoPath}
-                  type="button"
-                  onClick={() => setActiveRepoPath(repoPath)}
-                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-                  title={repoPath}
-                >
-                  <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                  <span className="truncate">{basename(repoPath)}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
-              <p className="font-medium text-[var(--color-text-primary)]">No repository sessions yet</p>
-              <p className="mt-1 leading-5">Open a repository to begin organizing local work.</p>
-            </div>
-          )}
-
-          <div className="my-5 h-px bg-[var(--color-border-muted)]" />
-          <SectionLabel>Accounts</SectionLabel>
-          <div className="mt-2 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-3 text-xs text-[var(--color-text-secondary)]">
-            <div className="flex items-center gap-2 text-[var(--color-text-primary)]">
-              <GitBranch className="h-4 w-4" />
-              <span className="font-medium">No provider connected</span>
-            </div>
-            <p className="mt-1 leading-5">Use "gh auth login" in your terminal, then open a repository to activate GitHub collaboration features. GitLab and Bitbucket support is planned for a future release.</p>
-            <button disabled className="mt-3 flex h-8 w-full cursor-not-allowed items-center gap-2 rounded-md px-2 text-left text-[var(--color-text-muted)] opacity-60" title="GitHub accounts are detected automatically when gh CLI is authenticated. GitLab and Bitbucket support is planned for a future release.">
-              <Plus className="h-4 w-4" />
-              Add Account
+        <aside className="flex w-[248px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
+          <nav className="flex-1 overflow-y-auto px-3 py-4">
+            <button className="giteye-nav-active flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold">
+              <Home className="h-4 w-4 text-[var(--color-accent)]" />
+              Repo Hub
             </button>
-          </div>
-        </nav>
+            <button
+              type="button"
+              onClick={() => searchInputRef.current?.focus()}
+              className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+            >
+              <span className="inline-flex items-center gap-3">
+                <Search className="h-4 w-4" />
+                Search
+              </span>
+              <kbd className="giteye-kbd">⌘K</kbd>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNotifications((v) => !v)}
+              className={cn(
+                "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+                showNotifications && "giteye-nav-active text-[var(--color-text-primary)]",
+              )}
+            >
+              <Bell className="h-4 w-4" />
+              Notifications
+              {operationTranscript.length > 0 && (
+                <span className="ml-auto giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
+                  {Math.min(operationTranscript.length, 99)}
+                </span>
+              )}
+            </button>
 
-        <div className="border-t border-[var(--color-border-muted)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
-          <GitBranch className="mr-2 inline h-3.5 w-3.5" />
-          {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} repository session${openRepoPaths.length === 1 ? "" : "s"} open`}
-        </div>
-      </aside>
+            <div className="my-5 h-px bg-[var(--color-border-muted)]" />
+            <SectionLabel>Workspaces</SectionLabel>
+            {openRepoPaths.length > 0 ? (
+              <div className="mt-2 space-y-1">
+                {openRepoPaths.map((repoPath) => (
+                  <button
+                    key={repoPath}
+                    type="button"
+                    onClick={() => setActiveRepoPath(repoPath)}
+                    className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                    title={repoPath}
+                  >
+                    <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                    <span className="truncate">{basename(repoPath)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2 space-y-2 rounded-lg bg-[var(--color-bg-tertiary)]/40 p-3 text-xs text-[var(--color-text-secondary)]">
+                <span className="giteye-chip">No sessions</span>
+                <p>Open or clone a repository to start a workspace.</p>
+              </div>
+            )}
+
+            <div className="my-5 h-px bg-[var(--color-border-muted)]" />
+            <SectionLabel>Accounts</SectionLabel>
+            <div className="mt-2 space-y-2 rounded-lg bg-[var(--color-bg-tertiary)]/40 p-3 text-xs text-[var(--color-text-secondary)]">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="giteye-chip">
+                  <GitBranch className="h-3 w-3" />
+                  GitHub via gh
+                </span>
+                <span className="giteye-chip">GitLab later</span>
+              </div>
+              <p>Authenticate with gh, then open a repository for provider features.</p>
+              <button
+                disabled
+                className="giteye-btn giteye-btn-ghost giteye-btn-sm w-full cursor-not-allowed justify-start opacity-60"
+                title="GitHub accounts are detected automatically when gh CLI is authenticated. GitLab and Bitbucket support is planned for a future release."
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Account
+              </button>
+            </div>
+          </nav>
+
+          <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-xs text-[var(--color-text-muted)]">
+            <GitBranch className="mr-2 inline h-3.5 w-3.5" />
+            {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} session${openRepoPaths.length === 1 ? "" : "s"}`}
+          </div>
+        </aside>
 
         {showNotifications && (
           <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
@@ -198,10 +205,16 @@ export function RepositoryWelcome() {
             </div>
             <div className="flex-1 overflow-y-auto p-3">
               {operationTranscript.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-muted)] px-4 py-8 text-center">
-                  <Bell className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">No operations logged</p>
-                  <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Git operations triggered while a repository is open will appear here.</p>
+                <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/45 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
+                      <Bell className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">No operations logged</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">Git operations triggered while a repository is open will appear here.</p>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -241,172 +254,154 @@ export function RepositoryWelcome() {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-        <RepositoryTabs />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
-            <div className="mx-auto max-w-[980px]">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-[30px] font-semibold leading-none tracking-[-0.035em] text-[var(--color-text-primary)]">Repo Hub</h1>
-                  <p className="mt-2 text-sm text-[var(--color-text-secondary)]">All your code. One place to start.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] shadow-[var(--shadow-panel)] hover:bg-[var(--color-bg-hover)]">
-                    <Clock className="h-4 w-4" />
-                  </button>
-                  <div className="relative">
+          <RepositoryTabs />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="mx-auto max-w-[1020px]">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <h1 className="text-[30px] font-semibold leading-none tracking-[-0.035em] text-[var(--color-text-primary)]">Repo Hub</h1>
+                    <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Open, clone, or revisit a repository from one calm starting point.</p>
+                  </div>
+                  <div className="relative shrink-0">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
                     <input
                       ref={searchInputRef}
                       value={repoSearch}
                       onChange={(event) => setRepoSearch(event.target.value)}
-                      placeholder="Search repos..."
-                      className="h-9 w-64 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] pl-9 pr-11 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
+                      placeholder="Search repositories"
+                      className="giteye-input h-9 w-64 pl-9 pr-12"
                     />
-                    <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
+                    <kbd className="giteye-kbd absolute right-2 top-1/2 -translate-y-1/2">⌘K</kbd>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <MetricCard label="Recent repositories" value={String(recentCount)} detail={recentCount === 1 ? "1 local repository opened" : `${recentCount} local repositories opened`} icon={FolderGit2} />
-                <MetricCard label="Local paths" value={String(recentCount)} detail={recentCount === 1 ? "1 distinct recent path" : `${recentCount} distinct recent paths`} icon={FolderOpen} />
-                <MetricCard label="Latest opened" value={latestRecent ? formatRelativeTime(latestRecent.lastOpenedAt) : "—"} detail={latestRecent?.name ?? "Open a repository to start"} icon={Clock} />
-              </div>
-
-              <section className="mt-4 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-5 shadow-[var(--shadow-panel)]">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--color-text-primary)]">Welcome to Repo Hub</h2>
-                    <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Open a local Git repository to populate this workspace with real project context.</p>
-                    <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
-                      Tip: Press <kbd className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 text-[10px]">⌘K</kbd> to quickly search once repository data is available.
-                    </p>
-                  </div>
-                  <div className="relative hidden h-28 w-56 shrink-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] shadow-[var(--shadow-elevated)] lg:block">
-                    <div className="flex h-5 items-center gap-1 border-b border-[var(--color-border-muted)] px-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-danger)]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-success)]" />
+                <section className="giteye-surface rounded-xl p-4 shadow-[var(--shadow-panel)]">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Start with a repository</h2>
+                      <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Browse for a local repo, paste a path, clone, or initialize a new repository.</p>
                     </div>
-                    <div className="space-y-2 p-4">
-                      <div className="h-1.5 w-28 rounded-full bg-[var(--color-accent)]/70" />
-                      <div className="ml-4 h-1.5 w-36 rounded-full bg-[var(--color-success)]/70" />
-                      <div className="h-1.5 w-32 rounded-full bg-[var(--color-warning)]/70" />
-                      <div className="ml-8 h-1.5 w-24 rounded-full bg-purple-300/70" />
-                      <div className="h-1.5 w-40 rounded-full bg-[var(--color-text-muted)]/60" />
-                    </div>
-                    <Sparkles className="absolute right-5 top-8 h-6 w-6 rotate-12 text-[var(--color-success)]" />
-                  </div>
-                </div>
-              </section>
-
-              <div className="mt-4 grid grid-cols-2 gap-4">
-                <RepositoryList
-                  title="Recent Repositories"
-                  loading={recentsLoading}
-                  repos={displayedRecentRepos}
-                  totalCount={recentCount}
-                  showAll={showAllRecents}
-                  onToggleShowAll={() => setShowAllRecents((value) => !value)}
-                  favoritePaths={favoritePaths}
-                  onOpen={(repoPath) => openMutation.mutate(repoPath)}
-                  onSetFavorite={handleSetFavorite}
-                  onRemoveRecent={(repoPath) => removeRecentMutation.mutate(repoPath)}
-                />
-                <FavoriteList
-                  loading={favoritesLoading}
-                  repos={favoriteRepos}
-                  onOpen={(repoPath) => openMutation.mutate(repoPath)}
-                  onSetFavorite={handleSetFavorite}
-                />
-              </div>
-
-              <section className="mt-4 rounded-lg border border-dashed border-[var(--color-accent)]/45 bg-[var(--color-bg-secondary)] p-5 shadow-[var(--shadow-panel)]">
-                <div className="grid grid-cols-[minmax(220px,0.8fr)_minmax(280px,1.2fr)] gap-4">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Open a repository</h2>
-                    <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Choose a local Git repository to begin.</p>
-                    <div className="mt-3 flex gap-3">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={handleCloneRepository}
                         disabled={actionPending}
-                        className="h-9 rounded-lg bg-[var(--color-bg-selected)] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="giteye-btn giteye-btn-secondary giteye-btn-sm disabled:cursor-not-allowed disabled:opacity-45"
                       >
-                        {cloneMutation.isPending ? "Cloning…" : "Clone Repository"}
+                        {cloneMutation.isPending ? "Cloning…" : "Clone"}
                       </button>
                       <button
                         type="button"
                         onClick={handleInitRepository}
                         disabled={actionPending}
-                        className="h-9 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-4 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="giteye-btn giteye-btn-secondary giteye-btn-sm disabled:cursor-not-allowed disabled:opacity-45"
                       >
-                        {initMutation.isPending ? "Creating…" : "New Repository"}
+                        {initMutation.isPending ? "Creating…" : "New"}
                       </button>
                     </div>
                   </div>
-                  <div className="border-l border-[var(--color-border-muted)] pl-5">
-                    <label className="block text-xs text-[var(--color-text-secondary)]">Open a repository from path</label>
-                    <div className="mt-2 flex gap-3">
-                      <div className="relative min-w-0 flex-1">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
-                        <input
-                          value={path}
-                          onChange={(event) => setPath(event.target.value)}
-                          onKeyDown={(event) => event.key === "Enter" && handleOpen()}
-                          placeholder="/path/to/git/repository"
-                          className="h-9 w-full rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] pl-9 pr-3 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-focus-ring)]/20"
-                        />
+                  <div className="mt-3 flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
+                      <input
+                        value={path}
+                        onChange={(event) => setPath(event.target.value)}
+                        onKeyDown={(event) => event.key === "Enter" && handleOpen()}
+                        placeholder="/path/to/git/repository"
+                        className="giteye-input h-9 w-full pl-9"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleBrowse}
+                      className="giteye-btn giteye-btn-secondary giteye-btn-sm shrink-0"
+                      aria-label="Browse for repository folder"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      Browse
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpen}
+                      disabled={!path.trim() || actionPending}
+                      className="giteye-btn giteye-btn-primary giteye-btn-sm shrink-0 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {openMutation.isPending ? "Opening…" : "Open"}
+                    </button>
+                  </div>
+                  {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(actionError)}</p>}
+                </section>
+
+                <div className="mt-4">
+                  <RepositoryList
+                    title="Recent Repositories"
+                    loading={recentsLoading}
+                    repos={displayedRecentRepos}
+                    totalCount={recentCount}
+                    showAll={showAllRecents}
+                    onToggleShowAll={() => setShowAllRecents((value) => !value)}
+                    favoritePaths={favoritePaths}
+                    onOpen={(repoPath) => openMutation.mutate(repoPath)}
+                    onSetFavorite={handleSetFavorite}
+                    onRemoveRecent={(repoPath) => removeRecentMutation.mutate(repoPath)}
+                  />
+                </div>
+
+                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_320px] gap-4">
+                  <FavoriteList
+                    loading={favoritesLoading}
+                    repos={favoriteRepos}
+                    onOpen={(repoPath) => openMutation.mutate(repoPath)}
+                    onSetFavorite={handleSetFavorite}
+                  />
+
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-2">
+                      <MetricCard label="Recent" value={String(recentCount)} detail={recentCount === 1 ? "1 repo opened" : `${recentCount} repos opened`} icon={FolderGit2} />
+                      <MetricCard label="Paths" value={String(recentCount)} detail={recentCount === 1 ? "1 local path" : `${recentCount} local paths`} icon={FolderOpen} />
+                      <MetricCard label="Latest" value={latestRecent ? formatRelativeTime(latestRecent.lastOpenedAt) : "—"} detail={latestRecent?.name ?? "Open a repository"} icon={Clock} />
+                    </div>
+
+                    <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80 p-3 shadow-[var(--shadow-panel)]">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
+                          <Sparkles className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Welcome to Repo Hub</h2>
+                          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Repository context appears here after you open a local project.</p>
+                          <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
+                            Press <kbd className="giteye-kbd">⌘K</kbd> to filter recents.
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleBrowse}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-                        aria-label="Browse for repository folder"
-                      >
-                        <FolderOpen className="h-4 w-4" />
-                        Browse
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleOpen}
-                        disabled={!path.trim() || actionPending}
-                        className="inline-flex h-9 items-center rounded-lg bg-[var(--color-bg-selected)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        {openMutation.isPending ? "Opening…" : "Open"}
-                      </button>
-                    </div>
-                    {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(actionError)}</p>}
+                    </section>
+
+                    <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/70 p-3 shadow-[var(--shadow-panel)]">
+                      <SectionHeader title="Team Workspaces" />
+                      <p className="mt-2 text-xs text-[var(--color-text-secondary)]">Open a repository with workspace metadata to show shared context.</p>
+                    </section>
                   </div>
                 </div>
-              </section>
+              </div>
+            </section>
 
-              <section className="mt-4 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
-                <SectionHeader title="Team Workspaces" />
-                <div className="mt-3 rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-5 text-center">
-                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">No team workspace data</p>
-                  <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Connect a provider or open a repository with workspace metadata to show shared context here.</p>
-                </div>
-              </section>
-            </div>
-          </section>
+            <ActivityFeed />
+          </div>
 
-          <ActivityFeed />
-        </div>
-
-        <footer className="giteye-statusbar flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-5 text-xs text-[var(--color-text-secondary)]">
+        <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 px-5 text-[11px] text-[var(--color-text-muted)]">
           <span className="inline-flex items-center gap-2">
             <GitBranch className="h-3.5 w-3.5" />
             No repository open
           </span>
-          <span className="flex items-center gap-4">
+          <span className="flex items-center gap-3">
             <Shortcut keys="⌘K" label="Search" />
             <Shortcut keys="⌘N" label="New Repo" />
             <Shortcut keys="⌘O" label="Open Repo" />
             <Shortcut keys="⌘/" label="Shortcuts" />
           </span>
-          <span className="inline-flex items-center gap-2 text-[var(--color-success)]">
+          <span className="giteye-chip" data-tone="success">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Ready
           </span>
@@ -441,15 +436,15 @@ function MetricCard({
   icon: typeof FolderGit2;
 }) {
   return (
-    <article className="h-[100px] rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
-      <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-          <Icon className="h-5 w-5" />
+    <article className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/70 px-3 py-2 shadow-[var(--shadow-soft)]">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
+          <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0">
           <span className="block truncate whitespace-nowrap text-xs text-[var(--color-text-secondary)]">{label}</span>
-          <span className="mt-1 block truncate text-2xl font-semibold leading-none text-[var(--color-text-primary)]">{value}</span>
-          <span className="mt-2 block truncate text-xs text-[var(--color-text-secondary)]">{detail}</span>
+          <span className="mt-0.5 block truncate text-lg font-semibold leading-none text-[var(--color-text-primary)]">{value}</span>
+          <span className="mt-1 block truncate text-[11px] text-[var(--color-text-muted)]">{detail}</span>
         </span>
       </div>
     </article>
@@ -483,26 +478,26 @@ function RepositoryList({
   const canToggle = totalCount > 5;
 
   return (
-    <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
+    <section className="min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
       <div className="flex items-center justify-between">
         <SectionHeader title={title} />
         {canToggle && (
           <button
             type="button"
             onClick={onToggleShowAll}
-            className="rounded-md border border-[var(--color-border-muted)] px-2 py-1 text-[11px] font-medium text-[var(--color-accent)] transition-colors hover:bg-[var(--color-bg-hover)]"
+            className="giteye-btn giteye-btn-ghost giteye-btn-sm text-[var(--color-accent)]"
           >
             {showAll ? "Show less" : `View all ${totalCount}`}
           </button>
         )}
       </div>
-      <div className="mt-3 h-[220px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
+      <div className="mt-3 h-[264px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
         {loading ? (
-          <div className="flex h-[220px] items-center justify-center">
+          <div className="flex h-[264px] items-center justify-center">
             <LoadingSpinner size="sm" />
           </div>
         ) : repos.length === 0 ? (
-          <div className="flex h-[220px] flex-col items-center justify-center px-5 text-center">
+          <div className="flex h-[264px] flex-col items-center justify-center px-5 text-center">
             <GitBranch className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
             <p className="text-sm font-medium text-[var(--color-text-primary)]">No recent repositories</p>
             <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Open a local Git repository to pin it here.</p>
@@ -516,7 +511,7 @@ function RepositoryList({
                 key={repo.path}
                 type="button"
                 onClick={() => onOpen(repo.path)}
-                className="group relative grid w-full grid-cols-[minmax(0,1fr)_92px_56px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+                className="group relative grid w-full grid-cols-[minmax(0,1fr)_96px_56px] items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-[var(--color-bg-hover)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
@@ -528,7 +523,7 @@ function RepositoryList({
                   </span>
                 </span>
                 <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
-                  <span className="flex justify-end gap-1">
+                <span className="flex justify-end gap-1">
                   <span
                     role="button"
                     tabIndex={0}
@@ -610,15 +605,15 @@ function FavoriteList({
   onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
 }) {
   return (
-    <section className="h-[276px] min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
+    <section className="min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
       <SectionHeader title="Favorite Repositories" />
-      <div className="mt-3 h-[220px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
+      <div className="mt-3 h-[252px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
         {loading ? (
-          <div className="flex h-[220px] items-center justify-center">
+          <div className="flex h-[252px] items-center justify-center">
             <LoadingSpinner size="sm" />
           </div>
         ) : repos.length === 0 ? (
-          <div className="flex h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 px-5 text-center">
+          <div className="flex h-[252px] flex-col items-center justify-center rounded-lg bg-[var(--color-bg-tertiary)]/35 px-5 text-center">
             <Star className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
             <p className="text-sm font-medium text-[var(--color-text-primary)]">No favorites yet</p>
             <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Favorite repositories from the recent list or repo switcher to pin them here.</p>
@@ -629,7 +624,7 @@ function FavoriteList({
               key={repo.path}
               type="button"
               onClick={() => onOpen(repo.path)}
-              className="group grid w-full grid-cols-[minmax(0,1fr)_32px] items-center gap-3 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+              className="group grid w-full grid-cols-[minmax(0,1fr)_32px] items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-[var(--color-bg-hover)]"
             >
               <span className="flex min-w-0 items-center gap-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-warning)]">
@@ -673,18 +668,17 @@ function ActivityFeed() {
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Activity Feed</h2>
       </div>
-      <div className="space-y-4">
-        <section className="rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-5 text-center">
-          <Clock className="mx-auto mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-          <p className="text-sm font-semibold text-[var(--color-text-primary)]">No activity data</p>
-          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Repository pushes, reviews, and checks will appear when live provider data is connected.</p>
-        </section>
-        <section className="rounded-lg border border-dashed border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/60 p-5 text-center">
-          <CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-          <p className="text-sm font-semibold text-[var(--color-text-primary)]">No check data</p>
-          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">CI status requires live repository provider data.</p>
-        </section>
-      </div>
+      <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/45 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
+            <Clock className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Provider activity appears here</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">Connect a provider after opening a repository to see pushes, reviews, and checks.</p>
+          </div>
+        </div>
+      </section>
     </aside>
   );
 }
@@ -692,7 +686,7 @@ function ActivityFeed() {
 function Shortcut({ keys, label }: { keys: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <kbd className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--color-text-secondary)]">{keys}</kbd>
+      <kbd className="giteye-kbd">{keys}</kbd>
       {label}
     </span>
   );

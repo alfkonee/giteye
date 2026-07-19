@@ -17,8 +17,11 @@
   --color-bg-surface: #151f2b;
   --color-bg-elevated: #1a2635;
   --color-bg-hover: #1d2a3a;
-  --color-bg-selected: #1f5fbf;
-  --color-bg-selected-muted: rgba(47, 111, 219, 0.18);
+  /* Filled selected/primary chips keep a saturated accent fill */
+  --color-bg-selected: #2f6fdb;
+  /* Soft list/nav selection — dominant selected state across the shell */
+  --color-bg-selected-muted: rgba(63, 132, 245, 0.14);
+  --color-bg-selected-soft: rgba(63, 132, 245, 0.10);
   --color-bg-inset: #0a1018;
   --color-bg-overlay: rgba(4, 8, 13, 0.76);
   --color-window-chrome: rgba(8, 13, 20, 0.96);
@@ -128,27 +131,28 @@
   --space-5: 20px;
   --space-6: 24px;
   --size-toolbar: 44px;
-  --size-window-chrome: 38px;
-  --size-statusbar: 28px;
-  --size-row-compact: 30px;
-  --size-row: 36px;
-  --size-control: 32px;
-  --size-sidebar: 264px;
+  --size-window-chrome: 36px;
+  --size-statusbar: 26px;
+  --size-row-compact: 32px;
+  --size-row: 34px;
+  --size-control: 30px;
+  --size-sidebar: 248px;
   --size-panel-min: 280px;
 
   /* Radius */
   --radius-window: 12px;
-  --radius-panel: 10px;
-  --radius-card: 8px;
-  --radius-control: 7px;
+  --radius-panel: 12px;
+  --radius-card: 10px;
+  --radius-control: 8px;
   --radius-badge: 5px;
   --radius-pill: 999px;
 
   /* Elevation */
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 28px rgba(0, 0, 0, 0.22);
-  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 60px rgba(0, 0, 0, 0.42);
-  --shadow-popover: 0 18px 46px rgba(0, 0, 0, 0.48);
-  --shadow-drag: 0 18px 42px rgba(0, 0, 0, 0.38), 0 0 0 1px var(--color-border-accent);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 8px 20px rgba(0, 0, 0, 0.16);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 40px rgba(0, 0, 0, 0.34);
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.42);
+  --shadow-drag: 0 16px 36px rgba(0, 0, 0, 0.34), 0 0 0 1px var(--color-border-accent);
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.18);
 
   /* Motion */
   --duration-fast: 120ms;
@@ -167,6 +171,7 @@
   --color-bg-hover: #e7edf5;
   --color-bg-selected: #246bdb;
   --color-bg-selected-muted: rgba(36, 107, 219, 0.12);
+  --color-bg-selected-soft: rgba(36, 107, 219, 0.08);
   --color-bg-inset: #e8edf4;
   --color-bg-overlay: rgba(248, 250, 252, 0.82);
   --color-window-chrome: rgba(247, 249, 252, 0.96);
@@ -193,6 +198,10 @@
   --color-accent-active: #1a55ad;
   --color-focus-ring: rgba(36, 107, 219, 0.5);
   --color-selection-text: #ffffff;
+  --color-selection-fg: var(--color-text-primary);
+  --color-selection-bar: var(--color-accent);
+  --color-selection-fg: var(--color-text-primary);
+  --color-selection-bar: var(--color-accent);
 
   --color-success: #2e8b3f;
   --color-success-bg: rgba(46, 139, 63, 0.12);
@@ -240,9 +249,10 @@
   --color-conflict-result-bg: rgba(46, 139, 63, 0.11);
 
   --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.78) inset, 0 12px 28px rgba(31, 42, 68, 0.08);
-  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.86) inset, 0 22px 60px rgba(31, 42, 68, 0.14);
-  --shadow-popover: 0 18px 46px rgba(31, 42, 68, 0.18);
-  --shadow-drag: 0 18px 42px rgba(31, 42, 68, 0.18), 0 0 0 1px var(--color-border-accent);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.86) inset, 0 18px 40px rgba(31, 42, 68, 0.12);
+  --shadow-popover: 0 16px 40px rgba(31, 42, 68, 0.16);
+  --shadow-drag: 0 16px 36px rgba(31, 42, 68, 0.16), 0 0 0 1px var(--color-border-accent);
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 1px 2px rgba(31, 42, 68, 0.08);
 }
 
 *,
@@ -276,8 +286,9 @@ html {
 
 body {
   background:
-    radial-gradient(circle at 28% 0%, rgba(63, 132, 245, 0.11), transparent 32%),
-    linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 42%);
+    radial-gradient(circle at 18% -8%, rgba(63, 132, 245, 0.09), transparent 34%),
+    radial-gradient(circle at 88% 0%, rgba(169, 139, 255, 0.05), transparent 28%),
+    linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 48%);
   color: var(--color-text-primary);
   font-family: var(--font-ui);
   font-size: var(--font-size-ui);
@@ -436,7 +447,7 @@ a {
 }
 
 .giteye-card {
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid color-mix(in srgb, var(--color-border-muted) 88%, transparent);
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
 }
@@ -487,7 +498,276 @@ a {
 
 .giteye-selection {
   background: var(--color-bg-selected-muted);
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  box-shadow: inset 2px 0 0 var(--color-selection-bar);
+  color: var(--color-selection-fg);
+}
+
+/* Soft selected row/nav (preferred over solid blue fills) */
+.giteye-selected-row {
+  background: var(--color-bg-selected-muted);
+  box-shadow: inset 2px 0 0 var(--color-selection-bar);
+  color: var(--color-selection-fg);
+}
+
+.giteye-selected-row:hover {
+  background: color-mix(in srgb, var(--color-bg-selected-muted) 78%, var(--color-bg-hover));
+}
+
+.giteye-nav-active {
+  background: var(--color-bg-selected-muted);
+  box-shadow: inset 2px 0 0 var(--color-selection-bar);
+  color: var(--color-text-primary);
+}
+
+.giteye-nav-active:hover {
+  background: color-mix(in srgb, var(--color-bg-selected-muted) 80%, var(--color-bg-hover));
+}
+
+.giteye-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 22px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-tertiary);
+  padding: 0 0.5rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.giteye-chip[data-tone="success"] {
+  border-color: var(--color-success-border);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.giteye-chip[data-tone="warning"] {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.giteye-chip[data-tone="danger"] {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.giteye-chip[data-tone="accent"] {
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
+  color: var(--color-accent);
+}
+
+.giteye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: var(--size-control);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 0 0.7rem;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.giteye-btn:disabled {
+  cursor: not-allowed;
+  opacity: var(--state-disabled-opacity);
+}
+
+.giteye-btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.giteye-btn-ghost {
+  color: var(--color-text-secondary);
+  background: transparent;
+}
+
+.giteye-btn-ghost:hover:not(:disabled) {
+  background: var(--state-hover-bg);
+  color: var(--color-text-primary);
+}
+
+.giteye-btn-secondary {
+  border-color: var(--color-border-muted);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-soft);
+}
+
+.giteye-btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.giteye-btn-primary {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: linear-gradient(180deg, var(--color-accent-hover) 0%, var(--color-accent) 100%);
+  color: var(--color-selection-text);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 6px 14px rgba(47, 111, 219, 0.22);
+}
+
+.giteye-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent-hover) 88%, white) 0%, var(--color-accent-hover) 100%);
+}
+
+.giteye-btn-success {
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-success) 88%, white) 0%, var(--color-success) 100%);
+  color: #06200c;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16) inset, 0 6px 14px rgba(119, 207, 103, 0.18);
+}
+
+.giteye-btn-danger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.giteye-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger-bg) 70%, var(--color-bg-hover));
+}
+
+.giteye-btn-icon {
+  width: var(--size-control);
+  min-width: var(--size-control);
+  padding: 0;
+}
+
+.giteye-btn-sm {
+  min-height: 26px;
+  padding: 0 0.55rem;
+  font-size: 11.5px;
+}
+
+.giteye-btn-sm.giteye-btn-icon {
+  width: 26px;
+  min-width: 26px;
+}
+
+.giteye-input {
+  width: 100%;
+  min-height: var(--size-control);
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  padding: 0 0.7rem;
+  color: var(--color-text-primary);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.giteye-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.giteye-input:hover:not(:disabled) {
+  border-color: var(--color-border);
+}
+
+.giteye-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 28%, transparent);
+}
+
+.giteye-segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-tertiary);
+}
+
+.giteye-segmented > button {
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  padding: 0 0.55rem;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.giteye-segmented > button:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.giteye-segmented > button[data-state="active"] {
+  background: var(--color-bg-selected-muted);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+.giteye-surface {
+  border: 1px solid color-mix(in srgb, var(--color-border-muted) 90%, transparent);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.giteye-surface-elevated {
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--radius-panel);
+  background: var(--color-bg-tertiary);
+  box-shadow: var(--shadow-panel);
+}
+
+.giteye-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  border-bottom: 1px solid var(--color-border-muted);
+  background: color-mix(in srgb, var(--color-bg-secondary) 92%, transparent);
+  padding: 0 0.75rem;
+}
+
+.giteye-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 5px;
+  background: var(--color-bg-surface);
+  padding: 0 0.35rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .giteye-drag-elevated {

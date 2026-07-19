@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
+import { Bot, Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
-import { gitApi } from "../../lib/tauri-api";
+import { gitApi, type AiProvider } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import type { SshKey } from "../../types/git";
 
@@ -18,11 +18,17 @@ export function SettingsPlaceholder() {
   const { data: credentialConfig, isLoading: credentialLoading, error: credentialError } = useQuery(gitQueries.gitCredentialConfig(activeRepoPath));
   const saveCredentialHelperMutation = useMutation(gitMutations.setGitCredentialHelper(queryClient, activeRepoPath));
   const { data: sshStatus, isLoading: sshLoading, error: sshError } = useQuery(gitQueries.sshStatus());
+  const { data: aiConfig, isLoading: aiLoading, error: aiError } = useQuery(gitQueries.aiConfig());
+  const saveAiConfig = useMutation(gitMutations.saveAiConfig(queryClient));
   const generateSshKey = useMutation(gitMutations.generateSshKey(queryClient));
   const addSshKeyToAgent = useMutation(gitMutations.addSshKeyToAgent(queryClient));
   const [localName, setLocalName] = useState("");
   const [localEmail, setLocalEmail] = useState("");
   const [credentialHelper, setCredentialHelperInput] = useState("");
+  const [aiProvider, setAiProvider] = useState<AiProvider>("openai");
+  const [aiModel, setAiModel] = useState("");
+  const [aiEndpoint, setAiEndpoint] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
   const [sshKeyName, setSshKeyName] = useState("id_giteye");
   const [sshKeyComment, setSshKeyComment] = useState("");
   const [copiedSshKey, setCopiedSshKey] = useState<string | null>(null);
@@ -85,6 +91,8 @@ export function SettingsPlaceholder() {
   const identityErrorText = identityError ?? setGitIdentity.error;
   const credentialPending = credentialLoading || saveCredentialHelperMutation.isPending;
   const credentialErrorText = credentialError ?? saveCredentialHelperMutation.error;
+  const aiPending = aiLoading || saveAiConfig.isPending;
+  const aiErrorText = aiError ?? saveAiConfig.error;
   const sshPending = sshLoading || generateSshKey.isPending || addSshKeyToAgent.isPending;
   const sshErrorText = sshError ?? generateSshKey.error ?? addSshKeyToAgent.error;
 
@@ -96,6 +104,14 @@ export function SettingsPlaceholder() {
   useEffect(() => {
     setCredentialHelperInput(credentialConfig?.localHelpers[0] ?? "");
   }, [credentialConfig?.localHelpers]);
+
+  useEffect(() => {
+    if (!aiConfig) return;
+    setAiProvider(aiConfig.provider);
+    setAiModel(aiConfig.model);
+    setAiEndpoint(aiConfig.endpoint);
+    setAiApiKey("");
+  }, [aiConfig]);
 
   const saveIdentity = () => {
     setGitIdentity.mutate({ name: localName.trim() || null, email: localEmail.trim() || null });
@@ -114,6 +130,40 @@ export function SettingsPlaceholder() {
   const clearCredentialHelper = () => {
     setCredentialHelperInput("");
     saveCredentialHelperMutation.mutate(null);
+  };
+
+  const chooseAiProvider = (provider: AiProvider) => {
+    const currentModel = aiModel.trim();
+    const currentEndpoint = aiEndpoint.trim();
+    const defaultModelSelected = currentModel === "gpt-4o-mini" || currentModel === "openai/gpt-4o-mini";
+    const defaultEndpointSelected = currentEndpoint === "https://api.openai.com/v1" || currentEndpoint === "https://openrouter.ai/api/v1";
+
+    setAiProvider(provider);
+    if (provider === "openai") {
+      if (!currentModel || defaultModelSelected) setAiModel("gpt-4o-mini");
+      if (!currentEndpoint || defaultEndpointSelected) setAiEndpoint("https://api.openai.com/v1");
+      return;
+    }
+    if (!currentModel || defaultModelSelected) setAiModel("openai/gpt-4o-mini");
+    if (!currentEndpoint || defaultEndpointSelected) setAiEndpoint("https://openrouter.ai/api/v1");
+  };
+
+  const saveAiProviderSettings = () => {
+    saveAiConfig.mutate({
+      provider: aiProvider,
+      model: aiModel.trim(),
+      endpoint: aiEndpoint.trim() || null,
+      apiKey: aiApiKey.trim() ? aiApiKey.trim() : null,
+    });
+  };
+
+  const clearStoredAiKey = () => {
+    saveAiConfig.mutate({
+      provider: aiProvider,
+      model: aiModel.trim(),
+      endpoint: aiEndpoint.trim() || null,
+      apiKey: "",
+    });
   };
 
   const createSshKey = () => {
@@ -180,6 +230,63 @@ export function SettingsPlaceholder() {
                     Split
                   </ThemeButton>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Bot className="h-4 w-4" />}
+              title="AI Provider"
+              description="Choose the backend provider for commit messages and conflict resolution."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-0.5">
+                <ThemeButton active={aiProvider === "openai"} onClick={() => chooseAiProvider("openai")} icon={<Bot className="h-3.5 w-3.5" />}>
+                  OpenAI
+                </ThemeButton>
+                <ThemeButton active={aiProvider === "openrouter"} onClick={() => chooseAiProvider("openrouter")} icon={<Bot className="h-3.5 w-3.5" />}>
+                  OpenRouter
+                </ThemeButton>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Model</span>
+                  <input value={aiModel} onChange={(event) => setAiModel(event.target.value)} placeholder={aiProvider === "openrouter" ? "openai/gpt-4o-mini" : "gpt-4o-mini"} className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Base URL</span>
+                  <input value={aiEndpoint} onChange={(event) => setAiEndpoint(event.target.value)} placeholder={aiProvider === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1"} className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
+                </label>
+              </div>
+
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">API key</span>
+                <input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(event) => setAiApiKey(event.target.value)}
+                  placeholder={
+                    aiConfig?.apiKeySource === "environment"
+                      ? "Configured via environment"
+                      : aiConfig?.apiKeySource === "stored"
+                      ? "Configured — leave blank to keep current key"
+                      : "Paste provider API key"
+                  }
+                  className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+                Active: <span className="text-[var(--color-text-secondary)]">{aiConfig?.provider === "openrouter" ? "OpenRouter" : "OpenAI"} · {aiConfig?.model ?? "gpt-4o-mini"}</span>
+                <span className="mx-2">·</span>
+                API key: <span className="text-[var(--color-text-secondary)]">{aiConfig?.apiKeySource ?? "missing"}</span>
+              </div>
+              {aiErrorText ? <p className="text-[var(--color-danger)]">{String(aiErrorText)}</p> : null}
+              <div className="flex justify-end gap-2">
+                <button disabled={aiPending || aiConfig?.apiKeySource !== "stored"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
+                <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</button>
               </div>
             </div>
           </section>
@@ -349,7 +456,7 @@ export function SettingsPlaceholder() {
             />
             <div className="space-y-4 px-4 py-3 text-[12px]">
               <p className="text-[var(--color-text-secondary)]">
-                Export settings includes your theme, diff mode preferences, recent repositories, and favorites. SSH private keys and credential secrets are never exported.
+                Export settings includes your theme, diff mode preferences, AI provider/model/base URL, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
               </p>
               {exportImportMessage ? (
                 <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-3 text-[11px] text-[var(--color-accent)]">

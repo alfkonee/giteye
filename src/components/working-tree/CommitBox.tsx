@@ -3,8 +3,8 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
-import { cn } from "../../lib/cn";
 import { Sparkles, GitCommitHorizontal } from "lucide-react";
+import { Button, Textarea } from "../ui";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -18,6 +18,7 @@ export function CommitBox() {
   const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
   const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: aiConfig } = useQuery(gitQueries.aiConfig());
 
   const aiSuggestionMutation = useMutation({
     mutationFn: () => {
@@ -38,6 +39,8 @@ export function CommitBox() {
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
   const commitBlocked = !message.trim() || (!allowEmpty && stagedCount === 0);
+  const aiProviderLabel = aiConfig?.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const aiStatus = `AI: ${aiProviderLabel} · ${aiConfig?.model ?? "gpt-4o-mini"}${aiConfig?.apiKeyConfigured === false ? " · key missing" : ""}`;
 
   const handleCommit = () => {
     const commitMessage = message.trim();
@@ -101,16 +104,16 @@ export function CommitBox() {
             {subjectLength}/72
           </span>
         </div>
-        <textarea
+        <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Summary (required) — Ctrl+Enter commits to ${branchName}`}
           rows={3}
-          className="w-full resize-none rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-2 text-[13px] leading-5 text-[var(--color-text-primary)] shadow-inner outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
+          className="w-full text-[13px]"
         />
-        <div className="mt-2 grid gap-2 text-[11px] text-[var(--color-text-muted)] sm:grid-cols-3">
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[var(--color-text-muted)]">
+          <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={signOff}
@@ -121,7 +124,7 @@ export function CommitBox() {
               Sign-off <span className="text-[var(--color-text-subtle)]">(-s)</span>
             </span>
           </label>
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+          <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={noVerify}
@@ -132,7 +135,7 @@ export function CommitBox() {
               Skip hooks <span className="text-[var(--color-text-subtle)]">(--no-verify)</span>
             </span>
           </label>
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+          <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={allowEmpty}
@@ -163,41 +166,35 @@ export function CommitBox() {
               : "Write a concise summary; add details on following lines."}
           </span>
           <div className="flex shrink-0 items-center gap-2">
-            <button
+            <span className="text-[11px] text-[var(--color-text-muted)]">{aiStatus}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Sparkles className="h-3.5 w-3.5" />}
               onClick={() => aiSuggestionMutation.mutate()}
               disabled={stagedCount === 0 || aiSuggestionMutation.isPending || commitMutation.isPending || amendMutation.isPending}
-              title={stagedCount === 0 ? "Stage files first to generate a suggestion" : "Generate a commit message using AI"}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border border-[color:rgba(88,166,255,0.45)] px-3 py-1.5 text-[13px] font-semibold text-[var(--color-accent)] shadow-sm transition-colors hover:bg-[color:rgba(88,166,255,0.08)]",
-                "disabled:cursor-not-allowed disabled:opacity-40"
-              )}
+              title={stagedCount === 0 ? "Stage files first to generate a suggestion" : `Generate a commit message using ${aiProviderLabel}${aiConfig?.apiKeyConfigured ? "" : " (API key missing)"}`}
             >
-              <Sparkles className="h-3.5 w-3.5" />
               {aiSuggestionMutation.isPending ? "Thinking…" : "Suggest"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
               onClick={handleAmend}
               disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
               title={`Amend HEAD with ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}. Leave the message blank to reuse the current HEAD message.`}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border border-[color:rgba(248,81,73,0.45)] px-3 py-1.5 text-[13px] font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[color:rgba(248,81,73,0.08)]",
-                "disabled:cursor-not-allowed disabled:opacity-40"
-              )}
             >
               Amend HEAD
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Sparkles className="h-3.5 w-3.5" />}
               onClick={handleCommit}
               disabled={commitBlocked || commitMutation.isPending || amendMutation.isPending}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
-                "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
-                "disabled:cursor-not-allowed disabled:opacity-40"
-              )}
             >
-              <Sparkles className="h-3.5 w-3.5" />
               Commit
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { CommitBox } from "./CommitBox";
 import { RefreshCw, GitBranch, CheckCircle2, AlertCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitQueries, invalidateGitState } from "../../lib/git-data";
+import { Button } from "../ui";
 
 interface WorkingTreeProps {}
 
@@ -30,30 +31,30 @@ export function WorkingTree(_props: WorkingTreeProps) {
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
-      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <div className="flex items-center justify-between px-4 py-3">
+      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]/90">
+        <div className="flex items-center justify-between px-3 py-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-[17px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+              <h2 className="text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
                 Changes
               </h2>
               {!isLoading && (
-                <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--color-text-muted)] tabular-nums">
+                <span className="giteye-chip tabular-nums">
                   {totalCount} files
                 </span>
               )}
             </div>
-            <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+            <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
                 <span className="truncate text-[var(--color-text-secondary)]">{branchName}</span>
               </span>
               <span className="h-3 w-px bg-[var(--color-border-muted)]" />
-              <span className="inline-flex items-center gap-1.5">
+              <span className="giteye-chip" data-tone={repoInfo?.isClean ? "success" : "warning"}>
                 {repoInfo?.isClean ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-success)]" />
+                  <CheckCircle2 className="h-3 w-3" />
                 ) : (
-                  <AlertCircle className="h-3.5 w-3.5 text-[var(--color-warning)]" />
+                  <AlertCircle className="h-3 w-3" />
                 )}
                 <span>{repoInfo?.isClean ? "Working tree clean" : `${stagedCount} staged · ${unstagedCount} unstaged`}</span>
               </span>
@@ -65,13 +66,16 @@ export function WorkingTree(_props: WorkingTreeProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={handleRefresh}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+              variant="secondary"
+              size="sm"
+              iconOnly
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
               title="Refresh"
             >
-              <RefreshCw className="h-[17px] w-[17px]" />
-            </button>
+              Refresh
+            </Button>
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@ import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { cn } from "../../lib/cn";
 import { FileTree } from "../common/FileTree";
+import { Button, SegmentedControl } from "../ui";
 
 interface FileStatusListProps {
   title: string;
@@ -171,30 +172,24 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           {files.length}
         </span>
         <div className="flex-1" />
-        <div className="flex overflow-hidden rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[10px]">
-          <button
-            type="button"
-            onClick={() => setViewMode("tree")}
-            className={cn("px-2 py-0.5", viewMode === "tree" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
-          >
-            Tree
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("list")}
-            className={cn("px-2 py-0.5", viewMode === "list" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
-          >
-            List
-          </button>
-        </div>
+        <SegmentedControl
+          items={[
+            { id: "tree", label: "Tree" },
+            { id: "list", label: "List" },
+          ]}
+          value={viewMode}
+          onChange={(id) => setViewMode(id as "tree" | "list")}
+          className="text-[10px]"
+        />
         {files.length > 0 && (
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
             disabled={isBulkMutating}
-            className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {staged ? "Unstage all" : "Stage all"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -218,8 +213,8 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           ) : (
             <div className="space-y-1.5">
               {groups.map((group) => (
-                <div key={group.key} className="overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45 shadow-sm">
-                  <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/50 px-2 py-1">
+                <div key={group.key} className="overflow-hidden rounded-lg bg-[var(--color-bg-secondary)]/35 ring-1 ring-inset ring-[var(--color-border-muted)]/70">
+                  <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)]/60 bg-[var(--color-bg-tertiary)]/30 px-2 py-1">
                     <span className={cn("h-2 w-2 rounded-full", group.accentClass)} />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
                       {group.title}
@@ -238,9 +233,9 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                       renderIcon={(file) => (
                         <StatusBadge status={parseFileStatus(file.status)} className="h-4 w-4 text-[9px]" />
                       )}
-                      renderSubtext={(file, isSelected) =>
+                      renderSubtext={(file) =>
                         file.oldPath ? (
-                          <span className={cn("block truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                          <span className="block truncate text-[10px] leading-3 text-[var(--color-text-muted)]">
                             renamed from {file.oldPath}
                           </span>
                         ) : null
@@ -265,7 +260,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 className={cn(
                                   "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                 )}
                                 title="Stash selected file"
@@ -282,7 +277,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               className={cn(
                                 "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
-                                  ? "text-white hover:bg-white/15"
+                                  ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                               )}
                               title="Discard file changes"
@@ -298,7 +293,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               className={cn(
                                 "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
-                                  ? "text-white hover:bg-white/15"
+                                  ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                 statusTone(status),
                               )}
@@ -331,7 +326,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                             className={cn(
                               "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_76px] items-center gap-1.5 px-2 py-0.5 transition-colors",
                               isSelected
-                                ? "bg-[var(--color-bg-selected)] text-white"
+                                ? "giteye-selected-row"
                                 : "hover:bg-[var(--color-bg-hover)]",
                             )}
                             onClick={() => handleFileClick(file)}
@@ -341,18 +336,18 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               <div
                                 className={cn(
                                   "truncate text-[12px] font-medium leading-4",
-                                  isSelected ? "text-white" : "text-[var(--color-text-primary)]",
+                                  isSelected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
                                 )}
                               >
                                 {directory && (
-                                  <span className={cn("font-normal", isSelected ? "text-white/55" : "text-[var(--color-text-muted)]")}>
+                                  <span className="font-normal text-[var(--color-text-muted)]">
                                     {directory}
                                   </span>
                                 )}
                                 <span>{name}</span>
                               </div>
                               {file.oldPath && (
-                                <div className={cn("truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                                <div className="truncate text-[10px] leading-3 text-[var(--color-text-muted)]">
                                   renamed from {file.oldPath}
                                 </div>
                               )}
@@ -368,7 +363,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                   className={cn(
                                     "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                     isSelected
-                                      ? "text-white hover:bg-white/15"
+                                      ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                       : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                   )}
                                   title="Stash selected file"
@@ -385,7 +380,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 className={cn(
                                   "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                                 )}
                                 title="Discard file changes"
@@ -401,7 +396,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 className={cn(
                                   "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                   statusTone(status),
                                 )}

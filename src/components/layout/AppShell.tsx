@@ -74,17 +74,18 @@ function StatusBar({
   isRebasing: boolean;
 }) {
   return (
-    <div className="giteye-statusbar flex h-6 shrink-0 items-center gap-2.5 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 text-[11px] text-[var(--color-text-muted)]">
-      <span className="truncate">{repoName ?? "No repository"}</span>
+    <div className="flex h-[22px] shrink-0 items-center gap-1.5 border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 text-[10.5px] text-[var(--color-text-muted)]">
+      <span className="min-w-0 max-w-[220px] truncate px-1">{repoName ?? "No repository"}</span>
       {branchName && (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+        <span className="giteye-chip max-w-[240px] px-1.5 text-[10.5px]" data-tone="accent" title={branchName}>
+          <GitBranch className="h-3 w-3 shrink-0" />
           <span className="truncate">{branchName}</span>
         </span>
       )}
       {submoduleParent ? (
         <span
-          className="flex min-w-0 items-center gap-1.5 text-[var(--color-accent)]"
+          className="giteye-chip max-w-[280px] px-1.5 text-[10.5px]"
+          data-tone="accent"
           title={`Submodule ${submoduleParent.submodulePath} of ${submoduleParent.path}`}
         >
           <span className="truncate">
@@ -93,18 +94,18 @@ function StatusBar({
         </span>
       ) : null}
       {isClean !== undefined && (
-        <span className={isClean ? "flex items-center gap-1.5 text-[var(--color-success)]" : "flex items-center gap-1.5 text-[var(--color-warning)]"}>
+        <span className="giteye-chip px-1.5 text-[10.5px]" data-tone={isClean ? "success" : "warning"}>
           <Circle className="h-2 w-2 fill-current" />
           {isClean ? "Clean" : "Changes"}
         </span>
       )}
       {isRebasing && (
-        <span className="flex items-center gap-1.5 text-[var(--color-warning)]">
+        <span className="giteye-chip px-1.5 text-[10.5px]" data-tone="warning">
           <Circle className="h-2 w-2 fill-current" />
           Rebase active
         </span>
       )}
-      <span className="ml-auto capitalize">{getViewDefinition(activeView).label}</span>
+      <span className="ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">{getViewDefinition(activeView).label}</span>
     </div>
   );
 }

@@ -79,7 +79,7 @@ export function CollaborationConnect() {
                 <button
                   type="button"
                   onClick={() => setActiveView("stacked-prs")}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-[var(--color-bg-selected)] px-3 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)]"
+                  className="giteye-btn giteye-btn-primary h-9"
                 >
                   <GitPullRequest className="h-4 w-4" />
                   Open Pull Requests

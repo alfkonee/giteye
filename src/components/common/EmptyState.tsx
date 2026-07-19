@@ -19,13 +19,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[180px] flex-col items-center justify-center px-6 py-8 text-center select-none",
+        "flex h-full min-h-[160px] flex-col items-center justify-center px-6 py-8 text-center select-none",
         className,
       )}
     >
-      <div className="flex max-w-[360px] flex-col items-center rounded-[var(--radius-panel)] border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)]/45 px-7 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="flex max-w-[380px] flex-col items-center px-6 py-5">
         {icon && (
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-muted)] bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-bg-selected-soft)] text-[var(--color-accent)] ring-1 ring-[var(--color-border-muted)]">
             {icon}
           </div>
         )}

@@ -183,6 +183,8 @@ pub fn run() {
             commands::github::remove_pull_request_label,
             commands::github::merge_pull_request,
             commands::github::close_pull_request,
+            commands::ai::get_ai_config,
+            commands::ai::save_ai_config,
             commands::ai::resolve_conflict_with_ai,
             commands::ai::suggest_commit_message,
             commands::settings_io::export_settings,
@@ -198,8 +200,8 @@ fn configure_linux_webkit_environment() {
     // libraries. That mismatch has produced blank windows on newer Linux desktops.
     if std::env::var_os("GIO_MODULE_DIR").is_none() {
         if let Some(app_dir) = std::env::var_os("APPDIR") {
-            let gio_modules = std::path::PathBuf::from(app_dir)
-                .join("usr/lib/x86_64-linux-gnu/gio/modules");
+            let gio_modules =
+                std::path::PathBuf::from(app_dir).join("usr/lib/x86_64-linux-gnu/gio/modules");
             if gio_modules.is_dir() {
                 std::env::set_var("GIO_MODULE_DIR", gio_modules);
             }

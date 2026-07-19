@@ -145,13 +145,31 @@ function TreeEntries<T>({
             }}
             className={cn(
               "group grid min-h-[30px] w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 py-0.5 text-left transition-colors",
-              selected ? "bg-[var(--color-bg-selected)] text-white" : "hover:bg-[var(--color-bg-hover)]",
+              selected
+                ? "giteye-selected-row"
+                : "hover:bg-[var(--color-bg-hover)]",
             )}
             style={{ paddingLeft: depth * 12 + 8 }}
           >
-            {renderIcon ? renderIcon(entry.item, selected) : <File className={cn("h-3.5 w-3.5", selected ? "text-white" : "text-[var(--color-text-muted)]")} />}
+            {renderIcon ? (
+              renderIcon(entry.item, selected)
+            ) : (
+              <File
+                className={cn(
+                  "h-3.5 w-3.5",
+                  selected ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
+                )}
+              />
+            )}
             <span className="min-w-0">
-              <span className={cn("block truncate text-[12px] font-medium leading-4", selected ? "text-white" : "text-[var(--color-text-primary)]")}>{entry.name}</span>
+              <span
+                className={cn(
+                  "block truncate text-[12px] font-medium leading-4",
+                  selected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
+                )}
+              >
+                {entry.name}
+              </span>
               {renderSubtext?.(entry.item, selected)}
             </span>
             {renderTrailing?.(entry.item, selected)}

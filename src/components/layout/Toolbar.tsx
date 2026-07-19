@@ -292,7 +292,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <button
           type="button"
           onClick={() => setActiveRepoPath(null)}
-          className="flex h-7 w-8 items-center justify-center rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
           title="Repo Hub"
         >
           <Home className="h-4 w-4" />
@@ -302,7 +302,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           <button
             type="button"
             onClick={() => setRepoMenuOpen((open) => !open)}
-            className="flex h-7 max-w-[560px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
+            className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 max-w-[560px] gap-1.5 px-2 text-[13px] font-semibold text-[var(--color-text-primary)]"
             title={
               submoduleParent
                 ? `${repoName ?? "Repository"} is submodule ${submoduleParent.submodulePath} of parent repository ${submoduleParent.name} (${submoduleParent.path})`
@@ -334,7 +334,8 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                   value={repoSearch}
                   onChange={(event) => setRepoSearch(event.target.value)}
                   placeholder="Search recent and favorite repositories…"
-                  className="h-8 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-7 pr-2 text-[12px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+                  className="giteye-input h-8 text-[12px]"
+                  style={{ paddingLeft: "1.75rem", paddingRight: "0.5rem" }}
                   autoFocus
                 />
               </div>
@@ -349,7 +350,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                       onClick={() => openRepo(repo.path)}
                       className={cn(
                         "grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--color-bg-hover)]",
-                        activeRepoPath === repo.path && "bg-[var(--color-bg-selected)]/30",
+                        activeRepoPath === repo.path && "giteye-selected-row",
                       )}
                     >
                       <span className="min-w-0">
@@ -387,7 +388,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           <div className="relative" ref={branchMenuRef}>
             <button
               onClick={() => setBranchMenuOpen((open) => !open)}
-              className="flex h-7 max-w-[200px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+              className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 max-w-[200px] gap-1.5 px-2 text-[13px] font-medium text-[var(--color-text-secondary)]"
               title="Checkout branch; right-click branch rows for rename, tracking, push, and delete actions"
             >
               <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -413,20 +414,20 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                     className={cn(
                       "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors",
                       branch.isCurrent
-                        ? "bg-[var(--color-bg-selected)] text-white"
+                        ? "giteye-selected-row text-[var(--color-text-primary)]"
                         : "text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]",
                     )}
                   >
-                    <GitBranch className={cn("h-4 w-4 shrink-0", branch.isCurrent ? "text-white" : "text-[var(--color-text-muted)]")} />
+                    <GitBranch className={cn("h-4 w-4 shrink-0", branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]")} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{branch.shortName}</span>
                       {branch.upstream && (
-                        <span className={cn("block truncate text-[10px]", branch.isCurrent ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+                        <span className="block truncate text-[10px] text-[var(--color-text-muted)]">
                           {trackingLabel(branch)}
                         </span>
                       )}
                     </span>
-                    {branch.isCurrent && <span className="text-[11px] opacity-80">current</span>}
+                    {branch.isCurrent && <span className="text-[11px] font-medium text-[var(--color-accent)]">current</span>}
                   </button>
                 ))}
                 {remoteBranches.length > 0 && (
@@ -462,6 +463,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Download className="h-4 w-4" />}
           label="Fetch"
           title="Fetch from remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => fetchMutation.mutate(undefined)}
         />
@@ -469,6 +471,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<GitMerge className="h-4 w-4" />}
           label="Pull"
           title="Pull from remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => pullMutation.mutate({})}
         />
@@ -476,6 +479,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Upload className="h-4 w-4" />}
           label="Push"
           title="Push to remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => pushMutation.mutate({})}
         />
@@ -483,6 +487,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Zap className="h-4 w-4" />}
           label="Sync"
           title="Pull then push"
+          tone="success"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={handleSync}
         />
@@ -492,11 +497,12 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
-          className="relative flex h-7 w-full max-w-xl items-center rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-8 pr-2.5 text-[13px] text-[var(--color-text-muted)] shadow-[var(--shadow-panel)] hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+          className="giteye-input relative flex h-7 w-full max-w-xl items-center py-0 pl-8 pr-2.5 text-left text-[13px] text-[var(--color-text-muted)] shadow-none hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          style={{ paddingLeft: "2rem", paddingRight: "0.625rem" }}
         >
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" />
           <span className="truncate">Search files, branches, commands...</span>
-          <kbd className="ml-auto rounded bg-[var(--color-bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]">⌘K</kbd>
+          <kbd className="giteye-kbd ml-auto">⌘K</kbd>
         </button>
       </div>
 
@@ -627,19 +633,29 @@ function ToolbarButton({
   title,
   onClick,
   disabled,
+  tone = "ghost",
 }: {
   icon: ReactNode;
   label?: string;
   title?: string;
   onClick?: () => void;
   disabled?: boolean;
+  tone?: "ghost" | "secondary" | "success";
 }) {
   return (
     <button
       onClick={onClick}
       title={title ?? label}
       disabled={disabled}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+      className={cn(
+        "giteye-btn giteye-btn-sm h-7 gap-1.5 text-[12px] disabled:cursor-not-allowed",
+        label ? "px-2" : "giteye-btn-icon",
+        tone === "success"
+          ? "giteye-btn-success"
+          : tone === "secondary"
+            ? "giteye-btn-secondary"
+            : "giteye-btn-ghost",
+      )}
     >
       {icon}
       {label && <span className="hidden lg:inline">{label}</span>}

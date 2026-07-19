@@ -256,8 +256,8 @@ mod tests {
         std::os::unix::fs::symlink(&outside, repo.join("outside-link.txt"))
             .expect("create symlink");
 
-        let error = get_file_diff(&repo, "outside-link.txt", false)
-            .expect_err("symlink escape rejected");
+        let error =
+            get_file_diff(&repo, "outside-link.txt", false).expect_err("symlink escape rejected");
 
         assert!(matches!(error, AppError::InvalidPath(_)));
     }

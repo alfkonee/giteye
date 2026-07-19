@@ -89,6 +89,24 @@ export interface BisectStartRequest {
   paths?: string[];
 }
 
+export type AiProvider = "openai" | "openrouter";
+export type AiApiKeySource = "environment" | "stored" | "missing";
+
+export interface AiConfigView {
+  provider: AiProvider;
+  model: string;
+  endpoint: string;
+  apiKeyConfigured: boolean;
+  apiKeySource: AiApiKeySource;
+}
+
+export interface SaveAiConfigRequest {
+  provider: AiProvider;
+  model: string;
+  endpoint: string | null;
+  apiKey: string | null;
+}
+
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
 
 export const gitApi = {
@@ -861,6 +879,12 @@ export const gitApi = {
       "run_custom_git_command",
       { repoPath, args },
     ),
+
+  getAiConfig: () =>
+    invoke<AiConfigView>("get_ai_config"),
+
+  saveAiConfig: (request: SaveAiConfigRequest) =>
+    invoke<AiConfigView>("save_ai_config", { request }),
 
   resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
     invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),

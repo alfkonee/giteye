@@ -252,6 +252,7 @@ export function RebaseConflictResolver() {
   }, [rebaseState?.todo]);
   const displayedConflictPath = selectedConflictPath ?? firstConflictPath;
   const conflictContentQuery = useQuery(gitQueries.conflictContent(activeRepoPath, displayedConflictPath));
+  const { data: aiConfig } = useQuery(gitQueries.aiConfig());
   const actions = {
     continueRebase: useMutation(gitMutations.continueRebase(queryClient, activeRepoPath)),
     abortRebase: useMutation(gitMutations.abortRebase(queryClient, activeRepoPath)),
@@ -288,6 +289,7 @@ export function RebaseConflictResolver() {
   const displayedCurrent = splitLines(conflictContent?.ours, conflictContentQuery.isLoading ? "Loading current version…" : "No current conflict content available.");
   const displayedIncoming = splitLines(conflictContent?.theirs, conflictContentQuery.isLoading ? "Loading incoming version…" : "No incoming conflict content available.");
   const displayedResult = splitLines(conflictContent?.result, conflictContentQuery.isLoading ? "Loading result version…" : "No result conflict content available.");
+  const aiProviderLabel = aiConfig?.provider === "openrouter" ? "OpenRouter" : "OpenAI";
   const totalSteps = rebaseState?.totalSteps ?? liveTodo.length;
   const currentStep = rebaseState?.currentStep ?? rebaseState?.done.length ?? 0;
   const conflictCount = displayedConflicts.length;
@@ -458,7 +460,7 @@ export function RebaseConflictResolver() {
             <div className="p-3">
               <div className="mb-3 flex items-center gap-2 font-semibold">
                 <Bot className="h-5 w-5" /> AI Assistant
-                <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">Beta</span>
+                <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">{aiProviderLabel} · {aiConfig?.model ?? "gpt-4o-mini"}</span>
               </div>
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 text-sm text-[var(--color-text-secondary)]">
                 {aiError ? (
@@ -471,7 +473,7 @@ export function RebaseConflictResolver() {
                 ) : (
                   <>
                     <p>AI can help resolve this merge conflict.</p>
-                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">Requires GITEYE_AI_API_KEY env var or ai_config.json.</p>
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">{aiConfig?.apiKeyConfigured ? `Using ${aiProviderLabel} · ${aiConfig.model}` : "Configure provider and API key in Settings."}</p>
                   </>
                 )}
                 <button

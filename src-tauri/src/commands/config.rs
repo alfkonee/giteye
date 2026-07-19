@@ -1,6 +1,6 @@
 use crate::errors::AppError;
-use crate::git::config_service;
 use crate::git::cli::GitCli;
+use crate::git::config_service;
 use crate::models::{GitCredentialConfig, GitIdentity};
 use std::path::Path;
 
@@ -40,7 +40,10 @@ pub fn set_git_credential_helper(
 }
 
 #[tauri::command]
-pub fn test_git_authentication(repo_path: String, remote: Option<String>) -> Result<AuthTestResult, AppError> {
+pub fn test_git_authentication(
+    repo_path: String,
+    remote: Option<String>,
+) -> Result<AuthTestResult, AppError> {
     let repo_path = Path::new(&repo_path);
     let remote_name = remote.unwrap_or_else(|| "origin".to_string());
 
@@ -74,8 +77,8 @@ pub fn clear_credential_cache(repo_path: String, host: Option<String>) -> Result
     let host_to_clear = if let Some(h) = host {
         h
     } else {
-        let remotes_output = GitCli::run(repo_path, &["remote", "get-url", "origin"])
-            .unwrap_or_default();
+        let remotes_output =
+            GitCli::run(repo_path, &["remote", "get-url", "origin"]).unwrap_or_default();
         extract_host_from_url(remotes_output.trim())
     };
 
@@ -83,15 +86,9 @@ pub fn clear_credential_cache(repo_path: String, host: Option<String>) -> Result
         return Ok("No remote host detected. Credential cache was not modified.".to_string());
     }
 
-    let args = vec![
-        "credential",
-        "reject",
-    ];
+    let args = vec!["credential", "reject"];
 
-    let input = format!(
-        "protocol=https\nhost={}\n\n",
-        host_to_clear,
-    );
+    let input = format!("protocol=https\nhost={}\n\n", host_to_clear,);
 
     let _ = GitCli::run_with_input(repo_path, &args, &input);
 
@@ -101,9 +98,12 @@ pub fn clear_credential_cache(repo_path: String, host: Option<String>) -> Result
 fn extract_host_from_url(url: &str) -> String {
     let trimmed = url.trim();
     if trimmed.contains('@') {
-        trimmed.split('@').nth(1)
+        trimmed
+            .split('@')
+            .nth(1)
             .and_then(|s| s.split(':').next())
-            .unwrap_or("").to_string()
+            .unwrap_or("")
+            .to_string()
     } else if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
         trimmed
             .trim_start_matches("https://")
@@ -127,7 +127,10 @@ pub struct CustomCommandResult {
 }
 
 #[tauri::command]
-pub fn run_custom_git_command(repo_path: String, args: Vec<String>) -> Result<CustomCommandResult, AppError> {
+pub fn run_custom_git_command(
+    repo_path: String,
+    args: Vec<String>,
+) -> Result<CustomCommandResult, AppError> {
     let repo_path = Path::new(&repo_path);
 
     if args.is_empty() {

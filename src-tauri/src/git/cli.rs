@@ -109,7 +109,8 @@ impl GitCli {
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    let output = child.wait_with_output()
+                    let output = child
+                        .wait_with_output()
                         .map_err(|e| AppError::IoError(e.to_string()))?;
                     if !status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);

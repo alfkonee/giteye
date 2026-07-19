@@ -9,6 +9,7 @@ import {
   type CheckoutBranchStrategy,
   type PatchApplyRequest,
   type PushBranchRequest,
+  type SaveAiConfigRequest,
 } from "./tauri-api";
 import type {
   BlameFileRequest,
@@ -213,6 +214,7 @@ export const gitKeys = {
     [...gitKeys.all, "favorite-repositories"] as const,
   gitJobs: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "jobs", repoPath ?? null] as const,
+  aiConfig: () => [...gitKeys.all, "ai-config"] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -615,6 +617,12 @@ export const gitQueries = {
       queryFn: () => gitApi.listGitJobs(repoPath ?? null),
     }),
 
+  aiConfig: () =>
+    queryOptions({
+      queryKey: gitKeys.aiConfig(),
+      queryFn: () => gitApi.getAiConfig(),
+    }),
+
   status: (repoPath: string | null) =>
     queryOptions({
       queryKey: gitKeys.repositorySnapshot(repoPath),
@@ -1004,6 +1012,24 @@ export const gitMutations = {
         finishGitActionNotice(context, "Removed from recent repositories.");
       },
       onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  saveAiConfig: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (request: SaveAiConfigRequest) =>
+        gitApi.saveAiConfig(request),
+      onMutate: (request) =>
+        startGitActionNotice(
+          "Saving AI provider",
+          `${request.provider} · ${request.model || "default model"}`,
+          null,
+        ),
+      onSuccess: (config, _request, context) => {
+        queryClient.setQueryData(gitKeys.aiConfig(), config);
+        finishGitActionNotice(context, "AI provider settings saved.");
+      },
+      onError: (error, _request, context) =>
         failGitActionNotice(context, error),
     }),
 

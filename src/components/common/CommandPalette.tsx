@@ -90,16 +90,17 @@ export function CommandPalette({
       shouldFilter
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[20vh]"
     >
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-        <div className="flex items-center border-b border-[var(--color-border-muted)] px-4">
+      <div className="fixed inset-0 bg-[var(--color-bg-overlay)] backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/96 shadow-[var(--shadow-elevated)] backdrop-blur-md">
+        <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] px-3.5">
           <Command.Input
             autoFocus
             placeholder="Type a command or search..."
-            className="h-12 w-full bg-transparent text-sm text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]"
+            className="h-11 w-full bg-transparent text-[13px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]"
           />
+          <kbd className="giteye-kbd shrink-0">Esc</kbd>
         </div>
-        <Command.List className="max-h-[320px] overflow-y-auto p-2">
+        <Command.List className="max-h-[340px] overflow-y-auto p-1.5">
           <Command.Empty className="px-4 py-8 text-center text-xs text-[var(--color-text-muted)]">
             No commands found.
           </Command.Empty>
@@ -109,14 +110,14 @@ export function CommandPalette({
               value={`${cmd.label} ${cmd.detail}`}
               disabled={cmd.disabled}
               onSelect={() => runCommand(cmd)}
-              className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-[var(--color-text-primary)] aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-selected:bg-[var(--color-bg-hover)]"
+              className="flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-selected:bg-[var(--color-bg-selected-muted)] aria-selected:shadow-[inset_2px_0_0_var(--color-selection-bar)]"
             >
-              <span className="truncate">{cmd.label}</span>
-              <span className="truncate text-xs text-[var(--color-text-muted)]">{cmd.detail}</span>
+              <span className="truncate font-medium">{cmd.label}</span>
+              <span className="max-w-[45%] truncate text-[11px] text-[var(--color-text-muted)]">{cmd.detail}</span>
             </Command.Item>
           ))}
         </Command.List>
-        <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-[10px] text-[var(--color-text-muted)]">
+        <div className="border-t border-[var(--color-border-muted)] px-3.5 py-2 text-[10px] text-[var(--color-text-muted)]">
           <span>Type to filter · Esc to close · Enter to select</span>
         </div>
       </div>

@@ -598,16 +598,16 @@ export function WorktreesSubmodules() {
           <button
             type="button"
             onClick={() => setActiveWorkspaceSection("worktrees")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeWorkspaceSection === "worktrees" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeWorkspaceSection === "worktrees" ? "giteye-nav-active" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
           >
-            Worktrees <span className="ml-2 text-xs opacity-80">{allWorktreeRows.length}</span>
+            Worktrees <span className="ml-2 text-xs text-[var(--color-text-muted)]">{allWorktreeRows.length}</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveWorkspaceSection("submodules")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeWorkspaceSection === "submodules" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${activeWorkspaceSection === "submodules" ? "giteye-nav-active" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
           >
-            Submodules <span className="ml-2 text-xs opacity-80">{allSubmoduleRows.length}</span>
+            Submodules <span className="ml-2 text-xs text-[var(--color-text-muted)]">{allSubmoduleRows.length}</span>
           </button>
         </div>
         <div className="text-xs text-[var(--color-text-muted)]">

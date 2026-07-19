@@ -245,10 +245,10 @@ export function Sidebar() {
 
   if (sidebarCollapsed) {
     return (
-      <div className="flex w-10 shrink-0 flex-col items-center border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
+      <div className="flex w-11 shrink-0 flex-col items-center border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm">
         <button
           onClick={toggleSidebar}
-          className="mt-2 rounded-md p-2 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm mt-2 text-[var(--color-text-muted)]"
           title="Expand sidebar"
         >
           <PanelLeft className="h-4 w-4" />
@@ -258,10 +258,10 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-      <div className="border-b border-[var(--color-border-muted)] px-2.5 py-2.5">
+    <aside className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/92 backdrop-blur-sm">
+      <div className="border-b border-[var(--color-border-muted)] px-3 py-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)]">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] shadow-[var(--shadow-soft)]">
             <FolderOpen className="h-4 w-4 text-[var(--color-accent)]" />
           </div>
           <div className="min-w-0">
@@ -467,11 +467,11 @@ export function Sidebar() {
 
 function SidebarSection({ title, count }: { title: string; count?: number }) {
   return (
-    <div className="flex items-center px-2.5 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
-      <span>{title}</span>
-      {count !== undefined && count > 0 && (
-        <span className="ml-auto tabular-nums">{count}</span>
-      )}
+    <div className="giteye-section-label flex items-center px-3 pb-1 pt-3">
+      <span className="truncate">{title}</span>
+      {count !== undefined && count > 0 ? (
+        <span className="ml-auto tabular-nums text-[10px] text-[var(--color-text-subtle)]">{count}</span>
+      ) : null}
     </div>
   );
 }
@@ -508,15 +508,16 @@ function SidebarNavItem({
       title={title}
       onContextMenu={onContextMenu}
       className={cn(
-        "giteye-row flex w-full items-center gap-2.5 text-left text-[13px] transition-colors",
-        indent ? "pl-7 pr-2.5" : "px-2.5",
+        "giteye-row flex w-full items-center gap-2.5 rounded-md text-left text-[13px] transition-colors",
+        "mx-1.5 w-[calc(100%-0.75rem)]",
+        indent ? "pl-6 pr-2" : "px-2",
         active
-          ? "bg-[var(--color-bg-selected)] text-white"
+          ? "giteye-nav-active"
           : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
       )}
     >
       {active ? (
-        icon
+        <span className="text-[var(--color-accent)]">{icon}</span>
       ) : (
         <span
           className={
@@ -529,12 +530,14 @@ function SidebarNavItem({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate">{label}</span>
+        <span className={cn("block truncate", active && "font-semibold text-[var(--color-text-primary)]")}>
+          {label}
+        </span>
         {description && (
           <span
             className={cn(
               "block truncate text-[10px]",
-              active ? "text-white/75" : "text-[var(--color-text-muted)]",
+              active ? "text-[var(--color-text-muted)]" : "text-[var(--color-text-muted)]",
             )}
           >
             {description}
@@ -544,9 +547,9 @@ function SidebarNavItem({
       {count !== undefined && count > 0 && (
         <span
           className={cn(
-            "rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
             active
-              ? "bg-white/20 text-white"
+              ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
               : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
           )}
         >
