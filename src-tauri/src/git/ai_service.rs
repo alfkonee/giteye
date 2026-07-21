@@ -503,24 +503,46 @@ fn list_ai_models_from(
             })
         })
         .flatten();
-    let api_key = trimmed_option(request.api_key.as_deref())
-        .or_else(|| trimmed_option(env.giteye_api_key.as_deref()))
-        .or_else(|| match provider {
-            AiProvider::OpenAi => trimmed_option(env.openai_api_key.as_deref()),
-            AiProvider::Claude => trimmed_option(env.anthropic_api_key.as_deref()),
-            AiProvider::DeepSeek => trimmed_option(env.deepseek_api_key.as_deref()),
-            AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
-        })
-        .or_else(|| {
-            existing.as_ref().and_then(|config| {
-                (config.provider == Some(provider))
-                    .then(|| {
-                        trimmed_option(config.api_key.as_deref())
-                            .or_else(|| trimmed_option(config.ai_api_key.as_deref()))
+    let inline_api_key = trimmed_option(request.api_key.as_deref());
+    let provider_endpoint = endpoint_matches_provider_origin(&endpoint, provider);
+    if !provider_endpoint && inline_api_key.is_none() {
+        return Ok(fallback_model_list(
+            provider,
+            configured_model.as_deref(),
+            "Custom endpoints do not receive stored or environment API keys; enter a key and refresh explicitly."
+                .to_string(),
+        ));
+    }
+    if inline_api_key.is_some() && !endpoint_accepts_inline_key(&endpoint) {
+        return Ok(fallback_model_list(
+            provider,
+            configured_model.as_deref(),
+            "API keys are not sent to non-HTTPS model endpoints.".to_string(),
+        ));
+    }
+
+    let implicit_api_key = provider_endpoint
+        .then(|| {
+            trimmed_option(env.giteye_api_key.as_deref())
+                .or_else(|| match provider {
+                    AiProvider::OpenAi => trimmed_option(env.openai_api_key.as_deref()),
+                    AiProvider::Claude => trimmed_option(env.anthropic_api_key.as_deref()),
+                    AiProvider::DeepSeek => trimmed_option(env.deepseek_api_key.as_deref()),
+                    AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
+                })
+                .or_else(|| {
+                    existing.as_ref().and_then(|config| {
+                        (config.provider == Some(provider))
+                            .then(|| {
+                                trimmed_option(config.api_key.as_deref())
+                                    .or_else(|| trimmed_option(config.ai_api_key.as_deref()))
+                            })
+                            .flatten()
                     })
-                    .flatten()
-            })
-        });
+                })
+        })
+        .flatten();
+    let api_key = inline_api_key.or(implicit_api_key);
 
     if provider != AiProvider::OpenRouter && api_key.is_none() {
         return Ok(fallback_model_list(
@@ -552,6 +574,32 @@ fn list_ai_models_from(
             ),
         )),
     }
+}
+
+fn endpoint_matches_provider_origin(endpoint: &str, provider: AiProvider) -> bool {
+    let Ok(endpoint) = reqwest::Url::parse(endpoint) else {
+        return false;
+    };
+    let Ok(default_endpoint) = reqwest::Url::parse(provider.default_endpoint()) else {
+        return false;
+    };
+
+    endpoint.scheme() == default_endpoint.scheme()
+        && endpoint.host_str() == default_endpoint.host_str()
+        && endpoint.port_or_known_default() == default_endpoint.port_or_known_default()
+}
+
+fn endpoint_accepts_inline_key(endpoint: &str) -> bool {
+    let Ok(endpoint) = reqwest::Url::parse(endpoint) else {
+        return false;
+    };
+    if endpoint.scheme() == "https" {
+        return true;
+    }
+
+    cfg!(test)
+        && endpoint.scheme() == "http"
+        && matches!(endpoint.host_str(), Some("127.0.0.1" | "::1" | "localhost"))
 }
 
 fn fallback_model_list(
@@ -1102,19 +1150,19 @@ mod tests {
         models.push(models[0].clone());
         let body = serde_json::json!({ "data": models }).to_string();
         let (endpoint, handle) = serve_once("200 OK", body);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("test client");
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::OpenRouter, endpoint, None),
-            None,
-            AiEnv::default(),
-        )
-        .expect("model list");
+        let models = fetch_live_models(&client, AiProvider::OpenRouter, &endpoint, None)
+            .map(|models| finalize_model_list(models, None))
+            .expect("model list");
         let request = handle.join().expect("server request");
 
-        assert_eq!(result.source, AiModelListSource::Live);
-        assert_eq!(result.models.len(), 400);
-        assert_eq!(result.models[0].label, "Model 000");
-        assert_eq!(result.models[0].context_length, Some(128_000));
+        assert_eq!(models.len(), 400);
+        assert_eq!(models[0].label, "Model 000");
+        assert_eq!(models[0].context_length, Some(128_000));
         assert!(!request.to_ascii_lowercase().contains("authorization:"));
     }
 
@@ -1137,6 +1185,67 @@ mod tests {
             result.warning.as_deref(),
             Some("API key missing; showing default models.")
         );
+    }
+
+    #[test]
+    fn custom_endpoint_does_not_receive_stored_or_environment_keys() {
+        let existing = AiConfigFile {
+            provider: Some(AiProvider::OpenAi),
+            api_key: Some("stored-secret".to_string()),
+            model: Some(OPENAI_DEFAULT_MODEL.to_string()),
+            ..AiConfigFile::default()
+        };
+        let env = AiEnv {
+            openai_api_key: Some("environment-secret".to_string()),
+            ..AiEnv::default()
+        };
+
+        let result = list_ai_models_from(
+            ListAiModelsRequest {
+                provider: AiProvider::OpenAi,
+                endpoint: Some("https://models.example.invalid/v1".to_string()),
+                api_key: None,
+            },
+            Some(existing),
+            env,
+        )
+        .expect("fallback model list");
+
+        assert_eq!(result.source, AiModelListSource::Fallback);
+        assert_eq!(
+            result.warning.as_deref(),
+            Some(
+                "Custom endpoints do not receive stored or environment API keys; enter a key and refresh explicitly."
+            )
+        );
+    }
+
+    #[test]
+    fn inline_key_is_not_sent_to_non_https_custom_endpoint() {
+        let result = list_ai_models_from(
+            ListAiModelsRequest {
+                provider: AiProvider::OpenAi,
+                endpoint: Some("http://models.example.invalid/v1".to_string()),
+                api_key: Some("inline-secret".to_string()),
+            },
+            None,
+            AiEnv::default(),
+        )
+        .expect("fallback model list");
+
+        assert_eq!(result.source, AiModelListSource::Fallback);
+        assert_eq!(
+            result.warning.as_deref(),
+            Some("API keys are not sent to non-HTTPS model endpoints.")
+        );
+        assert!(endpoint_matches_provider_origin(
+            "https://api.openai.com/custom/models",
+            AiProvider::OpenAi
+        ));
+        assert!(!endpoint_matches_provider_origin(
+            "http://api.openai.com/v1",
+            AiProvider::OpenAi
+        ));
     }
 
     #[test]

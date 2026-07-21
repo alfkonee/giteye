@@ -30,6 +30,7 @@ export function SettingsPlaceholder() {
   const [aiModel, setAiModel] = useState("");
   const [aiEndpoint, setAiEndpoint] = useState("");
   const [aiApiKey, setAiApiKey] = useState("");
+  const [aiApiKeyRevision, setAiApiKeyRevision] = useState(0);
   const [sshKeyName, setSshKeyName] = useState("id_giteye");
   const [sshKeyComment, setSshKeyComment] = useState("");
   const [copiedSshKey, setCopiedSshKey] = useState<string | null>(null);
@@ -111,7 +112,11 @@ export function SettingsPlaceholder() {
       }
     : null;
   const aiModelsQuery = useQuery(
-    gitQueries.aiModels(aiModelRequest, aiConfig?.apiKeySource ?? null),
+    gitQueries.aiModels(
+      aiModelRequest,
+      aiConfig?.apiKeySource ?? null,
+      aiApiKeyRevision,
+    ),
   );
   const aiModelList =
     aiModelsQuery.data?.models ??
@@ -278,7 +283,7 @@ export function SettingsPlaceholder() {
                     value={aiModel}
                     onChange={setAiModel}
                     models={aiModelList}
-                    isLoading={aiModelsQuery.isLoading}
+                    isLoading={aiModelsQuery.isFetching}
                     warning={aiModelsQuery.data?.warning ?? (aiModelsQuery.error ? String(aiModelsQuery.error) : null)}
                     placeholder={selectedAiProvider.defaultModel}
                     onRefresh={() => void aiModelsQuery.refetch()}
@@ -297,7 +302,10 @@ export function SettingsPlaceholder() {
                 <input
                   type="password"
                   value={aiApiKey}
-                  onChange={(event) => setAiApiKey(event.target.value)}
+                  onChange={(event) => {
+                    setAiApiKey(event.target.value);
+                    setAiApiKeyRevision((revision) => revision + 1);
+                  }}
                   placeholder={
                     aiConfig?.apiKeySource === "environment"
                       ? "Configured via environment"
