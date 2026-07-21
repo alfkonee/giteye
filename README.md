@@ -136,8 +136,10 @@ bun install
 ### Develop
 
 ```bash
-bun run tauri dev
+bun run tauri
 ```
+
+The command starts an isolated Vite server and selects the next available port automatically, so multiple development instances can run at once.
 
 ### Build Desktop App
 
@@ -167,7 +169,7 @@ cd src-tauri && cargo check && cargo fmt --check
 
 ## How to Open a Repository
 
-1. Launch GitEye (`bun run tauri dev`)
+1. Launch GitEye (`bun run tauri`)
 2. On the Welcome screen, either:
    - Type/paste a repository path and click **Open**
    - Click the folder icon to browse with the native file dialog
