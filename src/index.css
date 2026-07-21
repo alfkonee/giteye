@@ -11,20 +11,20 @@
   color-scheme: dark;
 
   /* App chrome and surfaces */
-  --color-bg-primary: #070b12;
-  --color-bg-secondary: #0d131c;
-  --color-bg-tertiary: #111a25;
-  --color-bg-surface: #151f2b;
-  --color-bg-elevated: #1a2635;
-  --color-bg-hover: #1d2a3a;
+  --color-bg-primary: #0b1219;
+  --color-bg-secondary: #101b25;
+  --color-bg-tertiary: #13202b;
+  --color-bg-surface: #15232e;
+  --color-bg-elevated: #182835;
+  --color-bg-hover: #1a2c3e;
   /* Filled selected/primary chips keep a saturated accent fill */
-  --color-bg-selected: #2f6fdb;
+  --color-bg-selected: #2e6bda;
   /* Soft list/nav selection — dominant selected state across the shell */
-  --color-bg-selected-muted: rgba(63, 132, 245, 0.14);
-  --color-bg-selected-soft: rgba(63, 132, 245, 0.10);
-  --color-bg-inset: #0a1018;
-  --color-bg-overlay: rgba(4, 8, 13, 0.76);
-  --color-window-chrome: rgba(8, 13, 20, 0.96);
+  --color-bg-selected-muted: #172a3a;
+  --color-bg-selected-soft: #162738;
+  --color-bg-inset: #0e1923;
+  --color-bg-overlay: rgba(7, 12, 17, 0.76);
+  --color-window-chrome: rgba(10, 17, 24, 0.96);
   --color-window-chrome-border: #172233;
   --color-window-title: #f3f8ff;
   --color-window-subtitle: #78879a;
@@ -33,41 +33,43 @@
   --color-window-control-close-hover: rgba(255, 107, 107, 0.22);
 
   /* Borders and dividers */
-  --color-border: #243244;
-  --color-border-muted: #192432;
-  --color-border-strong: #33455d;
+  --color-border: #263744;
+  --color-border-muted: #22313e;
+  --color-border-strong: #334b5d;
   --color-border-accent: rgba(70, 137, 235, 0.58);
 
   /* Text hierarchy */
-  --color-text-primary: #eef5ff;
-  --color-text-secondary: #b5c2d3;
-  --color-text-muted: #78879a;
-  --color-text-subtle: #526173;
+  --color-text-primary: #d7e0e8;
+  --color-text-secondary: #aab8c4;
+  --color-text-muted: #8b9aa8;
+  --color-text-subtle: #697987;
   --color-text-inverse: #ffffff;
 
   /* Interactive and provider accents */
-  --color-accent: #3f84f5;
-  --color-accent-hover: #65a0ff;
-  --color-accent-active: #2f6fdb;
-  --color-focus-ring: rgba(101, 160, 255, 0.72);
+  --color-accent: #2e78e8;
+  --color-accent-hover: #3b82f6;
+  --color-accent-active: #2776d8;
+  --color-focus-ring: rgba(59, 130, 246, 0.72);
   --color-selection-text: #ffffff;
+  --color-selection-fg: var(--color-text-primary);
+  --color-selection-bar: var(--color-accent);
 
   /* Status semantics */
-  --color-success: #77cf67;
-  --color-success-bg: rgba(119, 207, 103, 0.13);
-  --color-success-border: rgba(119, 207, 103, 0.34);
-  --color-warning: #e7b84e;
-  --color-warning-bg: rgba(231, 184, 78, 0.14);
-  --color-warning-border: rgba(231, 184, 78, 0.36);
-  --color-danger: #ff6b6b;
-  --color-danger-bg: rgba(255, 107, 107, 0.14);
-  --color-danger-border: rgba(255, 107, 107, 0.38);
-  --color-info: #6aa9ff;
-  --color-info-bg: rgba(106, 169, 255, 0.14);
-  --color-info-border: rgba(106, 169, 255, 0.36);
-  --color-purple: #a98bff;
-  --color-purple-bg: rgba(169, 139, 255, 0.14);
-  --color-purple-border: rgba(169, 139, 255, 0.36);
+  --color-success: #57c75b;
+  --color-success-bg: rgba(87, 199, 91, 0.12);
+  --color-success-border: rgba(87, 199, 91, 0.34);
+  --color-warning: #d6a84b;
+  --color-warning-bg: rgba(214, 168, 75, 0.12);
+  --color-warning-border: rgba(214, 168, 75, 0.34);
+  --color-danger: #e35b62;
+  --color-danger-bg: rgba(227, 91, 98, 0.12);
+  --color-danger-border: rgba(227, 91, 98, 0.34);
+  --color-info: #4d90ea;
+  --color-info-bg: rgba(77, 144, 234, 0.12);
+  --color-info-border: rgba(77, 144, 234, 0.34);
+  --color-purple: #8c6bd5;
+  --color-purple-bg: rgba(140, 107, 213, 0.12);
+  --color-purple-border: rgba(140, 107, 213, 0.34);
 
   /* Git file status aliases retained for existing consumers */
   --color-added: var(--color-success);
@@ -75,18 +77,19 @@
   --color-deleted: var(--color-danger);
   --color-deleted-bg: var(--color-danger-bg);
   --color-modified: var(--color-warning);
-  --color-untracked: #5ed8ff;
-  --color-untracked-bg: rgba(94, 216, 255, 0.13);
+  --color-untracked: #74bfe8;
+  --color-untracked-bg: rgba(116, 191, 232, 0.12);
+  --color-untracked-border: rgba(116, 191, 232, 0.34);
   --color-ignored: var(--color-text-muted);
   --color-typechange: var(--color-purple);
 
   /* Commit graph, stack, and timeline lanes */
-  --color-graph-blue: #4f8dff;
-  --color-graph-purple: #a56eff;
-  --color-graph-green: #6ed36b;
-  --color-graph-amber: #e0b14d;
-  --color-graph-red: #ff6b6b;
-  --color-graph-gray: #6d7d91;
+  --color-graph-blue: #4d90ea;
+  --color-graph-purple: #8c6bd5;
+  --color-graph-green: #57c75b;
+  --color-graph-amber: #d6a84b;
+  --color-graph-red: #e35b62;
+  --color-graph-gray: #718292;
   --size-graph-node: 10px;
   --size-graph-node-active: 13px;
   --size-graph-lane: 2px;
@@ -130,28 +133,28 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --size-toolbar: 44px;
-  --size-window-chrome: 36px;
-  --size-statusbar: 26px;
-  --size-row-compact: 32px;
+  --size-toolbar: 40px;
+  --size-window-chrome: 34px;
+  --size-statusbar: 24px;
+  --size-row-compact: 30px;
   --size-row: 34px;
-  --size-control: 30px;
+  --size-control: 32px;
   --size-sidebar: 248px;
   --size-panel-min: 280px;
 
   /* Radius */
-  --radius-window: 12px;
-  --radius-panel: 12px;
-  --radius-card: 10px;
-  --radius-control: 8px;
-  --radius-badge: 5px;
+  --radius-window: 8px;
+  --radius-panel: 8px;
+  --radius-card: 6px;
+  --radius-control: 6px;
+  --radius-badge: 4px;
   --radius-pill: 999px;
 
   /* Elevation */
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 8px 20px rgba(0, 0, 0, 0.16);
-  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 40px rgba(0, 0, 0, 0.34);
-  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.42);
-  --shadow-drag: 0 16px 36px rgba(0, 0, 0, 0.34), 0 0 0 1px var(--color-border-accent);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 4px 12px rgba(0, 0, 0, 0.20);
+  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 28px rgba(0, 0, 0, 0.30);
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.30);
+  --shadow-drag: 0 12px 28px rgba(0, 0, 0, 0.30), 0 0 0 1px var(--color-border-accent);
   --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.18);
 
   /* Motion */
@@ -169,9 +172,9 @@
   --color-bg-surface: #f1f4f8;
   --color-bg-elevated: #ffffff;
   --color-bg-hover: #e7edf5;
-  --color-bg-selected: #246bdb;
-  --color-bg-selected-muted: rgba(36, 107, 219, 0.12);
-  --color-bg-selected-soft: rgba(36, 107, 219, 0.08);
+  --color-bg-selected: #2e78e8;
+  --color-bg-selected-muted: rgba(46, 120, 232, 0.12);
+  --color-bg-selected-soft: rgba(46, 120, 232, 0.08);
   --color-bg-inset: #e8edf4;
   --color-bg-overlay: rgba(248, 250, 252, 0.82);
   --color-window-chrome: rgba(247, 249, 252, 0.96);
@@ -185,7 +188,7 @@
   --color-border: #cdd7e4;
   --color-border-muted: #dde5ef;
   --color-border-strong: #b8c5d5;
-  --color-border-accent: rgba(36, 107, 219, 0.46);
+  --color-border-accent: rgba(46, 120, 232, 0.46);
 
   --color-text-primary: #111827;
   --color-text-secondary: #405064;
@@ -193,13 +196,11 @@
   --color-text-subtle: #96a3b2;
   --color-text-inverse: #ffffff;
 
-  --color-accent: #246bdb;
-  --color-accent-hover: #1f5fc4;
-  --color-accent-active: #1a55ad;
-  --color-focus-ring: rgba(36, 107, 219, 0.5);
+  --color-accent: #2e78e8;
+  --color-accent-hover: #2776d8;
+  --color-accent-active: #1f62bd;
+  --color-focus-ring: rgba(46, 120, 232, 0.50);
   --color-selection-text: #ffffff;
-  --color-selection-fg: var(--color-text-primary);
-  --color-selection-bar: var(--color-accent);
   --color-selection-fg: var(--color-text-primary);
   --color-selection-bar: var(--color-accent);
 
@@ -285,10 +286,7 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at 18% -8%, rgba(63, 132, 245, 0.09), transparent 34%),
-    radial-gradient(circle at 88% 0%, rgba(169, 139, 255, 0.05), transparent 28%),
-    linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 48%);
+  background: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-family: var(--font-ui);
   font-size: var(--font-size-ui);
@@ -447,9 +445,10 @@ a {
 }
 
 .giteye-card {
-  border: 1px solid color-mix(in srgb, var(--color-border-muted) 88%, transparent);
+  border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-card);
   background: var(--color-bg-surface);
+  box-shadow: var(--shadow-soft);
 }
 
 .giteye-control {
@@ -516,7 +515,7 @@ a {
 .giteye-nav-active {
   background: var(--color-bg-selected-muted);
   box-shadow: inset 2px 0 0 var(--color-selection-bar);
-  color: var(--color-text-primary);
+  color: var(--color-selection-fg);
 }
 
 .giteye-nav-active:hover {
@@ -529,7 +528,7 @@ a {
   gap: 0.3rem;
   min-height: 22px;
   border: 1px solid var(--color-border-muted);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-badge);
   background: var(--color-bg-tertiary);
   padding: 0 0.5rem;
   color: var(--color-text-muted);
@@ -616,21 +615,21 @@ a {
 }
 
 .giteye-btn-primary {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-  background: linear-gradient(180deg, var(--color-accent-hover) 0%, var(--color-accent) 100%);
-  color: var(--color-selection-text);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 6px 14px rgba(47, 111, 219, 0.22);
+  border-color: var(--color-accent-active);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-soft);
 }
 
 .giteye-btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent-hover) 88%, white) 0%, var(--color-accent-hover) 100%);
+  background: var(--color-accent-hover);
 }
 
 .giteye-btn-success {
-  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-success) 88%, white) 0%, var(--color-success) 100%);
-  color: #06200c;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.16) inset, 0 6px 14px rgba(119, 207, 103, 0.18);
+  border-color: var(--color-success-border);
+  background: var(--color-success);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-soft);
 }
 
 .giteye-btn-danger {
@@ -665,7 +664,7 @@ a {
   min-height: var(--size-control);
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-control);
-  background: var(--color-bg-surface);
+  background: var(--color-bg-inset);
   padding: 0 0.7rem;
   color: var(--color-text-primary);
   outline: none;
@@ -684,7 +683,7 @@ a {
 }
 
 .giteye-input:focus {
-  border-color: var(--color-accent);
+  border-color: var(--color-border-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 28%, transparent);
 }
 
@@ -713,22 +712,21 @@ a {
 
 .giteye-segmented > button[data-state="active"] {
   background: var(--color-bg-selected-muted);
-  color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 .giteye-surface {
-  border: 1px solid color-mix(in srgb, var(--color-border-muted) 90%, transparent);
+  border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-panel);
-  background: color-mix(in srgb, var(--color-bg-secondary) 88%, transparent);
-  box-shadow: var(--shadow-soft);
+  background: var(--color-bg-secondary);
 }
 
 .giteye-surface-elevated {
-  border: 1px solid var(--color-border-muted);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-panel);
-  background: var(--color-bg-tertiary);
-  box-shadow: var(--shadow-panel);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-elevated);
 }
 
 .giteye-panel-header {
