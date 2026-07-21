@@ -25,6 +25,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app_settings::get_app_settings,
+            commands::app_settings::save_app_settings,
             commands::repository::open_repository,
             commands::repository::init_repository,
             commands::repository::clone_repository,

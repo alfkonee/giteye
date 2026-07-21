@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { AppSettings } from "../types/app";
 import type {
   RepositoryInfo,
   RepositorySnapshot,
@@ -110,6 +111,12 @@ export interface SaveAiConfigRequest {
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
 
 export const gitApi = {
+  getAppSettings: () =>
+    invoke<AppSettings>("get_app_settings"),
+
+  saveAppSettings: (settings: AppSettings) =>
+    invoke<AppSettings>("save_app_settings", { settings }),
+
   openRepository: (path: string) =>
     invoke<RepositorySnapshot>("open_repository", { path }),
 

@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod ai;
 pub mod archaeology;
 pub mod branches;
