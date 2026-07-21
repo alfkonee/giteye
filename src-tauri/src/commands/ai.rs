@@ -15,6 +15,14 @@ pub fn save_ai_config(
 }
 
 #[tauri::command]
+pub fn list_ai_models(
+    app_handle: tauri::AppHandle,
+    request: ai_service::ListAiModelsRequest,
+) -> Result<ai_service::AiModelListView, AppError> {
+    ai_service::list_ai_models(&app_handle, request)
+}
+
+#[tauri::command]
 pub fn resolve_conflict_with_ai(
     app_handle: tauri::AppHandle,
     base: String,

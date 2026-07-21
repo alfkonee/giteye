@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AppRoute,
   DiffMode,
+  GlobalViewType,
   RepositorySessionState,
   SelectedEntityState,
   ViewType,
@@ -59,6 +60,7 @@ export interface AppStore {
   setActiveRepoPath: (path: string | null) => void;
   closeRepoPath: (path: string) => void;
   route: AppRoute;
+  setGlobalView: (view: GlobalViewType) => void;
   selected: SelectedEntityState;
 
   selectedBranchName: string | null;
@@ -211,6 +213,11 @@ export const useAppStore = create<AppStore>((set) => ({
   ...emptyActiveState(),
   openRepoPaths: [],
   repoSessions: {},
+  setGlobalView: (view) =>
+    set({
+      ...emptyActiveState(),
+      route: { area: "global", view },
+    }),
   setActiveRepoPath: (path) =>
     set((state) => {
       if (!path) {

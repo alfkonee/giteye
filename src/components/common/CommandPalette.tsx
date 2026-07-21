@@ -21,6 +21,7 @@ export function CommandPalette({
 }) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const diffMode = useAppStore((s) => s.diffMode);
   const setDiffMode = useAppStore((s) => s.setDiffMode);
   const setTranscriptOpen = useNoticeStore((s) => s.setTranscriptOpen);
@@ -48,7 +49,8 @@ export function CommandPalette({
       { label: "Open Diagnostics & Bisect", detail: "Run fsck, maintenance/gc, signature checks, and guided git bisect", disabled, run: navigate("diagnostics") },
       { label: "Open Custom Command", detail: "Run arbitrary git commands", disabled, run: navigate("custom-command") },
       { label: "Open Rebase Resolver", detail: "Inspect rebase todo and conflicts", disabled, run: navigate("rebase-conflicts") },
-      { label: "Open Settings", detail: "Application settings", run: navigate("settings") },
+      { label: "Open Settings", detail: "Application settings", run: () => { setGlobalView("settings"); onClose(); } },
+      { label: "Open Repo Hub", detail: "Open the global home screen", run: () => { setGlobalView("repo-hub"); onClose(); } },
       { label: "Open Operation Transcript", detail: "Show completed Git actions and recovery hints", run: () => { setTranscriptOpen(true); onClose(); } },
       { label: "Refresh Repository", detail: "Invalidate live Git data", disabled, run: () => void invalidateGitState(queryClient, activeRepoPath) },
       { label: "Fetch Remotes", detail: "git fetch", disabled: disabled || isRemoteOperationPending, run: () => { fetchMutation.mutate(undefined); onClose(); } },
@@ -56,7 +58,7 @@ export function CommandPalette({
       { label: "Push Current Branch", detail: "git push", disabled: disabled || isRemoteOperationPending, run: () => { pushMutation.mutate({}); onClose(); } },
       { label: "Toggle Diff Mode", detail: diffMode === "split" ? "Switch to unified diff" : "Switch to split diff", disabled, run: () => setDiffMode(diffMode === "split" ? "unified" : "split") },
     ];
-  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode, setTranscriptOpen, onClose]);
+  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode, setGlobalView, setTranscriptOpen, onClose]);
 
   const runCommand = useCallback(
     (command: CommandItem) => {

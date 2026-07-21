@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
   Sparkles,
   Star,
   X,
@@ -25,6 +26,7 @@ import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { AppChrome } from "../layout/AppChrome";
 import { RepositoryTabs } from "../layout/RepositoryTabs";
+import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
 
 type RepositoryCard = {
   name: string;
@@ -40,6 +42,8 @@ export function RepositoryWelcome() {
   const [showNotifications, setShowNotifications] = useState(false);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const route = useAppStore((s) => s.route);
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const openRepoPaths = useAppStore((s) => s.openRepoPaths);
   const operationTranscript = useNoticeStore((s) => s.operationTranscript);
   const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
@@ -101,26 +105,37 @@ export function RepositoryWelcome() {
 
   const actionPending = openMutation.isPending || initMutation.isPending || cloneMutation.isPending;
   const actionError = openMutation.error ?? initMutation.error ?? cloneMutation.error;
+  const globalView = route.area === "global" ? route.view : "repo-hub";
 
   return (
-    <AppChrome title="GitEye · Repo Hub" subtitle="No repository open">
+    <AppChrome
+      title={globalView === "settings" ? "GitEye · Settings" : "GitEye · Repo Hub"}
+      subtitle={globalView === "settings" ? "Application preferences" : "No repository open"}
+    >
       <div className="flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
         <aside className="flex w-[248px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
           <nav className="flex-1 overflow-y-auto px-3 py-4">
-            <button className="giteye-nav-active flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold">
-              <Home className="h-4 w-4 text-[var(--color-accent)]" />
+            <button
+              type="button"
+              onClick={() => setGlobalView("repo-hub")}
+              className={cn(
+                "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+                globalView === "repo-hub" && "giteye-nav-active text-[var(--color-text-primary)]",
+              )}
+            >
+              <Home className={cn("h-4 w-4", globalView === "repo-hub" && "text-[var(--color-accent)]")} />
               Repo Hub
             </button>
             <button
               type="button"
-              onClick={() => searchInputRef.current?.focus()}
-              className="mt-1 flex h-9 w-full items-center justify-between rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+              onClick={() => setGlobalView("settings")}
+              className={cn(
+                "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+                globalView === "settings" && "giteye-nav-active text-[var(--color-text-primary)]",
+              )}
             >
-              <span className="inline-flex items-center gap-3">
-                <Search className="h-4 w-4" />
-                Search
-              </span>
-              <kbd className="giteye-kbd">⌘K</kbd>
+              <Settings className="h-4 w-4" />
+              Settings
             </button>
             <button
               type="button"
@@ -256,6 +271,10 @@ export function RepositoryWelcome() {
         <main className="flex min-w-0 flex-1 flex-col">
           <RepositoryTabs />
           <div className="flex min-h-0 flex-1 overflow-hidden">
+            {globalView === "settings" ? (
+              <SettingsPlaceholder />
+            ) : (
+              <>
             <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="mx-auto max-w-[1020px]">
                 <div className="mb-4 flex items-start justify-between gap-4">
@@ -388,6 +407,8 @@ export function RepositoryWelcome() {
             </section>
 
             <ActivityFeed />
+              </>
+            )}
           </div>
 
         <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 px-5 text-[11px] text-[var(--color-text-muted)]">

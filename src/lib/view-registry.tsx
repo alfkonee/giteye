@@ -14,7 +14,6 @@ import {
   Layers,
   PlugZap,
   Search,
-  Settings,
   ShieldCheck,
   Tag,
   Terminal,
@@ -29,14 +28,13 @@ import { AdvancedMergeRebasePanel } from "../components/rebase/AdvancedMergeReba
 import { ArchaeologyView } from "../components/repository/ArchaeologyView";
 import { DiagnosticsView } from "../components/repository/DiagnosticsView";
 import { LfsView, RemotesView, StashesView, TagsView } from "../components/repository/LocalGitViews";
-import { SettingsPlaceholder } from "../components/settings/SettingsPlaceholder";
 import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
 import { WorkingTree } from "../components/working-tree/WorkingTree";
 import { CustomCommandView } from "../components/repository/CustomCommandView";
 
-export type ViewGroupId = "core" | "repository" | "collaboration" | "system";
+export type ViewGroupId = "core" | "repository" | "collaboration";
 
 export interface ViewGroupDefinition {
   id: ViewGroupId;
@@ -59,7 +57,6 @@ export const viewGroups: ViewGroupDefinition[] = [
   { id: "core", label: "Core Git" },
   { id: "repository", label: "Repository" },
   { id: "collaboration", label: "Collaboration" },
-  { id: "system", label: "System" },
 ];
 
 export const viewDefinitions: ViewDefinition[] = [
@@ -205,14 +202,6 @@ export const viewDefinitions: ViewDefinition[] = [
     icon: GitFork,
     render: () => <DiffReviewStudio />,
     collaboration: true,
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    description: "Repository identity and application preferences",
-    group: "system",
-    icon: Settings,
-    render: () => <SettingsPlaceholder />,
   },
 ];
 
