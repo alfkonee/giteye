@@ -28,9 +28,10 @@ export function SettingsPlaceholder() {
   const [credentialHelper, setCredentialHelperInput] = useState("");
   const [aiProvider, setAiProvider] = useState<AiProvider>("openai");
   const [aiModel, setAiModel] = useState("");
-  const [aiEndpoint, setAiEndpoint] = useState("");
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiApiKeyRevision, setAiApiKeyRevision] = useState(0);
+  const [commitMessagePrompt, setCommitMessagePrompt] = useState("");
+  const [conflictResolutionPrompt, setConflictResolutionPrompt] = useState("");
   const [sshKeyName, setSshKeyName] = useState("id_giteye");
   const [sshKeyComment, setSshKeyComment] = useState("");
   const [copiedSshKey, setCopiedSshKey] = useState<string | null>(null);
@@ -98,16 +99,15 @@ export function SettingsPlaceholder() {
   const sshPending = sshLoading || generateSshKey.isPending || addSshKeyToAgent.isPending;
   const sshErrorText = sshError ?? generateSshKey.error ?? addSshKeyToAgent.error;
   const aiProviders = aiConfig?.providers ?? [
-    { id: "openai" as const, label: "OpenAI", defaultEndpoint: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini", models: ["gpt-4o-mini"] },
-    { id: "claude" as const, label: "Claude", defaultEndpoint: "https://api.anthropic.com/v1", defaultModel: "claude-sonnet-4-20250514", models: ["claude-sonnet-4-20250514"] },
-    { id: "deepseek" as const, label: "DeepSeek", defaultEndpoint: "https://api.deepseek.com", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"] },
-    { id: "openrouter" as const, label: "OpenRouter", defaultEndpoint: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini", models: ["openai/gpt-4o-mini"] },
+    { id: "openai" as const, label: "OpenAI", defaultModel: "gpt-4o-mini", models: ["gpt-4o-mini"] },
+    { id: "claude" as const, label: "Claude", defaultModel: "claude-sonnet-4-20250514", models: ["claude-sonnet-4-20250514"] },
+    { id: "deepseek" as const, label: "DeepSeek", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"] },
+    { id: "openrouter" as const, label: "OpenRouter", defaultModel: "openai/gpt-4o-mini", models: ["openai/gpt-4o-mini"] },
   ];
   const selectedAiProvider = aiProviders.find((provider) => provider.id === aiProvider) ?? aiProviders[0];
   const aiModelRequest = selectedAiProvider
     ? {
         provider: aiProvider,
-        endpoint: aiEndpoint.trim() || selectedAiProvider.defaultEndpoint,
         apiKey: aiApiKey.trim() || null,
       }
     : null;
@@ -139,8 +139,9 @@ export function SettingsPlaceholder() {
     if (!aiConfig) return;
     setAiProvider(aiConfig.provider);
     setAiModel(aiConfig.model);
-    setAiEndpoint(aiConfig.endpoint);
     setAiApiKey("");
+    setCommitMessagePrompt(aiConfig.prompts.commitMessage);
+    setConflictResolutionPrompt(aiConfig.prompts.conflictResolution);
   }, [aiConfig]);
 
   const saveIdentity = () => {
@@ -167,7 +168,6 @@ export function SettingsPlaceholder() {
     if (!nextProvider) return;
     setAiProvider(provider);
     setAiModel(nextProvider.defaultModel);
-    setAiEndpoint(nextProvider.defaultEndpoint);
     setAiApiKey("");
   };
 
@@ -175,8 +175,11 @@ export function SettingsPlaceholder() {
     saveAiConfig.mutate({
       provider: aiProvider,
       model: aiModel.trim(),
-      endpoint: aiEndpoint.trim() || null,
       apiKey: aiApiKey.trim() ? aiApiKey.trim() : null,
+      prompts: {
+        commitMessage: commitMessagePrompt,
+        conflictResolution: conflictResolutionPrompt,
+      },
     });
   };
 
@@ -184,8 +187,11 @@ export function SettingsPlaceholder() {
     saveAiConfig.mutate({
       provider: aiProvider,
       model: aiModel.trim(),
-      endpoint: aiEndpoint.trim() || null,
       apiKey: "",
+      prompts: {
+        commitMessage: commitMessagePrompt,
+        conflictResolution: conflictResolutionPrompt,
+      },
     });
   };
 
@@ -293,11 +299,6 @@ export function SettingsPlaceholder() {
               </div>
 
               <label className="space-y-1">
-                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Base URL</span>
-                <input value={aiEndpoint} onChange={(event) => setAiEndpoint(event.target.value)} placeholder={selectedAiProvider.defaultEndpoint} className="giteye-input w-full text-[12px]" />
-              </label>
-
-              <label className="space-y-1">
                 <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">API key</span>
                 <input
                   type="password"
@@ -326,6 +327,51 @@ export function SettingsPlaceholder() {
               <div className="flex justify-end gap-2">
                 <button disabled={aiPending || aiConfig?.apiKeySource !== "stored"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
                 <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</button>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Bot className="h-4 w-4" />}
+              title="AI Prompts"
+              description="Customize the instructions GitEye sends for each available AI workflow."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Commit message</span>
+                <textarea
+                  value={commitMessagePrompt}
+                  onChange={(event) => setCommitMessagePrompt(event.target.value)}
+                  rows={5}
+                  disabled={aiPending}
+                  className="giteye-input min-h-24 w-full resize-y text-[12px] leading-relaxed"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Merge conflict resolution</span>
+                <textarea
+                  value={conflictResolutionPrompt}
+                  onChange={(event) => setConflictResolutionPrompt(event.target.value)}
+                  rows={5}
+                  disabled={aiPending}
+                  className="giteye-input min-h-24 w-full resize-y text-[12px] leading-relaxed"
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  disabled={aiPending}
+                  onClick={() => {
+                    setCommitMessagePrompt(aiConfig?.defaultPrompts.commitMessage ?? "");
+                    setConflictResolutionPrompt(aiConfig?.defaultPrompts.conflictResolution ?? "");
+                  }}
+                  className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Restore defaults
+                </button>
+                <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {saveAiConfig.isPending ? "Saving…" : "Save AI prompts"}
+                </button>
               </div>
             </div>
           </section>
@@ -385,7 +431,7 @@ export function SettingsPlaceholder() {
             />
             <div className="space-y-4 px-4 py-3 text-[12px]">
               <p className="text-[var(--color-text-secondary)]">
-                Export settings includes your theme, diff mode preferences, AI provider/model/base URL, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
+                Export settings includes your theme, diff mode preferences, AI provider/model and prompts, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
               </p>
               {exportImportMessage ? (
                 <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-3 text-[11px] text-[var(--color-accent)]">

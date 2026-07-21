@@ -1,5 +1,5 @@
-pub mod app_settings;
 pub mod ai;
+pub mod app_settings;
 pub mod archaeology;
 pub mod branches;
 pub mod commits;

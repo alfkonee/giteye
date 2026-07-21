@@ -13,6 +13,8 @@ const DEEPSEEK_DEFAULT_MODEL: &str = "deepseek-chat";
 const OPENROUTER_DEFAULT_ENDPOINT: &str = "https://openrouter.ai/api/v1";
 const OPENROUTER_DEFAULT_MODEL: &str = "openai/gpt-4o-mini";
 const MAX_COMMIT_DIFF_CHARS: usize = 60_000;
+const DEFAULT_COMMIT_MESSAGE_PROMPT: &str = "You are a commit message assistant. Generate a concise, conventional commit message based on the diff. Use the format: <type>: <subject>. Types: feat, fix, refactor, docs, test, chore. Keep subject under 72 characters. If the diff is large, summarize the primary change.";
+const DEFAULT_CONFLICT_RESOLUTION_PROMPT: &str = "You are a merge conflict resolution assistant. Given the base version, our changes, and their changes, produce the resolved code. Preserve correct syntax. Explain only if ambiguous; otherwise output only the resolved code.";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AiProvider {
@@ -87,10 +89,11 @@ pub enum AiApiKeySource {
 pub struct AiConfigView {
     pub provider: AiProvider,
     pub model: String,
-    pub endpoint: String,
     pub api_key_configured: bool,
     pub api_key_source: AiApiKeySource,
     pub providers: Vec<AiProviderView>,
+    pub prompts: AiPrompts,
+    pub default_prompts: AiPrompts,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -98,9 +101,15 @@ pub struct AiConfigView {
 pub struct AiProviderView {
     pub id: AiProvider,
     pub label: String,
-    pub default_endpoint: String,
     pub default_model: String,
     pub models: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPrompts {
+    pub commit_message: String,
+    pub conflict_resolution: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -108,15 +117,14 @@ pub struct AiProviderView {
 pub struct SaveAiConfigRequest {
     pub provider: AiProvider,
     pub model: String,
-    pub endpoint: Option<String>,
     pub api_key: Option<String>,
+    pub prompts: AiPrompts,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAiModelsRequest {
     pub provider: AiProvider,
-    pub endpoint: Option<String>,
     pub api_key: Option<String>,
 }
 
@@ -253,27 +261,14 @@ struct AiConfigFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    endpoint: Option<String>,
-    #[serde(
-        default,
-        rename = "ai_api_key",
-        skip_serializing_if = "Option::is_none"
-    )]
-    ai_api_key: Option<String>,
-    #[serde(default, rename = "ai_model", skip_serializing_if = "Option::is_none")]
-    ai_model: Option<String>,
-    #[serde(
-        default,
-        rename = "ai_endpoint",
-        skip_serializing_if = "Option::is_none"
-    )]
-    ai_endpoint: Option<String>,
+    commit_message_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conflict_resolution_prompt: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
 struct AiEnv {
     giteye_provider: Option<String>,
-    giteye_endpoint: Option<String>,
     giteye_model: Option<String>,
     giteye_api_key: Option<String>,
     openai_api_key: Option<String>,
@@ -286,7 +281,6 @@ impl AiEnv {
     fn from_process() -> Self {
         Self {
             giteye_provider: std::env::var("GITEYE_AI_PROVIDER").ok(),
-            giteye_endpoint: std::env::var("GITEYE_AI_ENDPOINT").ok(),
             giteye_model: std::env::var("GITEYE_AI_MODEL").ok(),
             giteye_api_key: std::env::var("GITEYE_AI_API_KEY").ok(),
             openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
@@ -343,25 +337,12 @@ fn resolve_effective_config_from(
             .unwrap_or(AiProvider::OpenAi),
     };
 
-    let endpoint = trimmed_option(env.giteye_endpoint.as_deref())
-        .or_else(|| {
-            file.as_ref()
-                .and_then(|config| trimmed_option(config.endpoint.as_deref()))
-        })
-        .or_else(|| {
-            file.as_ref()
-                .and_then(|config| trimmed_option(config.ai_endpoint.as_deref()))
-        })
-        .unwrap_or_else(|| provider.default_endpoint().to_string());
+    let endpoint = provider.default_endpoint().to_string();
 
     let model = trimmed_option(env.giteye_model.as_deref())
         .or_else(|| {
             file.as_ref()
                 .and_then(|config| trimmed_option(config.model.as_deref()))
-        })
-        .or_else(|| {
-            file.as_ref()
-                .and_then(|config| trimmed_option(config.ai_model.as_deref()))
         })
         .unwrap_or_else(|| provider.default_model().to_string());
 
@@ -378,17 +359,11 @@ fn resolve_effective_config_from(
     } else if let Some(key) = file
         .as_ref()
         .and_then(|config| trimmed_option(config.api_key.as_deref()))
-        .or_else(|| {
-            file.as_ref()
-                .and_then(|config| trimmed_option(config.ai_api_key.as_deref()))
-        })
     {
         (key, AiApiKeySource::Stored)
     } else {
         (String::new(), AiApiKeySource::Missing)
     };
-
-    validate_endpoint(&endpoint)?;
 
     Ok(AiConfig {
         provider,
@@ -408,19 +383,6 @@ fn trimmed_option(value: Option<&str>) -> Option<String> {
     }
 }
 
-fn validate_endpoint(endpoint: &str) -> Result<(), AppError> {
-    let url = reqwest::Url::parse(endpoint)
-        .map_err(|_| AppError::GitError("AI endpoint must be an http(s) URL.".to_string()))?;
-
-    if matches!(url.scheme(), "http" | "https") {
-        Ok(())
-    } else {
-        Err(AppError::GitError(
-            "AI endpoint must be an http(s) URL.".to_string(),
-        ))
-    }
-}
-
 fn saved_api_key(
     existing: &AiConfigFile,
     provider: AiProvider,
@@ -428,16 +390,50 @@ fn saved_api_key(
 ) -> String {
     match requested_api_key {
         Some(api_key) => trimmed_option(Some(&api_key)).unwrap_or_default(),
-        None if existing.provider == Some(provider) => trimmed_option(existing.api_key.as_deref())
-            .or_else(|| trimmed_option(existing.ai_api_key.as_deref()))
-            .unwrap_or_default(),
+        None if existing.provider == Some(provider) => {
+            trimmed_option(existing.api_key.as_deref()).unwrap_or_default()
+        }
         None => String::new(),
     }
 }
 
+fn default_prompts() -> AiPrompts {
+    AiPrompts {
+        commit_message: DEFAULT_COMMIT_MESSAGE_PROMPT.to_string(),
+        conflict_resolution: DEFAULT_CONFLICT_RESOLUTION_PROMPT.to_string(),
+    }
+}
+
+fn prompts_from_file(file: Option<&AiConfigFile>) -> AiPrompts {
+    let defaults = default_prompts();
+    AiPrompts {
+        commit_message: file
+            .and_then(|config| trimmed_option(config.commit_message_prompt.as_deref()))
+            .unwrap_or(defaults.commit_message),
+        conflict_resolution: file
+            .and_then(|config| trimmed_option(config.conflict_resolution_prompt.as_deref()))
+            .unwrap_or(defaults.conflict_resolution),
+    }
+}
+
+fn validate_prompts(prompts: AiPrompts) -> Result<AiPrompts, AppError> {
+    let commit_message = trimmed_option(Some(&prompts.commit_message))
+        .ok_or_else(|| AppError::GitError("Commit message prompt cannot be empty.".to_string()))?;
+    let conflict_resolution =
+        trimmed_option(Some(&prompts.conflict_resolution)).ok_or_else(|| {
+            AppError::GitError("Conflict resolution prompt cannot be empty.".to_string())
+        })?;
+
+    Ok(AiPrompts {
+        commit_message,
+        conflict_resolution,
+    })
+}
+
 pub fn get_ai_config(app_handle: &tauri::AppHandle) -> Result<AiConfigView, AppError> {
-    let config = resolve_effective_config(load_config_file(app_handle)?)?;
-    Ok(config.to_view())
+    let file = load_config_file(app_handle)?;
+    let config = resolve_effective_config(file.clone())?;
+    Ok(config.to_view(prompts_from_file(file.as_ref())))
 }
 
 pub fn save_ai_config(
@@ -447,20 +443,15 @@ pub fn save_ai_config(
     let existing = load_config_file(app_handle)?.unwrap_or_default();
     let model = trimmed_option(Some(&request.model))
         .unwrap_or_else(|| request.provider.default_model().to_string());
-    let endpoint = trimmed_option(request.endpoint.as_deref())
-        .unwrap_or_else(|| request.provider.default_endpoint().to_string());
-    validate_endpoint(&endpoint)?;
-
     let stored_api_key = saved_api_key(&existing, request.provider, request.api_key);
+    let prompts = validate_prompts(request.prompts)?;
 
     let file = AiConfigFile {
         provider: Some(request.provider),
         api_key: Some(stored_api_key),
         model: Some(model),
-        endpoint: Some(endpoint),
-        ai_api_key: None,
-        ai_model: None,
-        ai_endpoint: None,
+        commit_message_prompt: Some(prompts.commit_message),
+        conflict_resolution_prompt: Some(prompts.conflict_resolution),
     };
 
     let path = ai_config_path(app_handle)?;
@@ -488,60 +479,33 @@ fn list_ai_models_from(
     env: AiEnv,
 ) -> Result<AiModelListView, AppError> {
     let provider = request.provider;
-    let endpoint = trimmed_option(request.endpoint.as_deref())
-        .unwrap_or_else(|| provider.default_endpoint().to_string());
-    validate_endpoint(&endpoint)?;
+    let endpoint = provider.default_endpoint();
 
     let effective_provider = resolve_effective_config_from(existing.clone(), env.clone())?.provider;
     let configured_model = (effective_provider == provider)
         .then(|| {
             trimmed_option(env.giteye_model.as_deref()).or_else(|| {
-                existing.as_ref().and_then(|config| {
-                    trimmed_option(config.model.as_deref())
-                        .or_else(|| trimmed_option(config.ai_model.as_deref()))
-                })
+                existing
+                    .as_ref()
+                    .and_then(|config| trimmed_option(config.model.as_deref()))
             })
         })
         .flatten();
     let inline_api_key = trimmed_option(request.api_key.as_deref());
-    let provider_endpoint = endpoint_matches_provider_origin(&endpoint, provider);
-    if !provider_endpoint && inline_api_key.is_none() {
-        return Ok(fallback_model_list(
-            provider,
-            configured_model.as_deref(),
-            "Custom endpoints do not receive stored or environment API keys; enter a key and refresh explicitly."
-                .to_string(),
-        ));
-    }
-    if inline_api_key.is_some() && !endpoint_accepts_inline_key(&endpoint) {
-        return Ok(fallback_model_list(
-            provider,
-            configured_model.as_deref(),
-            "API keys are not sent to non-HTTPS model endpoints.".to_string(),
-        ));
-    }
-
-    let implicit_api_key = provider_endpoint
-        .then(|| {
-            trimmed_option(env.giteye_api_key.as_deref())
-                .or_else(|| match provider {
-                    AiProvider::OpenAi => trimmed_option(env.openai_api_key.as_deref()),
-                    AiProvider::Claude => trimmed_option(env.anthropic_api_key.as_deref()),
-                    AiProvider::DeepSeek => trimmed_option(env.deepseek_api_key.as_deref()),
-                    AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
-                })
-                .or_else(|| {
-                    existing.as_ref().and_then(|config| {
-                        (config.provider == Some(provider))
-                            .then(|| {
-                                trimmed_option(config.api_key.as_deref())
-                                    .or_else(|| trimmed_option(config.ai_api_key.as_deref()))
-                            })
-                            .flatten()
-                    })
-                })
+    let implicit_api_key = trimmed_option(env.giteye_api_key.as_deref())
+        .or_else(|| match provider {
+            AiProvider::OpenAi => trimmed_option(env.openai_api_key.as_deref()),
+            AiProvider::Claude => trimmed_option(env.anthropic_api_key.as_deref()),
+            AiProvider::DeepSeek => trimmed_option(env.deepseek_api_key.as_deref()),
+            AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
         })
-        .flatten();
+        .or_else(|| {
+            existing.as_ref().and_then(|config| {
+                (config.provider == Some(provider))
+                    .then(|| trimmed_option(config.api_key.as_deref()))
+                    .flatten()
+            })
+        });
     let api_key = inline_api_key.or(implicit_api_key);
 
     if provider != AiProvider::OpenRouter && api_key.is_none() {
@@ -574,32 +538,6 @@ fn list_ai_models_from(
             ),
         )),
     }
-}
-
-fn endpoint_matches_provider_origin(endpoint: &str, provider: AiProvider) -> bool {
-    let Ok(endpoint) = reqwest::Url::parse(endpoint) else {
-        return false;
-    };
-    let Ok(default_endpoint) = reqwest::Url::parse(provider.default_endpoint()) else {
-        return false;
-    };
-
-    endpoint.scheme() == default_endpoint.scheme()
-        && endpoint.host_str() == default_endpoint.host_str()
-        && endpoint.port_or_known_default() == default_endpoint.port_or_known_default()
-}
-
-fn endpoint_accepts_inline_key(endpoint: &str) -> bool {
-    let Ok(endpoint) = reqwest::Url::parse(endpoint) else {
-        return false;
-    };
-    if endpoint.scheme() == "https" {
-        return true;
-    }
-
-    cfg!(test)
-        && endpoint.scheme() == "http"
-        && matches!(endpoint.host_str(), Some("127.0.0.1" | "::1" | "localhost"))
 }
 
 fn fallback_model_list(
@@ -752,11 +690,10 @@ fn successful_response(
 }
 
 impl AiConfig {
-    fn to_view(&self) -> AiConfigView {
+    fn to_view(&self, prompts: AiPrompts) -> AiConfigView {
         AiConfigView {
             provider: self.provider,
             model: self.model.clone(),
-            endpoint: self.endpoint.clone(),
             api_key_configured: !self.api_key.is_empty(),
             api_key_source: self.api_key_source,
             providers: [
@@ -769,7 +706,6 @@ impl AiConfig {
             .map(|provider| AiProviderView {
                 id: provider,
                 label: provider.label().to_string(),
-                default_endpoint: provider.default_endpoint().to_string(),
                 default_model: provider.default_model().to_string(),
                 models: provider
                     .models()
@@ -778,6 +714,8 @@ impl AiConfig {
                     .collect(),
             })
             .collect(),
+            prompts,
+            default_prompts: default_prompts(),
         }
     }
 }
@@ -880,25 +818,25 @@ pub fn resolve_merge_conflict(
     ours: &str,
     theirs: &str,
 ) -> Result<String, AppError> {
-    let config = resolve_effective_config(load_config_file(app_handle)?)?;
-
-    let system = "You are a merge conflict resolution assistant. Given the base version, our changes, and their changes, produce the resolved code. Preserve correct syntax. Explain only if ambiguous; otherwise output only the resolved code.";
+    let file = load_config_file(app_handle)?;
+    let config = resolve_effective_config(file.clone())?;
+    let prompts = prompts_from_file(file.as_ref());
 
     let user = format!(
         "Base version:\n```\n{}\n```\n\nOur changes (current branch):\n```\n{}\n```\n\nTheir changes (incoming):\n```\n{}\n```\n\nOutput the resolved code:",
         base, ours, theirs
     );
 
-    call_ai(&config, system, &user)
+    call_ai(&config, &prompts.conflict_resolution, &user)
 }
 
 pub fn suggest_commit_message(
     app_handle: &tauri::AppHandle,
     diffs: &[CommitMessageDiff],
 ) -> Result<String, AppError> {
-    let config = resolve_effective_config(load_config_file(app_handle)?)?;
-
-    let system = "You are a commit message assistant. Generate a concise, conventional commit message based on the diff. Use the format: <type>: <subject>. Types: feat, fix, refactor, docs, test, chore. Keep subject under 72 characters. If the diff is large, summarize the primary change.";
+    let file = load_config_file(app_handle)?;
+    let config = resolve_effective_config(file.clone())?;
+    let prompts = prompts_from_file(file.as_ref());
 
     if diffs.is_empty() {
         return Err(AppError::GitError(
@@ -928,7 +866,7 @@ pub fn suggest_commit_message(
         }
     );
 
-    call_ai(&config, system, &user)
+    call_ai(&config, &prompts.commit_message, &user)
 }
 
 #[derive(Deserialize)]
@@ -1034,33 +972,28 @@ mod tests {
         (endpoint, handle)
     }
 
-    fn list_request(
-        provider: AiProvider,
-        endpoint: String,
-        api_key: Option<&str>,
-    ) -> ListAiModelsRequest {
-        ListAiModelsRequest {
-            provider,
-            endpoint: Some(endpoint),
-            api_key: api_key.map(str::to_string),
-        }
+    fn test_client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("test client")
     }
 
     #[test]
     fn openai_model_list_parses_live_models_and_sends_bearer_auth() {
         let (endpoint, handle) = serve_once("200 OK", r#"{"data":[{"id":"gpt-4o"}]}"#);
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::OpenAi, endpoint, Some("secret")),
-            None,
-            AiEnv::default(),
+        let result = fetch_live_models(
+            &test_client(),
+            AiProvider::OpenAi,
+            &endpoint,
+            Some("secret"),
         )
         .expect("model list");
         let request = handle.join().expect("server request");
 
-        assert_eq!(result.source, AiModelListSource::Live);
-        assert_eq!(result.models.len(), 1);
-        assert_eq!(result.models[0].id, "gpt-4o");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "gpt-4o");
         assert!(request.starts_with("GET /models HTTP/1.1"), "{request}");
         assert!(
             request
@@ -1072,24 +1005,18 @@ mod tests {
 
     #[test]
     fn configured_model_missing_from_live_catalog_is_kept_first() {
-        let (endpoint, handle) = serve_once("200 OK", r#"{"data":[{"id":"gpt-4o"}]}"#);
-        let existing = AiConfigFile {
-            provider: Some(AiProvider::OpenAi),
-            model: Some("private-deployment".to_string()),
-            ..AiConfigFile::default()
-        };
+        let models = finalize_model_list(
+            vec![AiModelView {
+                id: "gpt-4o".to_string(),
+                label: "gpt-4o".to_string(),
+                context_length: None,
+            }],
+            Some("private-deployment"),
+        );
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::OpenAi, endpoint, Some("secret")),
-            Some(existing),
-            AiEnv::default(),
-        )
-        .expect("model list");
-        let _request = handle.join().expect("server request");
-
-        assert_eq!(result.models[0].id, "private-deployment");
-        assert_eq!(result.models[0].label, "private-deployment (configured)");
-        assert_eq!(result.models[1].id, "gpt-4o");
+        assert_eq!(models[0].id, "private-deployment");
+        assert_eq!(models[0].label, "private-deployment (configured)");
+        assert_eq!(models[1].id, "gpt-4o");
     }
 
     #[test]
@@ -1099,17 +1026,17 @@ mod tests {
             r#"{"data":[{"id":"claude-sonnet-4-20250514","display_name":"Claude Sonnet 4"}],"has_more":false}"#,
         );
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::Claude, endpoint, Some("claude-secret")),
-            None,
-            AiEnv::default(),
+        let result = fetch_live_models(
+            &test_client(),
+            AiProvider::Claude,
+            &endpoint,
+            Some("claude-secret"),
         )
         .expect("model list");
         let request = handle.join().expect("server request");
         let lower = request.to_ascii_lowercase();
 
-        assert_eq!(result.source, AiModelListSource::Live);
-        assert_eq!(result.models[0].label, "Claude Sonnet 4");
+        assert_eq!(result[0].label, "Claude Sonnet 4");
         assert!(
             request.starts_with("GET /models?limit=100 HTTP/1.1"),
             "{request}"
@@ -1122,16 +1049,16 @@ mod tests {
     fn deepseek_model_list_uses_base_models_endpoint() {
         let (endpoint, handle) = serve_once("200 OK", r#"{"data":[{"id":"deepseek-chat"}]}"#);
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::DeepSeek, endpoint, Some("deepseek-secret")),
-            None,
-            AiEnv::default(),
+        let result = fetch_live_models(
+            &test_client(),
+            AiProvider::DeepSeek,
+            &endpoint,
+            Some("deepseek-secret"),
         )
         .expect("model list");
         let request = handle.join().expect("server request");
 
-        assert_eq!(result.source, AiModelListSource::Live);
-        assert_eq!(result.models[0].id, "deepseek-chat");
+        assert_eq!(result[0].id, "deepseek-chat");
         assert!(request.starts_with("GET /models HTTP/1.1"), "{request}");
     }
 
@@ -1171,7 +1098,6 @@ mod tests {
         let result = list_ai_models_from(
             ListAiModelsRequest {
                 provider: AiProvider::OpenAi,
-                endpoint: None,
                 api_key: None,
             },
             None,
@@ -1188,82 +1114,19 @@ mod tests {
     }
 
     #[test]
-    fn custom_endpoint_does_not_receive_stored_or_environment_keys() {
-        let existing = AiConfigFile {
-            provider: Some(AiProvider::OpenAi),
-            api_key: Some("stored-secret".to_string()),
-            model: Some(OPENAI_DEFAULT_MODEL.to_string()),
-            ..AiConfigFile::default()
-        };
-        let env = AiEnv {
-            openai_api_key: Some("environment-secret".to_string()),
-            ..AiEnv::default()
-        };
-
-        let result = list_ai_models_from(
-            ListAiModelsRequest {
-                provider: AiProvider::OpenAi,
-                endpoint: Some("https://models.example.invalid/v1".to_string()),
-                api_key: None,
-            },
-            Some(existing),
-            env,
-        )
-        .expect("fallback model list");
-
-        assert_eq!(result.source, AiModelListSource::Fallback);
-        assert_eq!(
-            result.warning.as_deref(),
-            Some(
-                "Custom endpoints do not receive stored or environment API keys; enter a key and refresh explicitly."
-            )
-        );
-    }
-
-    #[test]
-    fn inline_key_is_not_sent_to_non_https_custom_endpoint() {
-        let result = list_ai_models_from(
-            ListAiModelsRequest {
-                provider: AiProvider::OpenAi,
-                endpoint: Some("http://models.example.invalid/v1".to_string()),
-                api_key: Some("inline-secret".to_string()),
-            },
-            None,
-            AiEnv::default(),
-        )
-        .expect("fallback model list");
-
-        assert_eq!(result.source, AiModelListSource::Fallback);
-        assert_eq!(
-            result.warning.as_deref(),
-            Some("API keys are not sent to non-HTTPS model endpoints.")
-        );
-        assert!(endpoint_matches_provider_origin(
-            "https://api.openai.com/custom/models",
-            AiProvider::OpenAi
-        ));
-        assert!(!endpoint_matches_provider_origin(
-            "http://api.openai.com/v1",
-            AiProvider::OpenAi
-        ));
-    }
-
-    #[test]
     fn non_success_model_response_returns_fallback_with_provider_warning() {
         let (endpoint, handle) = serve_once("503 Service Unavailable", r#"{"error":"down"}"#);
 
-        let result = list_ai_models_from(
-            list_request(AiProvider::OpenAi, endpoint, Some("secret")),
-            None,
-            AiEnv::default(),
+        let result = fetch_live_models(
+            &test_client(),
+            AiProvider::OpenAi,
+            &endpoint,
+            Some("secret"),
         )
-        .expect("fallback model list");
+        .expect_err("model request should fail");
         let _request = handle.join().expect("server request");
 
-        assert_eq!(result.source, AiModelListSource::Fallback);
-        assert!(!result.models.is_empty());
-        assert!(result.warning.as_deref().is_some_and(|warning| warning
-            .starts_with("Could not fetch live OpenAI models; showing default models.")));
+        assert_eq!(result, "HTTP 503");
     }
 
     #[test]
@@ -1278,10 +1141,9 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_file_uses_provider_defaults_for_blank_endpoint_and_model() {
+    fn openrouter_file_uses_provider_default_model_for_blank_model() {
         let file = AiConfigFile {
             provider: Some(AiProvider::OpenRouter),
-            endpoint: Some("  ".to_string()),
             model: Some(String::new()),
             ..AiConfigFile::default()
         };
@@ -1332,20 +1194,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_file_fields_still_load() {
-        let file = AiConfigFile {
-            ai_api_key: Some(" legacy-key ".to_string()),
-            ai_endpoint: Some(" https://legacy.example/v1 ".to_string()),
-            ai_model: Some(" legacy-model ".to_string()),
-            ..AiConfigFile::default()
-        };
+    fn configured_endpoint_is_ignored_in_favor_of_provider_default() {
+        let file: AiConfigFile = serde_json::from_str(
+            r#"{"provider":"openai","endpoint":"https://example.invalid/v1"}"#,
+        )
+        .expect("config file");
 
         let config = resolve_effective_config_from(Some(file), AiEnv::default()).expect("config");
 
-        assert_eq!(config.endpoint, "https://legacy.example/v1");
-        assert_eq!(config.model, "legacy-model");
-        assert_eq!(config.api_key, "legacy-key");
-        assert_eq!(config.api_key_source, AiApiKeySource::Stored);
+        assert_eq!(config.endpoint, OPENAI_DEFAULT_ENDPOINT);
     }
 
     #[test]
@@ -1380,17 +1237,33 @@ mod tests {
     }
 
     #[test]
-    fn invalid_endpoint_scheme_returns_exact_error() {
-        let env = AiEnv {
-            giteye_endpoint: Some("file:///tmp/socket".to_string()),
-            ..AiEnv::default()
+    fn configured_prompts_override_defaults_and_trim_whitespace() {
+        let file = AiConfigFile {
+            commit_message_prompt: Some("  Write concise commits.  ".to_string()),
+            conflict_resolution_prompt: Some(" Resolve every conflict safely. ".to_string()),
+            ..AiConfigFile::default()
         };
 
-        let error = resolve_effective_config_from(None, env).expect_err("invalid endpoint");
+        assert_eq!(
+            prompts_from_file(Some(&file)),
+            AiPrompts {
+                commit_message: "Write concise commits.".to_string(),
+                conflict_resolution: "Resolve every conflict safely.".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn empty_prompt_is_rejected() {
+        let error = validate_prompts(AiPrompts {
+            commit_message: " ".to_string(),
+            conflict_resolution: "Resolve safely.".to_string(),
+        })
+        .expect_err("empty commit prompt should fail");
 
         assert_eq!(
             git_error_message(error),
-            "AI endpoint must be an http(s) URL."
+            "Commit message prompt cannot be empty."
         );
     }
 

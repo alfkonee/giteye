@@ -220,11 +220,10 @@ export const gitKeys = {
   aiConfig: () => [...gitKeys.all, "ai-config"] as const,
   aiModels: (
     provider: AiProvider | null,
-    endpoint: string | null,
     hasInlineApiKey: boolean,
     inlineApiKeyRevision: number,
     apiKeySource: AiApiKeySource | null,
-  ) => [...gitKeys.all, "ai-models", provider, endpoint, hasInlineApiKey, inlineApiKeyRevision, apiKeySource] as const,
+  ) => [...gitKeys.all, "ai-models", provider, hasInlineApiKey, inlineApiKeyRevision, apiKeySource] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -641,7 +640,6 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.aiModels(
         request?.provider ?? null,
-        request?.endpoint ?? null,
         Boolean(request?.apiKey),
         inlineApiKeyRevision,
         apiKeySource,

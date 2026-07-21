@@ -21,12 +21,16 @@ export function CommitBox() {
   const { data: aiConfig } = useQuery(gitQueries.aiConfig());
 
   const aiSuggestionMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      if (!activeRepoPath) throw new Error("Open a repository before generating a commit message.");
       const stagedFiles = snapshot?.files.filter((f) => f.staged) ?? [];
-      const diffs = stagedFiles.map((f) => ({
-        filePath: f.path,
-        status: f.status,
-        diffText: `${f.status} ${f.path}${f.oldPath ? ` (from ${f.oldPath})` : ""}`,
+      const diffs = await Promise.all(stagedFiles.map(async (file) => {
+        const diff = await gitApi.getFileDiff(activeRepoPath, file.path, true);
+        return {
+          filePath: file.path,
+          status: file.status,
+          diffText: diff.diffText || `${file.status} ${file.path}${file.oldPath ? ` (from ${file.oldPath})` : ""}`,
+        };
       }));
       return gitApi.suggestCommitMessage(diffs);
     },
@@ -39,8 +43,9 @@ export function CommitBox() {
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
   const commitBlocked = !message.trim() || (!allowEmpty && stagedCount === 0);
-  const aiProviderLabel = aiConfig?.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const aiProviderLabel = aiConfig?.providers.find((provider) => provider.id === aiConfig.provider)?.label ?? "OpenAI";
   const aiStatus = `AI: ${aiProviderLabel} · ${aiConfig?.model ?? "gpt-4o-mini"}${aiConfig?.apiKeyConfigured === false ? " · key missing" : ""}`;
+  const aiSuggestionError = aiSuggestionMutation.error?.message ?? null;
 
   const handleCommit = () => {
     const commitMessage = message.trim();
@@ -153,6 +158,8 @@ export function CommitBox() {
               ? "Committing..."
               : amendMutation.isPending
               ? "Amending HEAD..."
+              : aiSuggestionError
+              ? `AI error: ${aiSuggestionError}`
               : commitMutation.isError
               ? `Error: ${commitMutation.error}`
               : amendMutation.isError

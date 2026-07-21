@@ -96,30 +96,34 @@ export type AiApiKeySource = "environment" | "stored" | "missing";
 export interface AiProviderView {
   id: AiProvider;
   label: string;
-  defaultEndpoint: string;
   defaultModel: string;
   models: string[];
+}
+
+export interface AiPrompts {
+  commitMessage: string;
+  conflictResolution: string;
 }
 
 export interface AiConfigView {
   provider: AiProvider;
   model: string;
-  endpoint: string;
   apiKeyConfigured: boolean;
   apiKeySource: AiApiKeySource;
   providers: AiProviderView[];
+  prompts: AiPrompts;
+  defaultPrompts: AiPrompts;
 }
 
 export interface SaveAiConfigRequest {
   provider: AiProvider;
   model: string;
-  endpoint: string | null;
   apiKey: string | null;
+  prompts: AiPrompts;
 }
 
 export interface ListAiModelsRequest {
   provider: AiProvider;
-  endpoint: string | null;
   apiKey: string | null;
 }
 

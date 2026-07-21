@@ -289,7 +289,7 @@ export function RebaseConflictResolver() {
   const displayedCurrent = splitLines(conflictContent?.ours, conflictContentQuery.isLoading ? "Loading current version…" : "No current conflict content available.");
   const displayedIncoming = splitLines(conflictContent?.theirs, conflictContentQuery.isLoading ? "Loading incoming version…" : "No incoming conflict content available.");
   const displayedResult = splitLines(conflictContent?.result, conflictContentQuery.isLoading ? "Loading result version…" : "No result conflict content available.");
-  const aiProviderLabel = aiConfig?.provider === "openrouter" ? "OpenRouter" : "OpenAI";
+  const aiProviderLabel = aiConfig?.providers.find((provider) => provider.id === aiConfig.provider)?.label ?? "OpenAI";
   const totalSteps = rebaseState?.totalSteps ?? liveTodo.length;
   const currentStep = rebaseState?.currentStep ?? rebaseState?.done.length ?? 0;
   const conflictCount = displayedConflicts.length;

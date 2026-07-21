@@ -23,7 +23,8 @@ pub struct ExportBundle {
 pub struct AiExportConfig {
     pub provider: crate::git::ai_service::AiProvider,
     pub model: String,
-    pub endpoint: String,
+    #[serde(default)]
+    pub prompts: Option<ai_service::AiPrompts>,
 }
 
 #[tauri::command]
@@ -45,7 +46,7 @@ pub fn export_settings(
         ai_config: Some(AiExportConfig {
             provider: ai_config.provider,
             model: ai_config.model,
-            endpoint: ai_config.endpoint,
+            prompts: Some(ai_config.prompts),
         }),
         recent_repositories: recents,
         favorite_repositories: favorites,
@@ -79,13 +80,17 @@ pub fn import_settings(
     }
 
     if let Some(ai_config) = &bundle.ai_config {
+        let prompts = match ai_config.prompts.clone() {
+            Some(prompts) => prompts,
+            None => ai_service::get_ai_config(&app_handle)?.default_prompts,
+        };
         let _ = ai_service::save_ai_config(
             &app_handle,
             ai_service::SaveAiConfigRequest {
                 provider: ai_config.provider,
                 model: ai_config.model.clone(),
-                endpoint: Some(ai_config.endpoint.clone()),
                 api_key: None,
+                prompts,
             },
         )?;
     }
