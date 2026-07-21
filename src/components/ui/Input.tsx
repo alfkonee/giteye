@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { cn } from "../../lib/cn";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -7,16 +7,23 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   containerClassName?: string;
 }
 
-export function Input({
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
   leadingIcon,
   trailing,
   className,
   containerClassName,
+  style,
   ...props
-}: InputProps) {
+}, ref) {
   if (!leadingIcon && !trailing) {
-    return <input className={cn("giteye-input", className)} {...props} />;
+    return <input ref={ref} className={cn("giteye-input", className)} style={style} {...props} />;
   }
+
+  const decorationStyle = {
+    ...style,
+    ...(leadingIcon ? { paddingLeft: "3rem" } : {}),
+    ...(trailing ? { paddingRight: "3rem" } : {}),
+  };
 
   return (
     <div className={cn("relative", containerClassName)}>
@@ -26,12 +33,12 @@ export function Input({
         </span>
       ) : null}
       <input
+        ref={ref}
         className={cn(
           "giteye-input",
-          leadingIcon && "pl-8",
-          trailing && "pr-10",
           className,
         )}
+        style={decorationStyle}
         {...props}
       />
       {trailing ? (
@@ -39,7 +46,7 @@ export function Input({
       ) : null}
     </div>
   );
-}
+});
 
 export function Textarea({
   className,

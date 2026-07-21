@@ -27,6 +27,7 @@ import { LoadingSpinner } from "../common/LoadingSpinner";
 import { AppChrome } from "../layout/AppChrome";
 import { RepositoryTabs } from "../layout/RepositoryTabs";
 import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
+import { Input } from "../ui/Input";
 
 type RepositoryCard = {
   name: string;
@@ -283,15 +284,15 @@ export function RepositoryWelcome() {
                     <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Open, clone, or revisit a repository from one calm starting point.</p>
                   </div>
                   <div className="relative shrink-0">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
-                    <input
+                    <Input
                       ref={searchInputRef}
                       value={repoSearch}
                       onChange={(event) => setRepoSearch(event.target.value)}
                       placeholder="Search repositories"
-                      className="giteye-input h-9 w-64 pl-9 pr-12"
+                      leadingIcon={<Search className="h-4 w-4" />}
+                      trailing={<kbd className="giteye-kbd">⌘K</kbd>}
+                      className="h-9 w-64"
                     />
-                    <kbd className="giteye-kbd absolute right-2 top-1/2 -translate-y-1/2">⌘K</kbd>
                   </div>
                 </div>
 
@@ -322,13 +323,13 @@ export function RepositoryWelcome() {
                   </div>
                   <div className="mt-3 flex gap-2">
                     <div className="relative min-w-0 flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
-                      <input
+                      <Input
                         value={path}
                         onChange={(event) => setPath(event.target.value)}
                         onKeyDown={(event) => event.key === "Enter" && handleOpen()}
                         placeholder="/path/to/git/repository"
-                        className="giteye-input h-9 w-full pl-9"
+                        leadingIcon={<Search className="h-4 w-4" />}
+                        className="h-9 w-full"
                       />
                     </div>
                     <button
