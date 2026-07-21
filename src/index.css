@@ -628,7 +628,7 @@ a {
 .giteye-btn-success {
   border-color: var(--color-success-border);
   background: var(--color-success);
-  color: #06200c;
+  color: var(--color-text-inverse);
   box-shadow: var(--shadow-soft);
 }
 
