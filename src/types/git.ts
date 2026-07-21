@@ -716,7 +716,7 @@ export interface GitJobRecord extends GitJobSummary {
   output?: GitJobStreamLine[];
 }
 
-export type GlobalViewType = "repo-hub";
+export type GlobalViewType = "repo-hub" | "settings";
 
 export type RepositoryViewType =
   | "working-tree"
@@ -735,7 +735,6 @@ export type RepositoryViewType =
   | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
-  | "settings"
   | "custom-command";
 
 export type ViewType = RepositoryViewType;

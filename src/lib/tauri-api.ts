@@ -90,8 +90,16 @@ export interface BisectStartRequest {
   paths?: string[];
 }
 
-export type AiProvider = "openai" | "openrouter";
+export type AiProvider = "openai" | "claude" | "deepseek" | "openrouter";
 export type AiApiKeySource = "environment" | "stored" | "missing";
+
+export interface AiProviderView {
+  id: AiProvider;
+  label: string;
+  defaultEndpoint: string;
+  defaultModel: string;
+  models: string[];
+}
 
 export interface AiConfigView {
   provider: AiProvider;
@@ -99,6 +107,7 @@ export interface AiConfigView {
   endpoint: string;
   apiKeyConfigured: boolean;
   apiKeySource: AiApiKeySource;
+  providers: AiProviderView[];
 }
 
 export interface SaveAiConfigRequest {
@@ -106,6 +115,27 @@ export interface SaveAiConfigRequest {
   model: string;
   endpoint: string | null;
   apiKey: string | null;
+}
+
+export interface ListAiModelsRequest {
+  provider: AiProvider;
+  endpoint: string | null;
+  apiKey: string | null;
+}
+
+export interface AiModelView {
+  id: string;
+  label: string;
+  contextLength: number | null;
+}
+
+export type AiModelListSource = "live" | "fallback";
+
+export interface AiModelListView {
+  provider: AiProvider;
+  models: AiModelView[];
+  source: AiModelListSource;
+  warning: string | null;
 }
 
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
@@ -892,6 +922,9 @@ export const gitApi = {
 
   saveAiConfig: (request: SaveAiConfigRequest) =>
     invoke<AiConfigView>("save_ai_config", { request }),
+
+  listAiModels: (request: ListAiModelsRequest) =>
+    invoke<AiModelListView>("list_ai_models", { request }),
 
   resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
     invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),

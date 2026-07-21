@@ -66,6 +66,7 @@ function splitRemoteBranch(branch: Branch) {
 export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const diffMode = useAppStore((s) => s.diffMode);
   const setDiffMode = useAppStore((s) => s.setDiffMode);
@@ -561,7 +562,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <ToolbarButton
           icon={<Settings className="h-4 w-4" />}
           title="Settings"
-          onClick={() => setActiveView("settings")}
+          onClick={() => setGlobalView("settings")}
         />
       </div>
       <BranchSwitchDialog

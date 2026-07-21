@@ -5,10 +5,13 @@ import {
 } from "@tanstack/react-query";
 import {
   gitApi,
+  type AiApiKeySource,
+  type AiProvider,
   type BisectStartRequest,
   type CheckoutBranchStrategy,
   type PatchApplyRequest,
   type PushBranchRequest,
+  type ListAiModelsRequest,
   type SaveAiConfigRequest,
 } from "./tauri-api";
 import type {
@@ -215,6 +218,13 @@ export const gitKeys = {
   gitJobs: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "jobs", repoPath ?? null] as const,
   aiConfig: () => [...gitKeys.all, "ai-config"] as const,
+  aiModels: (
+    provider: AiProvider | null,
+    endpoint: string | null,
+    hasInlineApiKey: boolean,
+    inlineApiKeyRevision: number,
+    apiKeySource: AiApiKeySource | null,
+  ) => [...gitKeys.all, "ai-models", provider, endpoint, hasInlineApiKey, inlineApiKeyRevision, apiKeySource] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -623,6 +633,25 @@ export const gitQueries = {
       queryFn: () => gitApi.getAiConfig(),
     }),
 
+  aiModels: (
+    request: ListAiModelsRequest | null,
+    apiKeySource: AiApiKeySource | null,
+    inlineApiKeyRevision: number,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.aiModels(
+        request?.provider ?? null,
+        request?.endpoint ?? null,
+        Boolean(request?.apiKey),
+        inlineApiKeyRevision,
+        apiKeySource,
+      ),
+      queryFn: () => gitApi.listAiModels(request!),
+      enabled: Boolean(request?.provider && !request.apiKey),
+      staleTime: 5 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+    }),
+
   status: (repoPath: string | null) =>
     queryOptions({
       queryKey: gitKeys.repositorySnapshot(repoPath),
@@ -1027,6 +1056,7 @@ export const gitMutations = {
         ),
       onSuccess: (config, _request, context) => {
         queryClient.setQueryData(gitKeys.aiConfig(), config);
+        void queryClient.invalidateQueries({ queryKey: [...gitKeys.all, "ai-models"] });
         finishGitActionNotice(context, "AI provider settings saved.");
       },
       onError: (error, _request, context) =>

@@ -187,6 +187,7 @@ pub fn run() {
             commands::github::close_pull_request,
             commands::ai::get_ai_config,
             commands::ai::save_ai_config,
+            commands::ai::list_ai_models,
             commands::ai::resolve_conflict_with_ai,
             commands::ai::suggest_commit_message,
             commands::settings_io::export_settings,

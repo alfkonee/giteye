@@ -31,7 +31,7 @@ export function Sidebar() {
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
   const setSelectedSubmodulePath = useAppStore(
     (s) => s.setSelectedSubmodulePath,
@@ -424,7 +424,7 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<FolderOpen className="h-4 w-4" />}
           label="Repo Hub"
-          onClick={() => setActiveRepoPath(null)}
+          onClick={() => setGlobalView("repo-hub")}
         />
 
         <button
