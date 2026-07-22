@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { tracedInvoke as invoke } from "./invoke-trace";
 import type { AppSettings } from "../types/app";
 import type {
   RepositoryInfo,

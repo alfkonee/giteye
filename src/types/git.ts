@@ -39,7 +39,6 @@ export interface BranchSummary {
 
 export interface WorkspaceSummary {
   worktreeCount: number;
-  dirtyWorktreeCount: number;
   submoduleCount: number;
   behindSubmoduleCount: number;
 }

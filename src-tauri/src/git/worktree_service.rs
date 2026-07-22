@@ -27,19 +27,9 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<Worktree>, AppError> {
         .collect())
 }
 
-pub fn worktree_count_and_dirty(repo_path: &Path) -> Result<(u32, u32), AppError> {
+pub fn worktree_count(repo_path: &Path) -> Result<u32, AppError> {
     let output = GitCli::run(repo_path, &["worktree", "list", "--porcelain"])?;
-    let records = parse_worktree_records(&output);
-    let mut dirty_count = 0;
-
-    for record in &records {
-        let (modified, _) = status_counts(Path::new(&record.path))?;
-        if modified > 0 {
-            dirty_count += 1;
-        }
-    }
-
-    Ok((records.len() as u32, dirty_count))
+    Ok(parse_worktree_records(&output).len() as u32)
 }
 
 pub fn create_worktree(
