@@ -69,7 +69,16 @@ pub fn get_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppErr
 }
 fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
     let name = GitCli::repo_name_from_path(path);
-    let output = GitCli::run(path, &["status", "--porcelain=v2", "--branch", "-z"])?;
+    let output = GitCli::run(
+        path,
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=all",
+            "-z",
+        ],
+    )?;
     let entries: Vec<&str> = output
         .split('\0')
         .filter(|entry| !entry.is_empty())
@@ -783,6 +792,30 @@ mod tests {
             .files
             .iter()
             .any(|file| file.path == "untracked.txt" && file.status == "??"));
+    }
+
+    #[test]
+    fn repository_snapshot_lists_files_inside_untracked_directories() {
+        let temp = TestDir::new("snapshot-untracked-directory");
+        create_source_repo(&temp.path);
+        fs::create_dir_all(temp.path.join(".agents/skills")).expect("create nested directory");
+        fs::write(temp.path.join(".agents/config.json"), "{}\n").expect("write config");
+        fs::write(temp.path.join(".agents/skills/review.md"), "review\n")
+            .expect("write nested file");
+
+        let snapshot = get_repository_snapshot(&temp.path).expect("snapshot");
+
+        let paths: Vec<&str> = snapshot
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            vec![".agents/config.json", ".agents/skills/review.md"]
+        );
+        assert_eq!(snapshot.summary.total_count, 2);
+        assert_eq!(snapshot.summary.untracked_count, 2);
     }
 
     #[test]
