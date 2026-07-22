@@ -20,6 +20,10 @@ const STORAGE_KEY = "giteye:invoke-traces:v2";
 const LEVEL_STORAGE_KEY = "giteye:trace-level:v1";
 const MAX_RECORDS = 1_000;
 const SECRET_KEY = /api.?key|token|password|secret|credential|authorization/i;
+const CREDENTIAL_URL = /([a-z][a-z\d+.-]*:\/\/)([^\s/@:]+)(?::[^\s/@]*)?@/gi;
+const SENSITIVE_ASSIGNMENT = /((?:api.?key|token|password|secret|credential)\s*[=:]\s*)([^\s,;}&]+)/gi;
+const AUTHORIZATION_HEADER = /(authorization\s*:\s*)(?:[a-z]+\s+)?[^\s,;]+/gi;
+const BEARER_CREDENTIAL = /(bearer\s+)([^\s,;]+)/gi;
 const listeners = new Set<() => void>();
 let recording = true;
 let traceLevel = restoreTraceLevel();
@@ -50,7 +54,7 @@ export function tracedInvoke<T>(command: string, args?: InvokeArgs): Promise<T> 
       return result;
     },
     (error) => {
-      finishTrace(record.id, "failed", errorMessage(error));
+      finishTrace(record.id, "failed", redactErrorMessage(error));
       throw error;
     },
   );
@@ -185,6 +189,7 @@ function isTraceKindEnabled(kind: TraceKind) {
 }
 
 function redact(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return redactTraceText(value);
   if (value === null || typeof value !== "object") return value;
   if (seen.has(value)) return "[Circular]";
   seen.add(value);
@@ -201,12 +206,20 @@ function redact(value: unknown, seen = new WeakSet<object>()): unknown {
   );
 }
 
-function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
+function redactErrorMessage(error: unknown) {
+  if (error instanceof Error) return redactTraceText(error.message);
+  if (typeof error === "string") return redactTraceText(error);
   try {
-    return JSON.stringify(error);
+    return redactTraceText(JSON.stringify(redact(error)));
   } catch {
-    return String(error);
+    return redactTraceText(String(error));
   }
+}
+
+export function redactTraceText(value: string) {
+  return value
+    .replace(CREDENTIAL_URL, "$1[REDACTED]@")
+    .replace(AUTHORIZATION_HEADER, "$1[REDACTED]")
+    .replace(BEARER_CREDENTIAL, "$1[REDACTED]")
+    .replace(SENSITIVE_ASSIGNMENT, "$1[REDACTED]");
 }
