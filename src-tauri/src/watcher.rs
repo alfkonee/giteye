@@ -1,6 +1,6 @@
 use crate::errors::AppError;
 use crate::git::{cli::GitCli, repository_service, state_graph::RepoStateReason};
-use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{recommended_watcher, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -151,6 +151,10 @@ fn canonical_or_original(path: &Path) -> PathBuf {
 }
 
 fn classify_event_reason(event: &Event) -> Option<RepoStateReason> {
+    if matches!(event.kind, EventKind::Access(_)) {
+        return None;
+    }
+
     let mut reason = None;
 
     for path in &event.paths {
@@ -235,4 +239,26 @@ fn git_metadata_reason(path: &Path) -> Option<RepoStateReason> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, ModifyKind};
+
+    #[test]
+    fn metadata_reads_do_not_invalidate_repository_queries() {
+        let event = Event::new(EventKind::Access(AccessKind::Read))
+            .add_path(PathBuf::from("/repo/.git/HEAD"));
+
+        assert_eq!(classify_event_reason(&event), None);
+    }
+
+    #[test]
+    fn metadata_modifications_still_invalidate_repository_queries() {
+        let event = Event::new(EventKind::Modify(ModifyKind::Any))
+            .add_path(PathBuf::from("/repo/.git/refs/heads/main"));
+
+        assert_eq!(classify_event_reason(&event), Some(RepoStateReason::Refs));
+    }
 }
