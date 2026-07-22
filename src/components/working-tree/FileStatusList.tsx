@@ -249,7 +249,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-3 py-1.5 backdrop-blur">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -349,14 +349,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
                                     ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                 )}
                                 title="Stash selected file"
                               >
-                                <Archive className="h-3.5 w-3.5" />
+                                <Archive className="h-4 w-4" />
                               </button>
                             )}
                             <button
@@ -366,14 +366,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               }}
                               disabled={isMutating}
                               className={cn(
-                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
                                   ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                               )}
                               title="Discard file changes"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={(event) => {
@@ -382,7 +382,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               }}
                               disabled={isMutating}
                               className={cn(
-                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
                                   ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
@@ -390,7 +390,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               )}
                               title={staged ? "Unstage" : "Stage"}
                             >
-                              {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                              {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                             </button>
                           </div>
                         );
@@ -453,14 +453,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                   }}
                                   disabled={isMutating}
                                   className={cn(
-                                    "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                    "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                     isSelected
                                       ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                       : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                   )}
                                   title="Stash selected file"
                                 >
-                                  <Archive className="h-3.5 w-3.5" />
+                                  <Archive className="h-4 w-4" />
                                 </button>
                               )}
                               <button
@@ -470,14 +470,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
                                     ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                                 )}
                                 title="Discard file changes"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={(event) => {
@@ -486,7 +486,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
                                     ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
@@ -494,7 +494,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 )}
                                 title={staged ? "Unstage" : "Stage"}
                               >
-                                {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                                {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                               </button>
                             </div>
                           </div>

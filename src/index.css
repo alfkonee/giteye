@@ -657,6 +657,13 @@ a {
 .giteye-btn-sm.giteye-btn-icon {
   width: 26px;
   min-width: 26px;
+  height: 26px;
+}
+
+.giteye-btn-sm.giteye-btn-icon > svg,
+.giteye-btn-sm.giteye-btn-icon > span > svg {
+  width: 18px;
+  height: 18px;
 }
 
 .giteye-input {
