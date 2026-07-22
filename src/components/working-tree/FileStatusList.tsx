@@ -5,12 +5,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitMutations } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { Plus, Minus, ChevronDown, ChevronRight, Archive, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { cn } from "../../lib/cn";
 import { FileTree } from "../common/FileTree";
 import { Button, SegmentedControl } from "../ui";
+import {
+  WorkingTreePathContextMenu,
+  type WorkingTreePathTarget,
+} from "./WorkingTreePathContextMenu";
 
 interface FileStatusListProps {
   title: string;
@@ -89,6 +93,7 @@ function statusTone(status: FileStatus): string {
 export function FileStatusList({ title, files, isLoading, repoPath, staged }: FileStatusListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
+  const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const queryClient = useQueryClient();
   const stageMutation = useMutation(gitMutations.stageFile(queryClient, repoPath));
@@ -97,6 +102,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const unstageAllMutation = useMutation(gitMutations.unstageAll(queryClient, repoPath));
   const stashPathMutation = useMutation(gitMutations.createStashForPaths(queryClient, repoPath));
   const discardFileMutation = useMutation(gitMutations.discardFile(queryClient, repoPath));
+  const discardFilesMutation = useMutation(gitMutations.discardFiles(queryClient, repoPath));
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
@@ -154,6 +160,89 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
       untracked: status === "untracked",
     });
   };
+
+  const openFileContextMenu = (event: MouseEvent, file: GitStatusFile) => {
+    event.preventDefault();
+    setSelectedFile(file.path, staged);
+    setContextTarget({
+      kind: "file",
+      path: file.path,
+      files: [file],
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const openDirectoryContextMenu = (
+    event: MouseEvent,
+    path: string,
+    directoryFiles: GitStatusFile[],
+  ) => {
+    event.preventDefault();
+    setContextTarget({
+      kind: "directory",
+      path,
+      files: directoryFiles,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const handleStashTarget = (target: WorkingTreePathTarget) => {
+    const includesPartialChanges = target.files.some((file) => file.staged && file.unstaged);
+    if (
+      includesPartialChanges &&
+      !confirm(
+        `"${target.path}" includes files with both staged and unstaged changes. Stashing this ${target.kind} will stash both. Continue?`,
+      )
+    ) {
+      return;
+    }
+    stashPathMutation.mutate({
+      message: `WIP ${target.path}`,
+      includeUntracked: target.files.some(
+        (file) => parseFileStatus(file.status) === "untracked",
+      ),
+      paths: [target.path],
+    });
+  };
+
+  const handleDiscardTarget = (target: WorkingTreePathTarget) => {
+    if (target.kind === "file") {
+      handleDiscardFile(target.files[0]);
+      return;
+    }
+
+    const includesPartialChanges = staged && target.files.some((file) => file.unstaged);
+    const scope = includesPartialChanges
+      ? "staged and unstaged changes"
+      : staged
+        ? "staged changes"
+        : "unstaged changes";
+    if (
+      !confirm(
+        `Discard ${scope} for ${target.files.length} files in "${target.path}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
+      )
+    ) {
+      return;
+    }
+
+    discardFilesMutation.mutate({
+      path: target.path,
+      files: target.files.map((file) => ({
+        filePath: file.path,
+        staged,
+        untracked: parseFileStatus(file.status) === "untracked",
+      })),
+    });
+  };
+
+  const contextMenuPending =
+    stageMutation.isPending ||
+    unstageMutation.isPending ||
+    stashPathMutation.isPending ||
+    discardFileMutation.isPending ||
+    discardFilesMutation.isPending;
 
   return (
     <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
@@ -230,6 +319,8 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                       className="rounded-none border-0 bg-transparent"
                       selectedKey={selectedFileStaged === staged ? selectedFilePath : null}
                       onSelect={handleFileClick}
+                      onFileContextMenu={openFileContextMenu}
+                      onDirectoryContextMenu={openDirectoryContextMenu}
                       renderIcon={(file) => (
                         <StatusBadge status={parseFileStatus(file.status)} className="h-4 w-4 text-[9px]" />
                       )}
@@ -330,6 +421,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 : "hover:bg-[var(--color-bg-hover)]",
                             )}
                             onClick={() => handleFileClick(file)}
+                            onContextMenu={(event) => openFileContextMenu(event, file)}
                           >
                             <StatusBadge status={status} className="h-4 w-4 text-[9px]" />
                             <div className="min-w-0">
@@ -416,6 +508,17 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           )}
         </div>
       )}
+      <WorkingTreePathContextMenu
+        target={contextTarget}
+        repoPath={repoPath}
+        staged={staged}
+        pending={contextMenuPending}
+        onStage={(path) => stageMutation.mutate(path)}
+        onUnstage={(path) => unstageMutation.mutate(path)}
+        onStash={handleStashTarget}
+        onDiscard={handleDiscardTarget}
+        onClose={() => setContextTarget(null)}
+      />
     </div>
   );
 }

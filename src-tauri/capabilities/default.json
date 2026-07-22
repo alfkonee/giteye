@@ -10,6 +10,7 @@
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "opener:default",
+    "opener:allow-open-path",
     "dialog:default",
     "mcp-bridge:default"
   ]

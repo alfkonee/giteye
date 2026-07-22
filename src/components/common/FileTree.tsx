@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { cn } from "../../lib/cn";
 
@@ -8,6 +8,8 @@ interface FileTreeProps<T> {
   getKey?: (item: T) => string;
   selectedKey?: string | null;
   onSelect: (item: T) => void;
+  onFileContextMenu?: (event: MouseEvent, item: T) => void;
+  onDirectoryContextMenu?: (event: MouseEvent, path: string, items: T[]) => void;
   renderIcon?: (item: T, selected: boolean) => ReactNode;
   renderSubtext?: (item: T, selected: boolean) => ReactNode;
   renderTrailing?: (item: T, selected: boolean) => ReactNode;
@@ -38,6 +40,8 @@ export function FileTree<T>({
   getKey,
   selectedKey,
   onSelect,
+  onFileContextMenu,
+  onDirectoryContextMenu,
   renderIcon,
   renderSubtext,
   renderTrailing,
@@ -67,6 +71,8 @@ export function FileTree<T>({
         selectedKey={selectedKey}
         onToggleDirectory={toggleDirectory}
         onSelect={onSelect}
+        onFileContextMenu={onFileContextMenu}
+        onDirectoryContextMenu={onDirectoryContextMenu}
         renderIcon={renderIcon}
         renderSubtext={renderSubtext}
         renderTrailing={renderTrailing}
@@ -82,6 +88,8 @@ function TreeEntries<T>({
   selectedKey,
   onToggleDirectory,
   onSelect,
+  onFileContextMenu,
+  onDirectoryContextMenu,
   renderIcon,
   renderSubtext,
   renderTrailing,
@@ -92,6 +100,8 @@ function TreeEntries<T>({
   selectedKey?: string | null;
   onToggleDirectory: (path: string) => void;
   onSelect: (item: T) => void;
+  onFileContextMenu?: (event: MouseEvent, item: T) => void;
+  onDirectoryContextMenu?: (event: MouseEvent, path: string, items: T[]) => void;
   renderIcon?: (item: T, selected: boolean) => ReactNode;
   renderSubtext?: (item: T, selected: boolean) => ReactNode;
   renderTrailing?: (item: T, selected: boolean) => ReactNode;
@@ -106,6 +116,9 @@ function TreeEntries<T>({
               <button
                 type="button"
                 onClick={() => onToggleDirectory(entry.path)}
+                onContextMenu={(event) =>
+                  onDirectoryContextMenu?.(event, entry.path, directoryItems(entry))
+                }
                 className="flex min-h-[28px] w-full items-center gap-1.5 px-2 py-0.5 text-left text-[12px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)]"
                 style={{ paddingLeft: depth * 12 + 8 }}
               >
@@ -121,6 +134,8 @@ function TreeEntries<T>({
                   selectedKey={selectedKey}
                   onToggleDirectory={onToggleDirectory}
                   onSelect={onSelect}
+                  onFileContextMenu={onFileContextMenu}
+                  onDirectoryContextMenu={onDirectoryContextMenu}
                   renderIcon={renderIcon}
                   renderSubtext={renderSubtext}
                   renderTrailing={renderTrailing}
@@ -137,6 +152,7 @@ function TreeEntries<T>({
             role="button"
             tabIndex={0}
             onClick={() => onSelect(entry.item)}
+            onContextMenu={(event) => onFileContextMenu?.(event, entry.item)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -178,6 +194,13 @@ function TreeEntries<T>({
       })}
     </div>
   );
+}
+
+function directoryItems<T>(directory: TreeDirectory<T>): T[] {
+  return [
+    ...directory.files.map((file) => file.item),
+    ...Array.from(directory.directories.values()).flatMap(directoryItems),
+  ];
 }
 
 function buildTree<T>(items: T[], getPath: (item: T) => string, getKey?: (item: T) => string): TreeDirectory<T> {

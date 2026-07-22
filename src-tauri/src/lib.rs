@@ -9,7 +9,9 @@ mod watcher;
 pub fn run() {
     configure_linux_webkit_environment();
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init());
 
     #[cfg(debug_assertions)]
     let builder = builder.plugin(tauri_plugin_mcp_bridge::init());
@@ -129,6 +131,7 @@ pub fn run() {
             commands::patch::unstage_hunk,
             commands::patch::discard_hunk,
             commands::patch::discard_file,
+            commands::patch::discard_files,
             commands::worktrees::list_worktrees,
             commands::worktrees::create_worktree,
             commands::github::cancel_repository_github_work,

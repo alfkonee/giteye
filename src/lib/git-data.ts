@@ -135,6 +135,11 @@ export interface DiscardFileRequest {
   staged: boolean;
   untracked: boolean;
 }
+
+export interface DiscardFilesRequest {
+  path: string;
+  files: DiscardFileRequest[];
+}
 export interface RequestPullRequestReviewRequest {
   number: number;
   reviewers: string[];
@@ -1065,12 +1070,12 @@ export const gitMutations = {
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.stageFile(repoPath!, filePath),
       onMutate: (filePath) =>
-        startGitActionNotice("Staging file", filePath, repoPath),
+        startGitActionNotice("Staging path", filePath, repoPath),
       onSuccess: async (_data, _filePath, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
           context,
-          "File staged and repository views refreshed.",
+          "Path staged and repository views refreshed.",
         );
       },
       onError: (error, _filePath, context) =>
@@ -1081,12 +1086,12 @@ export const gitMutations = {
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.unstageFile(repoPath!, filePath),
       onMutate: (filePath) =>
-        startGitActionNotice("Unstaging file", filePath, repoPath),
+        startGitActionNotice("Unstaging path", filePath, repoPath),
       onSuccess: async (_data, _filePath, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
           context,
-          "File unstaged and repository views refreshed.",
+          "Path unstaged and repository views refreshed.",
         );
       },
       onError: (error, _filePath, context) =>
@@ -1172,6 +1177,28 @@ export const gitMutations = {
         finishGitActionNotice(
           context,
           "File changes discarded and repository views refreshed.",
+        );
+      },
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  discardFiles: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: DiscardFilesRequest) =>
+        gitApi.discardFiles(repoPath!, request.files),
+      onMutate: (request) =>
+        startGitActionNotice(
+          "Discarding folder changes",
+          request.path,
+          repoPath,
+          RECOVERY_HINTS.hardDiscard,
+        ),
+      onSuccess: async (_data, _request, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context);
+        finishGitActionNotice(
+          context,
+          "Folder changes discarded and repository views refreshed.",
         );
       },
       onError: (error, _request, context) =>

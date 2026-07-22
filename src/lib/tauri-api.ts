@@ -634,6 +634,11 @@ export const gitApi = {
   discardFile: (repoPath: string, filePath: string, staged: boolean, untracked: boolean) =>
     invoke<void>("discard_file", { repoPath, filePath, staged, untracked }),
 
+  discardFiles: (
+    repoPath: string,
+    files: Array<{ filePath: string; staged: boolean; untracked: boolean }>,
+  ) => invoke<void>("discard_files", { repoPath, files }),
+
   // Worktrees
   listWorktrees: (repoPath: string) =>
     invoke<Worktree[]>("list_worktrees", { repoPath }),
