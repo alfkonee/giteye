@@ -163,6 +163,7 @@ pub fn list_commit_range_files(
         repo_path,
         &[
             "diff",
+            "--find-renames",
             "--name-only",
             "--no-ext-diff",
             base_hash,
@@ -177,6 +178,49 @@ pub fn list_commit_range_files(
         .collect())
 }
 
+fn old_file_path_for_range(
+    repo_path: &Path,
+    base_hash: &str,
+    target_hash: &str,
+    file_path: &str,
+) -> Result<Option<String>, AppError> {
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "diff",
+            "--name-status",
+            "--find-renames",
+            "-z",
+            "--no-ext-diff",
+            base_hash,
+            target_hash,
+        ],
+    )?;
+    let mut fields = output.split('\0');
+
+    while let Some(status) = fields.next() {
+        if status.is_empty() {
+            break;
+        }
+
+        let Some(old_path) = fields.next() else {
+            break;
+        };
+        if !status.starts_with('R') {
+            continue;
+        }
+
+        let Some(new_path) = fields.next() else {
+            break;
+        };
+        if new_path == file_path {
+            return Ok(Some(old_path.to_string()));
+        }
+    }
+
+    Ok(None)
+}
+
 pub fn get_commit_range_diff(
     repo_path: &Path,
     base_hash: &str,
@@ -184,23 +228,26 @@ pub fn get_commit_range_diff(
     file_path: &str,
 ) -> Result<DiffResult, AppError> {
     validate_repo_relative_file_path(file_path)?;
-    let diff_text = GitCli::run(
-        repo_path,
-        &[
-            "diff",
-            "--no-ext-diff",
-            base_hash,
-            target_hash,
-            "--",
-            file_path,
-        ],
-    )?;
+    let old_file_path = old_file_path_for_range(repo_path, base_hash, target_hash, file_path)?;
+    let mut args = vec![
+        "diff",
+        "--no-ext-diff",
+        "--find-renames",
+        base_hash,
+        target_hash,
+        "--",
+        file_path,
+    ];
+    if let Some(old_path) = old_file_path.as_deref() {
+        args.push(old_path);
+    }
+    let diff_text = GitCli::run(repo_path, &args)?;
     let is_binary = diff_text.contains("Binary files");
     let (additions, deletions) = count_diff_stats(&diff_text);
 
     Ok(DiffResult {
         file_path: file_path.to_string(),
-        old_file_path: None,
+        old_file_path,
         diff_text,
         additions,
         deletions,
@@ -293,6 +340,26 @@ mod tests {
         assert!(!diff.diff_text.contains("new file"));
         assert_eq!(diff.additions, 1);
         assert_eq!(diff.deletions, 1);
+    }
+
+    #[test]
+    fn commit_range_diff_reports_renamed_file_path() {
+        let temp = TestDir::new("commit-range-rename");
+        git(&temp.path, &["init", "-b", "main"]);
+        git(&temp.path, &["config", "user.name", "GitEye Test"]);
+        git(&temp.path, &["config", "user.email", "test@giteye.local"]);
+        fs::write(temp.path.join("old-name.txt"), "unchanged\n").expect("write initial file");
+        git(&temp.path, &["add", "old-name.txt"]);
+        git(&temp.path, &["commit", "-m", "initial"]);
+        git(&temp.path, &["mv", "old-name.txt", "new-name.txt"]);
+        git(&temp.path, &["commit", "-m", "rename"]);
+
+        let diff = get_commit_range_diff(&temp.path, "HEAD~1", "HEAD", "new-name.txt")
+            .expect("compare renamed file");
+
+        assert_eq!(diff.file_path, "new-name.txt");
+        assert_eq!(diff.old_file_path.as_deref(), Some("old-name.txt"));
+        assert!(diff.diff_text.contains("rename from old-name.txt"));
     }
 
     #[test]

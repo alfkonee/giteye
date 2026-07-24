@@ -33,6 +33,7 @@ export function CommitHistory() {
   });
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const parentRef = useRef<HTMLDivElement>(null);
+  const rangeSelectionAnchor = useRef<string | null>(null);
   const hasMoreCommits =
     isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
   const graphRows = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
@@ -40,18 +41,37 @@ export function CommitHistory() {
 
   const selectCommit = useCallback((hash: string, event: MouseEvent<HTMLDivElement>) => {
     const extendSelection = event.ctrlKey || event.metaKey || event.shiftKey;
-    const firstHash = selectedCommitRange[0];
-    const firstIndex = commits?.findIndex((commit) => commit.hash === firstHash) ?? -1;
+    const anchorHash = rangeSelectionAnchor.current ?? selectedCommitRange[0];
+
+    if (!extendSelection || !anchorHash || anchorHash === hash) {
+      rangeSelectionAnchor.current = hash;
+      setSelectedCommitRange([hash]);
+      return;
+    }
+
+    const anchorIndex = commits?.findIndex((commit) => commit.hash === anchorHash) ?? -1;
     const selectedIndex = commits?.findIndex((commit) => commit.hash === hash) ?? -1;
 
+    if (anchorIndex < 0 || selectedIndex < 0) {
+      rangeSelectionAnchor.current = hash;
+      setSelectedCommitRange([hash]);
+      return;
+    }
+
     setSelectedCommitRange(
-      extendSelection && firstHash && firstHash !== hash
-        ? firstIndex > selectedIndex
-          ? [firstHash, hash]
-          : [hash, firstHash]
-        : [hash],
+      anchorIndex > selectedIndex ? [anchorHash, hash] : [hash, anchorHash],
     );
   }, [commits, selectedCommitRange, setSelectedCommitRange]);
+
+  useEffect(() => {
+    if (
+      !rangeSelectionAnchor.current ||
+      !selectedCommitRange.includes(rangeSelectionAnchor.current)
+    ) {
+      rangeSelectionAnchor.current =
+        selectedCommitRange[selectedCommitRange.length - 1] ?? null;
+    }
+  }, [selectedCommitRange]);
 
   useEffect(() => {
     setCommitLimit(INITIAL_COMMIT_LIMIT);
