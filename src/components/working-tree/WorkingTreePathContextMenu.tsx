@@ -5,6 +5,7 @@ import {
   Copy,
   ExternalLink,
   FolderOpen,
+  GitBranch,
   Minus,
   Plus,
   Trash2,
@@ -25,10 +26,12 @@ interface WorkingTreePathContextMenuProps {
   repoPath: string | null;
   staged: boolean;
   pending: boolean;
+  submodulePath?: string | null;
   onStage: (path: string) => void;
   onUnstage: (path: string) => void;
   onStash: (target: WorkingTreePathTarget) => void;
   onDiscard: (target: WorkingTreePathTarget) => void;
+  onOpenSubmodule: (path: string) => void;
   onClose: () => void;
 }
 
@@ -37,10 +40,12 @@ export function WorkingTreePathContextMenu({
   repoPath,
   staged,
   pending,
+  submodulePath,
   onStage,
   onUnstage,
   onStash,
   onDiscard,
+  onOpenSubmodule,
   onClose,
 }: WorkingTreePathContextMenuProps) {
   useEffect(() => {
@@ -109,6 +114,21 @@ export function WorkingTreePathContextMenu({
             {target.kind === "directory" ? `${target.files.length} changed files` : "Changed file"}
           </div>
         </div>
+
+        {submodulePath ? (
+          <>
+            <MenuItem
+              icon={<GitBranch />}
+              label="Switch to submodule"
+              disabled={pending}
+              onClick={() => {
+                onOpenSubmodule(submodulePath);
+                onClose();
+              }}
+            />
+            <div className="my-1 border-t border-[var(--color-border-muted)]" />
+          </>
+        ) : null}
 
         <MenuItem
           icon={staged ? <Minus /> : <Plus />}

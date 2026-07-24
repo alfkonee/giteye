@@ -2,6 +2,7 @@ export interface RepositoryParent {
   path: string;
   name: string;
   submodulePath: string;
+  relationshipKind: "submodule" | "worktree";
 }
 
 export interface RepositoryInfo {
@@ -234,12 +235,19 @@ export interface RecentRepo {
   path: string;
   name: string;
   lastOpenedAt: string;
+  parentPath: string | null;
+  parentName: string | null;
+  relationshipKind: "submodule" | "worktree" | null;
+  isStale: boolean;
 }
 
 export interface FavoriteRepo {
   path: string;
   name: string;
   favoritedAt: string;
+  parentPath: string | null;
+  parentName: string | null;
+  relationshipKind: "submodule" | "worktree" | null;
 }
 
 export interface Worktree {

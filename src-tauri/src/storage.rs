@@ -5,19 +5,53 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct RecentRepo {
     pub path: String,
     pub name: String,
     pub last_opened_at: String,
+    pub parent_path: Option<String>,
+    pub parent_name: Option<String>,
+    pub relationship_kind: Option<String>,
+    pub is_stale: bool,
+}
+
+impl Default for RecentRepo {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            name: String::new(),
+            last_opened_at: String::new(),
+            parent_path: None,
+            parent_name: None,
+            relationship_kind: None,
+            is_stale: false,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct FavoriteRepo {
     pub path: String,
     pub name: String,
     pub favorited_at: String,
+    pub parent_path: Option<String>,
+    pub parent_name: Option<String>,
+    pub relationship_kind: Option<String>,
+}
+
+impl Default for FavoriteRepo {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            name: String::new(),
+            favorited_at: String::new(),
+            parent_path: None,
+            parent_name: None,
+            relationship_kind: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -172,6 +206,10 @@ pub fn save_recent_repository(
             path: normalized_path,
             name: name.to_string(),
             last_opened_at: chrono::Utc::now().to_rfc3339(),
+            parent_path: None,
+            parent_name: None,
+            relationship_kind: None,
+            is_stale: false,
         },
     );
 
@@ -235,6 +273,9 @@ pub fn set_repository_favorite(
                 path: normalized_path,
                 name: name.to_string(),
                 favorited_at: chrono::Utc::now().to_rfc3339(),
+                parent_path: None,
+                parent_name: None,
+                relationship_kind: None,
             },
         );
     }
@@ -287,16 +328,19 @@ mod tests {
                 path: "/tmp/project/".to_string(),
                 name: "first".to_string(),
                 last_opened_at: "2026-06-03T10:00:00Z".to_string(),
+                ..RecentRepo::default()
             },
             RecentRepo {
                 path: "/tmp/project".to_string(),
                 name: "second".to_string(),
                 last_opened_at: "2026-06-03T11:00:00Z".to_string(),
+                ..RecentRepo::default()
             },
             RecentRepo {
                 path: "/tmp/other".to_string(),
                 name: "other".to_string(),
                 last_opened_at: "2026-06-03T12:00:00Z".to_string(),
+                ..RecentRepo::default()
             },
         ];
 
@@ -315,16 +359,19 @@ mod tests {
                 path: "/tmp/project".to_string(),
                 name: "older".to_string(),
                 favorited_at: "2026-06-03T10:00:00Z".to_string(),
+                ..FavoriteRepo::default()
             },
             FavoriteRepo {
                 path: "/tmp/other".to_string(),
                 name: "other".to_string(),
                 favorited_at: "2026-06-03T11:00:00Z".to_string(),
+                ..FavoriteRepo::default()
             },
             FavoriteRepo {
                 path: "/tmp/project/".to_string(),
                 name: "newer".to_string(),
                 favorited_at: "2026-06-03T12:00:00Z".to_string(),
+                ..FavoriteRepo::default()
             },
         ];
 

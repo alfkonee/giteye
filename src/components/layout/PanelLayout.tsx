@@ -10,7 +10,7 @@ import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
 import { EmptyState } from "../common/EmptyState";
 import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
-import { ArrowLeft, FolderOpen } from "lucide-react";
+import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
 
 export function PanelLayout() {
   const activeView = useAppStore((s) => s.activeView);
@@ -21,12 +21,19 @@ export function PanelLayout() {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
   const activeViewDefinition = getViewDefinition(activeView);
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
   );
+  const { data: submodules } = useQuery(
+    gitQueries.submodules(activeRepoPath, activeView === "working-tree" && Boolean(activeRepoPath))
+  );
+  const selectedSubmodule = submodules?.find((submodule) => submodule.path === selectedFilePath) ?? null;
+  const openSubmodule = useMutation(gitMutations.openSubmodule(activeRepoPath));
+  const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const { mutate: stageHunk, isPending: isStageHunkPending } = useMutation(gitMutations.stageHunk(queryClient, activeRepoPath));
   const { mutate: unstageHunk, isPending: isUnstageHunkPending } = useMutation(gitMutations.unstageHunk(queryClient, activeRepoPath));
   const { mutate: discardHunk, isPending: isDiscardHunkPending } = useMutation(gitMutations.discardHunk(queryClient, activeRepoPath));
@@ -70,20 +77,42 @@ export function PanelLayout() {
 
     if (selectedFilePath && fileDiff) {
       return (
-        <DiffViewer
-          diffText={fileDiff.diffText}
-          filePath={fileDiff.filePath}
-          oldFilePath={fileDiff.oldFilePath ?? undefined}
-          isBinary={fileDiff.isBinary}
-          isLoading={diffLoading}
-          error={diffError?.toString() ?? null}
-          mode={diffMode}
-          isStaged={selectedFileStaged}
-          isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
-          onStageHunk={selectedFileStaged ? undefined : handleStageHunk}
-          onUnstageHunk={selectedFileStaged ? handleUnstageHunk : undefined}
-          onDiscardHunk={handleDiscardHunk}
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          {selectedSubmodule ? (
+            <div className="flex shrink-0 items-center gap-3 border-b border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 px-3 py-2 text-xs">
+              <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+              <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]">
+                This change updates submodule <b className="text-[var(--color-text-primary)]">{selectedSubmodule.name || selectedSubmodule.path}</b>.
+              </span>
+              <button
+                type="button"
+                disabled={openSubmodule.isPending || openRepository.isPending}
+                onClick={() => openSubmodule.mutate(selectedSubmodule.path, {
+                  onSuccess: (absolutePath) => openRepository.mutate(absolutePath),
+                })}
+                className="giteye-btn giteye-btn-secondary giteye-btn-sm shrink-0 disabled:opacity-50"
+              >
+                Switch to submodule
+              </button>
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1">
+            <DiffViewer
+              diffText={fileDiff.diffText}
+              filePath={fileDiff.filePath}
+              oldFilePath={fileDiff.oldFilePath ?? undefined}
+              isBinary={fileDiff.isBinary}
+              isLoading={diffLoading}
+              error={diffError?.toString() ?? null}
+              mode={diffMode}
+              isStaged={selectedFileStaged}
+              isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
+              onStageHunk={selectedFileStaged ? undefined : handleStageHunk}
+              onUnstageHunk={selectedFileStaged ? handleUnstageHunk : undefined}
+              onDiscardHunk={handleDiscardHunk}
+            />
+          </div>
+        </div>
       );
     }
 
@@ -106,7 +135,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
 
   const showDetailPane = Boolean(activeViewDefinition.detailPane);
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Bell,
@@ -34,12 +34,50 @@ type RepositoryCard = {
   path: string;
   lastOpenedAt?: string;
   favoritedAt?: string;
+  parentPath?: string | null;
+  parentName?: string | null;
+  relationshipKind?: "submodule" | "worktree" | null;
 };
+
+function groupRelatedRepositories<T extends RepositoryCard>(repositories: T[]) {
+  const repositoriesByPath = new Map(repositories.map((repository) => [repository.path, repository]));
+  const childrenByParent = new Map<string, T[]>();
+  for (const repository of repositories) {
+    if (!repository.parentPath) continue;
+    const children = childrenByParent.get(repository.parentPath) ?? [];
+    children.push(repository);
+    childrenByParent.set(repository.parentPath, children);
+  }
+
+  const grouped: T[] = [];
+  const included = new Set<string>();
+
+  const appendRepository = (repository: T) => {
+    if (included.has(repository.path)) return;
+    grouped.push(repository);
+    included.add(repository.path);
+    for (const child of childrenByParent.get(repository.path) ?? []) {
+      appendRepository(child);
+    }
+  };
+
+  for (const repository of repositories) {
+    if (repository.parentPath && repositoriesByPath.has(repository.parentPath)) continue;
+    appendRepository(repository);
+  }
+
+  // Cyclic or malformed metadata should not make an entry disappear.
+  for (const repository of repositories) {
+    appendRepository(repository);
+  }
+  return grouped;
+}
 
 export function RepositoryWelcome() {
   const [path, setPath] = useState("");
   const [repoSearch, setRepoSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const stalePromptKeyRef = useRef("");
   const [showNotifications, setShowNotifications] = useState(false);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
@@ -59,10 +97,11 @@ export function RepositoryWelcome() {
   const recentRepos = (recents ?? []).filter(
     (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
   );
-  const displayedRecentRepos = showAllRecents ? recentRepos : recentRepos.slice(0, 5);
-  const favoriteRepos = (favorites ?? []).filter(
+  const groupedRecentRepos = groupRelatedRepositories(recentRepos);
+  const displayedRecentRepos = showAllRecents ? groupedRecentRepos : groupedRecentRepos.slice(0, 5);
+  const favoriteRepos = groupRelatedRepositories((favorites ?? []).filter(
     (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
-  );
+  ));
   const favoritePaths = new Set(favoriteRepos.map((repo) => repo.path));
   const recentCount = recentRepos.length;
   const latestRecent = recentRepos[0];
@@ -107,6 +146,28 @@ export function RepositoryWelcome() {
   const actionPending = openMutation.isPending || initMutation.isPending || cloneMutation.isPending;
   const actionError = openMutation.error ?? initMutation.error ?? cloneMutation.error;
   const globalView = route.area === "global" ? route.view : "repo-hub";
+
+  useEffect(() => {
+    if (globalView !== "repo-hub") return;
+    const staleRepositories = (recents ?? []).filter((repo) => repo.isStale);
+    if (staleRepositories.length === 0) {
+      stalePromptKeyRef.current = "";
+      return;
+    }
+
+    const promptKey = staleRepositories.map((repo) => repo.path).sort().join("\n");
+    if (stalePromptKeyRef.current === promptKey) return;
+    stalePromptKeyRef.current = promptKey;
+    const preview = staleRepositories.slice(0, 5).map((repo) => `• ${repo.name}: ${repo.path}`).join("\n");
+    const remaining = staleRepositories.length > 5 ? `\n…and ${staleRepositories.length - 5} more` : "";
+    if (!window.confirm(`GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`)) return;
+
+    void (async () => {
+      for (const repository of staleRepositories) {
+        await removeRecentMutation.mutateAsync(repository.path);
+      }
+    })();
+  }, [globalView, recents, removeRecentMutation]);
 
   return (
     <AppChrome
@@ -533,14 +594,24 @@ function RepositoryList({
                 key={repo.path}
                 type="button"
                 onClick={() => onOpen(repo.path)}
-                className="group relative grid w-full grid-cols-[minmax(0,1fr)_96px_56px] items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-[var(--color-bg-hover)]"
+                className={cn(
+                  "group relative grid w-full grid-cols-[minmax(0,1fr)_96px_56px] items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-[var(--color-bg-hover)]",
+                  repo.parentPath && "ml-5 w-[calc(100%-1.25rem)] border-l-2 border-[var(--color-accent)]/30 pl-3",
+                )}
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
                     <FolderGit2 className="h-4 w-4" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                    <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
+                      {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
+                    </span>
+                    {repo.parentName ? (
+                      <span className="block truncate text-[10px] capitalize text-[var(--color-text-muted)]">
+                        {repo.relationshipKind} repository
+                      </span>
+                    ) : null}
                     <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
                   </span>
                 </span>
@@ -653,7 +724,9 @@ function FavoriteList({
                   <Star className="h-4 w-4 fill-current" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">{repo.name}</span>
+                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
+                    {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
+                  </span>
                   <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
                 </span>
               </span>

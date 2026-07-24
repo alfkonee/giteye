@@ -3,7 +3,10 @@ import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import {
   Box,
+  ChevronDown,
+  ChevronRight,
   Command,
+  Folder,
   FolderOpen,
   GitBranch,
   Globe,
@@ -44,6 +47,17 @@ export function Sidebar() {
     x: number;
     y: number;
   } | null>(null);
+  const [localBranchesExpanded, setLocalBranchesExpanded] = useState(true);
+  const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
+  const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
+  const [showAllRemoteBranches, setShowAllRemoteBranches] = useState(false);
+
+  useEffect(() => {
+    setLocalBranchesExpanded(true);
+    setRemoteBranchesExpanded(false);
+    setShowAllLocalBranches(false);
+    setShowAllRemoteBranches(false);
+  }, [activeRepoPath]);
 
   const { data: snapshot } = useQuery(
     gitQueries.repositorySnapshot(activeRepoPath),
@@ -296,44 +310,30 @@ export function Sidebar() {
         <SidebarSection
           title="Local Branches"
           count={branchSummary?.localCount}
+          expanded={localBranchesExpanded}
+          onToggle={() => setLocalBranchesExpanded((expanded) => !expanded)}
         />
-        {branchesQuery.isLoading ? (
+        {!localBranchesExpanded ? null : branchesQuery.isLoading ? (
           <SidebarNote>Loading branches…</SidebarNote>
         ) : branchesQuery.error ? (
           <SidebarNote>Branches unavailable</SidebarNote>
         ) : localBranches.length === 0 ? (
           <SidebarNote>No branches</SidebarNote>
         ) : (
-          localBranches
-            .slice(0, 8)
-            .map((branch) => (
-              <SidebarNavItem
-                key={branch.name}
-                icon={
-                  <GitBranch
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0",
-                      branch.isCurrent
-                        ? "text-[var(--color-accent)]"
-                        : "text-[var(--color-text-muted)]",
-                    )}
-                  />
-                }
-                label={branch.shortName}
-                description={
-                  branch.upstream ? trackingLabel(branch) : undefined
-                }
-                active={branch.isCurrent}
-                indent
-                onDoubleClick={() => requestBranchSwitch(branch)}
-                title={
-                  branch.isCurrent
-                    ? "Current branch"
-                    : "Double-click to switch branch"
-                }
-                onContextMenu={(event) => openBranchContextMenu(event, branch)}
+          <>
+            <BranchTree
+              branches={visibleBranches(localBranches, showAllLocalBranches)}
+              onSwitch={requestBranchSwitch}
+              onContextMenu={openBranchContextMenu}
+            />
+            {localBranches.length > 8 ? (
+              <ShowMoreButton
+                expanded={showAllLocalBranches}
+                hiddenCount={Math.max(0, localBranches.length - 8)}
+                onClick={() => setShowAllLocalBranches((showAll) => !showAll)}
               />
-            ))
+            ) : null}
+          </>
         )}
 
         {shouldLoadBranches && remoteBranches.length > 0 && (
@@ -341,20 +341,25 @@ export function Sidebar() {
             <SidebarSection
               title="Remote Branches"
               count={remoteBranches.length}
+              expanded={remoteBranchesExpanded}
+              onToggle={() => setRemoteBranchesExpanded((expanded) => !expanded)}
             />
-            {remoteBranches.slice(0, 8).map((branch) => (
-              <SidebarNavItem
-                key={branch.name}
-                icon={
-                  <Globe className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-muted)]" />
-                }
-                label={branch.shortName}
-                indent
-                onDoubleClick={() => requestBranchSwitch(branch)}
-                title="Double-click to switch remote branch"
-                onContextMenu={(event) => openBranchContextMenu(event, branch)}
-              />
-            ))}
+            {remoteBranchesExpanded ? (
+              <>
+                <BranchTree
+                  branches={visibleBranches(remoteBranches, showAllRemoteBranches)}
+                  onSwitch={requestBranchSwitch}
+                  onContextMenu={openBranchContextMenu}
+                />
+                {remoteBranches.length > 8 ? (
+                  <ShowMoreButton
+                    expanded={showAllRemoteBranches}
+                    hiddenCount={Math.max(0, remoteBranches.length - 8)}
+                    onClick={() => setShowAllRemoteBranches((showAll) => !showAll)}
+                  />
+                ) : null}
+              </>
+            ) : null}
           </>
         )}
 
@@ -465,14 +470,169 @@ export function Sidebar() {
   );
 }
 
-function SidebarSection({ title, count }: { title: string; count?: number }) {
-  return (
-    <div className="giteye-section-label flex items-center px-3 pb-1 pt-3">
+function SidebarSection({
+  title,
+  count,
+  expanded,
+  onToggle,
+}: {
+  title: string;
+  count?: number;
+  expanded?: boolean;
+  onToggle?: () => void;
+}) {
+  const content = (
+    <>
+      {onToggle ? (expanded ? <ChevronDown className="mr-1 h-3 w-3" /> : <ChevronRight className="mr-1 h-3 w-3" />) : null}
       <span className="truncate">{title}</span>
       {count !== undefined && count > 0 ? (
         <span className="ml-auto tabular-nums text-[10px] text-[var(--color-text-subtle)]">{count}</span>
       ) : null}
+    </>
+  );
+  return (
+    onToggle ? (
+      <button type="button" aria-expanded={expanded} onClick={onToggle} className="giteye-section-label flex w-full items-center px-3 pb-1 pt-3 text-left hover:text-[var(--color-text-primary)]">
+        {content}
+      </button>
+    ) : (
+      <div className="giteye-section-label flex items-center px-3 pb-1 pt-3">{content}</div>
+    )
+  );
+}
+
+interface BranchTreeNode {
+  folders: Map<string, BranchTreeNode>;
+  branches: Array<{ branch: Branch; label: string }>;
+}
+
+function visibleBranches(branches: Branch[], showAll: boolean) {
+  if (showAll || branches.length <= 8) return branches;
+  const visible = branches.slice(0, 8);
+  const current = branches.find((branch) => branch.isCurrent);
+  if (current && !visible.includes(current)) visible[visible.length - 1] = current;
+  return visible;
+}
+
+function buildBranchTree(branches: Branch[]): BranchTreeNode {
+  const root: BranchTreeNode = { folders: new Map(), branches: [] };
+  for (const branch of branches) {
+    const parts = branch.shortName.split("/").filter(Boolean);
+    const label = parts.pop() ?? branch.shortName;
+    let node = root;
+    for (const part of parts) {
+      let folder = node.folders.get(part);
+      if (!folder) {
+        folder = { folders: new Map(), branches: [] };
+        node.folders.set(part, folder);
+      }
+      node = folder;
+    }
+    node.branches.push({ branch, label });
+  }
+  return root;
+}
+
+function BranchTree({
+  branches,
+  onSwitch,
+  onContextMenu,
+}: {
+  branches: Branch[];
+  onSwitch: (branch: Branch) => void;
+  onContextMenu: (event: MouseEvent, branch: Branch) => void;
+}) {
+  const tree = buildBranchTree(branches);
+  return (
+    <div className="pb-1">
+      <BranchTreeContents node={tree} depth={0} onSwitch={onSwitch} onContextMenu={onContextMenu} />
     </div>
+  );
+}
+
+function BranchTreeContents({
+  node,
+  depth,
+  onSwitch,
+  onContextMenu,
+}: {
+  node: BranchTreeNode;
+  depth: number;
+  onSwitch: (branch: Branch) => void;
+  onContextMenu: (event: MouseEvent, branch: Branch) => void;
+}) {
+  return (
+    <>
+      {[...node.folders.entries()].map(([name, folder]) => (
+        <BranchFolder key={name} name={name} node={folder} depth={depth} onSwitch={onSwitch} onContextMenu={onContextMenu} />
+      ))}
+      {node.branches.map(({ branch, label }) => (
+        <button
+          key={branch.name}
+          type="button"
+          onDoubleClick={() => onSwitch(branch)}
+          onContextMenu={(event) => onContextMenu(event, branch)}
+          title={branch.isCurrent ? "Current branch" : "Double-click to switch branch"}
+          style={{ paddingLeft: `${24 + depth * 14}px` }}
+          className={cn(
+            "giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pr-2 text-left text-[12px] transition-colors",
+            branch.isCurrent ? "giteye-nav-active font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
+          )}
+        >
+          {branch.isRemote ? <Globe className="h-3.5 w-3.5 shrink-0" /> : <GitBranch className="h-3.5 w-3.5 shrink-0" />}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {branch.upstream && !branch.isRemote ? (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-text-muted)]" title={trackingLabel(branch)} />
+          ) : null}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function BranchFolder({
+  name,
+  node,
+  depth,
+  onSwitch,
+  onContextMenu,
+}: {
+  name: string;
+  node: BranchTreeNode;
+  depth: number;
+  onSwitch: (branch: Branch) => void;
+  onContextMenu: (event: MouseEvent, branch: Branch) => void;
+}) {
+  const [expanded, setExpanded] = useState(depth === 0);
+  const count = node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        style={{ paddingLeft: `${18 + depth * 14}px` }}
+        className="giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md pr-2 text-left text-[12px] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Folder className="h-3.5 w-3.5" />
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <span className="text-[9px] tabular-nums">{count}</span>
+      </button>
+      {expanded ? <BranchTreeContents node={node} depth={depth + 1} onSwitch={onSwitch} onContextMenu={onContextMenu} /> : null}
+    </>
+  );
+}
+
+function countBranchTree(node: BranchTreeNode): number {
+  return node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
+}
+
+function ShowMoreButton({ expanded, hiddenCount, onClick }: { expanded: boolean; hiddenCount: number; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="mx-6 mb-1 rounded px-2 py-1 text-[11px] font-medium text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]">
+      {expanded ? "Show less" : `Show ${hiddenCount} more`}
+    </button>
   );
 }
 

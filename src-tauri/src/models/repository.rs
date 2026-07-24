@@ -7,6 +7,7 @@ pub struct RepositoryParent {
     pub path: String,
     pub name: String,
     pub submodule_path: String,
+    pub relationship_kind: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
