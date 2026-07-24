@@ -154,6 +154,60 @@ pub fn get_commit_diff(repo_path: &Path, hash: &str) -> Result<DiffResult, AppEr
     })
 }
 
+pub fn list_commit_range_files(
+    repo_path: &Path,
+    base_hash: &str,
+    target_hash: &str,
+) -> Result<Vec<String>, AppError> {
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "diff",
+            "--name-only",
+            "--no-ext-diff",
+            base_hash,
+            target_hash,
+        ],
+    )?;
+
+    Ok(output
+        .lines()
+        .filter(|path| !path.is_empty())
+        .map(ToOwned::to_owned)
+        .collect())
+}
+
+pub fn get_commit_range_diff(
+    repo_path: &Path,
+    base_hash: &str,
+    target_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult, AppError> {
+    validate_repo_relative_file_path(file_path)?;
+    let diff_text = GitCli::run(
+        repo_path,
+        &[
+            "diff",
+            "--no-ext-diff",
+            base_hash,
+            target_hash,
+            "--",
+            file_path,
+        ],
+    )?;
+    let is_binary = diff_text.contains("Binary files");
+    let (additions, deletions) = count_diff_stats(&diff_text);
+
+    Ok(DiffResult {
+        file_path: file_path.to_string(),
+        old_file_path: None,
+        diff_text,
+        additions,
+        deletions,
+        is_binary,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +265,34 @@ mod tests {
         assert!(diff.diff_text.contains("+hello"));
         assert_eq!(diff.additions, 2);
         assert_eq!(diff.deletions, 0);
+    }
+
+    #[test]
+    fn commit_range_diff_lists_and_compares_changed_files() {
+        let temp = TestDir::new("commit-range");
+        git(&temp.path, &["init", "-b", "main"]);
+        git(&temp.path, &["config", "user.name", "GitEye Test"]);
+        git(&temp.path, &["config", "user.email", "test@giteye.local"]);
+        fs::write(temp.path.join("note.txt"), "before\n").expect("write initial file");
+        git(&temp.path, &["add", "note.txt"]);
+        git(&temp.path, &["commit", "-m", "initial"]);
+        fs::write(temp.path.join("note.txt"), "after\n").expect("write updated file");
+        fs::write(temp.path.join("new.txt"), "new file\n").expect("write added file");
+        git(&temp.path, &["add", "note.txt", "new.txt"]);
+        git(&temp.path, &["commit", "-m", "update"]);
+
+        let files =
+            list_commit_range_files(&temp.path, "HEAD~1", "HEAD").expect("list changed files");
+        let diff = get_commit_range_diff(&temp.path, "HEAD~1", "HEAD", "note.txt")
+            .expect("compare selected file");
+
+        assert_eq!(files, ["new.txt", "note.txt"]);
+        assert_eq!(diff.file_path, "note.txt");
+        assert!(diff.diff_text.contains("-before"));
+        assert!(diff.diff_text.contains("+after"));
+        assert!(!diff.diff_text.contains("new file"));
+        assert_eq!(diff.additions, 1);
+        assert_eq!(diff.deletions, 1);
     }
 
     #[test]

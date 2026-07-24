@@ -15,6 +15,7 @@ function createSelectedState(repoPath: string | null): SelectedEntityState {
     repositoryPath: repoPath,
     branchName: null,
     commitHash: null,
+    commitRange: [],
     filePath: null,
     commitFilePath: null,
     fileStaged: false,
@@ -70,6 +71,8 @@ export interface AppStore {
 
   selectedCommitHash: string | null;
   setSelectedCommitHash: (hash: string | null) => void;
+  selectedCommitRange: string[];
+  setSelectedCommitRange: (hashes: string[]) => void;
   selectedCommitFilePath: string | null;
   setSelectedCommitFilePath: (path: string | null) => void;
 
@@ -118,6 +121,7 @@ type ActiveSessionState = Pick<
   | "selectedBranchName"
   | "pendingAdvancedBranchName"
   | "selectedCommitHash"
+  | "selectedCommitRange"
   | "selectedCommitFilePath"
   | "selectedFilePath"
   | "selectedFileStaged"
@@ -145,6 +149,7 @@ function activeStateFromSession(
     selectedBranchName: selected.branchName,
     pendingAdvancedBranchName: null,
     selectedCommitHash: selected.commitHash,
+    selectedCommitRange: selected.commitRange,
     selectedCommitFilePath: selected.commitFilePath,
     selectedFilePath: selected.filePath,
     selectedFileStaged: selected.fileStaged,
@@ -167,6 +172,7 @@ function emptyActiveState(): ActiveSessionState {
     selectedBranchName: null,
     pendingAdvancedBranchName: null,
     selectedCommitHash: null,
+    selectedCommitRange: [],
     selectedCommitFilePath: null,
     selectedFilePath: null,
     selectedFileStaged: false,
@@ -301,10 +307,12 @@ export const useAppStore = create<AppStore>((set) => ({
 
   setSelectedCommitHash: (hash) =>
     set((state) => {
+      const commitRange = hash ? [hash] : [];
       const selected = {
         ...state.selected,
         repositoryPath: state.activeRepoPath,
         commitHash: hash,
+        commitRange,
         commitFilePath: null,
         filePath: null,
         fileStaged: false,
@@ -313,6 +321,33 @@ export const useAppStore = create<AppStore>((set) => ({
         state,
         {
           selectedCommitHash: hash,
+          selectedCommitRange: commitRange,
+          selectedCommitFilePath: null,
+          selectedFilePath: null,
+          selectedFileStaged: false,
+          selected,
+        },
+        { selected },
+      );
+    }),
+
+  setSelectedCommitRange: (hashes) =>
+    set((state) => {
+      const commitRange = [...new Set(hashes)].slice(-2);
+      const selected = {
+        ...state.selected,
+        repositoryPath: state.activeRepoPath,
+        commitHash: commitRange[commitRange.length - 1] ?? null,
+        commitRange,
+        commitFilePath: null,
+        filePath: null,
+        fileStaged: false,
+      };
+      return syncActiveSession(
+        state,
+        {
+          selectedCommitHash: selected.commitHash,
+          selectedCommitRange: commitRange,
           selectedCommitFilePath: null,
           selectedFilePath: null,
           selectedFileStaged: false,
@@ -344,6 +379,8 @@ export const useAppStore = create<AppStore>((set) => ({
       const selected = {
         ...state.selected,
         repositoryPath: state.activeRepoPath,
+        commitHash: null,
+        commitRange: [],
         filePath: path,
         fileStaged: staged,
         commitFilePath: null,
@@ -351,6 +388,8 @@ export const useAppStore = create<AppStore>((set) => ({
       return syncActiveSession(
         state,
         {
+          selectedCommitHash: null,
+          selectedCommitRange: [],
           selectedFilePath: path,
           selectedFileStaged: staged,
           selectedCommitFilePath: null,
@@ -453,6 +492,7 @@ export const useAppStore = create<AppStore>((set) => ({
         commitHash: null,
         commitFilePath: null,
         filePath: null,
+        commitRange: [],
         fileStaged: false,
       };
       const route: AppRoute = state.activeRepoPath
@@ -465,6 +505,7 @@ export const useAppStore = create<AppStore>((set) => ({
           activeView: view,
           route,
           selectedCommitHash: null,
+          selectedCommitRange: [],
           selectedCommitFilePath: null,
           selectedFilePath: null,
           selectedFileStaged: false,

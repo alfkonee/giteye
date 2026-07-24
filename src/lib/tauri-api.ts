@@ -619,6 +619,12 @@ export const gitApi = {
   getCommitDiff: (repoPath: string, commitHash: string) =>
     invoke<DiffResult>("get_commit_diff", { repoPath, commitHash }),
 
+  getCommitRangeDiff: (repoPath: string, baseHash: string, targetHash: string, filePath: string) =>
+    invoke<DiffResult>("get_commit_range_diff", { repoPath, baseHash, targetHash, filePath }),
+
+  getCommitRangeFiles: (repoPath: string, baseHash: string, targetHash: string) =>
+    invoke<string[]>("get_commit_range_files", { repoPath, baseHash, targetHash }),
+
   applyPatch: (repoPath: string, request: PatchApplyRequest) =>
     invoke<void>("apply_patch", { repoPath, request }),
 

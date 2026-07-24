@@ -1,4 +1,4 @@
-import { useMemo, Component, type ReactNode } from "react";
+import { useMemo } from "react";
 import type { DiffViewerProps } from "./DiffViewer.types";
 import { useAppStore } from "../../stores/app-store";
 import { PatchDiff } from "@pierre/diffs/react";
@@ -23,32 +23,6 @@ import type { DiffsThemeNames } from "@pierre/diffs";
  * (at the DiffViewer level) will fall back to UnifiedDiffFallback.
  */
 
-interface ErrorBoundaryProps {
-  children: ReactNode;
-  fallback: ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-}
-
-class DiffErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
 
 export function PierreDiffViewer(props: DiffViewerProps) {
   const theme = useAppStore((s) => s.theme);
@@ -64,25 +38,11 @@ export function PierreDiffViewer(props: DiffViewerProps) {
     [diffTheme, props.mode],
   );
 
-  const diffContent = (
+  return (
     <PatchDiff
       patch={props.diffText}
       options={options}
       className="h-full"
     />
-  );
-
-  return (
-    <DiffErrorBoundary
-      fallback={
-        <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Diff rendering error — using fallback viewer
-          </p>
-        </div>
-      }
-    >
-      {diffContent}
-    </DiffErrorBoundary>
   );
 }

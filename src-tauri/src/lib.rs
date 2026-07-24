@@ -126,6 +126,8 @@ pub fn run() {
             commands::tags::delete_remote_tag_dry_run,
             commands::diff::get_file_diff,
             commands::diff::get_commit_diff,
+            commands::diff::get_commit_range_diff,
+            commands::diff::get_commit_range_files,
             commands::patch::apply_patch,
             commands::patch::stage_hunk,
             commands::patch::unstage_hunk,

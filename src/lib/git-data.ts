@@ -257,6 +257,17 @@ export const gitKeys = {
     repoPath: string | null | undefined,
     commitHash: string | null | undefined,
   ) => [...gitKeys.repository(repoPath), "commit-diff", commitHash] as const,
+  commitRangeDiff: (
+    repoPath: string | null | undefined,
+    baseHash: string | null | undefined,
+    targetHash: string | null | undefined,
+    filePath: string | null | undefined,
+  ) => [...gitKeys.repository(repoPath), "commit-range-diff", baseHash, targetHash, filePath] as const,
+  commitRangeFiles: (
+    repoPath: string | null | undefined,
+    baseHash: string | null | undefined,
+    targetHash: string | null | undefined,
+  ) => [...gitKeys.repository(repoPath), "commit-range-files", baseHash, targetHash] as const,
   reflog: (repoPath: string | null | undefined, limit?: number) =>
     [...gitKeys.repository(repoPath), "reflog", limit ?? null] as const,
   reflogSearch: (
@@ -412,6 +423,16 @@ export function invalidateGitStateByReason(
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: [...gitKeys.repository(repoPath), "commit-diff"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "commit-range-diff"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "commit-range-files"],
       }),
     );
     invalidations.push(
@@ -723,6 +744,29 @@ export const gitQueries = {
       queryKey: gitKeys.commitDiff(repoPath, commitHash),
       queryFn: () => gitApi.getCommitDiff(repoPath!, commitHash!),
       enabled: enabledRepo(repoPath) && Boolean(commitHash),
+    }),
+
+  commitRangeDiff: (
+    repoPath: string | null,
+    baseHash: string | null,
+    targetHash: string | null,
+    filePath: string | null,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.commitRangeDiff(repoPath, baseHash, targetHash, filePath),
+      queryFn: () => gitApi.getCommitRangeDiff(repoPath!, baseHash!, targetHash!, filePath!),
+      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash) && Boolean(filePath),
+    }),
+
+  commitRangeFiles: (
+    repoPath: string | null,
+    baseHash: string | null,
+    targetHash: string | null,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.commitRangeFiles(repoPath, baseHash, targetHash),
+      queryFn: () => gitApi.getCommitRangeFiles(repoPath!, baseHash!, targetHash!),
+      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash),
     }),
 
   reflog: (repoPath: string | null, limit?: number, enabled = true) =>

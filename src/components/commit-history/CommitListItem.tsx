@@ -1,6 +1,5 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { Branch, CommitSummary } from "../../types/git";
-import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
 import { Cloud, GitBranch } from "lucide-react";
@@ -12,6 +11,8 @@ interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
   branches: Branch[];
+  isSelected: boolean;
+  onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
 }
 
 interface DisplayRef {
@@ -30,10 +31,9 @@ export function CommitListItem({
   commit,
   graph,
   branches,
+  isSelected,
+  onSelect,
 }: CommitListItemProps) {
-  const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
-  const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
-  const isSelected = selectedCommitHash === commit.hash;
   const displayRefs = buildDisplayRefs(commit.refs, branches);
   const isHead = displayRefs.some((ref) => ref.isHead);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -41,7 +41,7 @@ export function CommitListItem({
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setSelectedCommitHash(commit.hash);
+    onSelect(commit, event);
     setContextMenu({ x: event.clientX, y: event.clientY });
   };
 
@@ -51,7 +51,7 @@ export function CommitListItem({
 
   return (
     <div
-      onClick={() => setSelectedCommitHash(commit.hash)}
+      onClick={(event) => onSelect(commit, event)}
       onContextMenu={openContextMenu}
       role="row"
       aria-selected={isSelected}

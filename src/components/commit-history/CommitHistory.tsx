@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAppStore } from "../../stores/app-store";
@@ -16,6 +16,8 @@ const COMMIT_LIMIT_INCREMENT = 100;
 
 export function CommitHistory() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
+  const setSelectedCommitRange = useAppStore((s) => s.setSelectedCommitRange);
   const [commitLimit, setCommitLimit] = useState(INITIAL_COMMIT_LIMIT);
   const [showReflog, setShowReflog] = useState(false);
   const {
@@ -35,6 +37,21 @@ export function CommitHistory() {
     isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
   const graphRows = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
   const graphWidth = graphRows.values().next().value?.width ?? 96;
+
+  const selectCommit = useCallback((hash: string, event: MouseEvent<HTMLDivElement>) => {
+    const extendSelection = event.ctrlKey || event.metaKey || event.shiftKey;
+    const firstHash = selectedCommitRange[0];
+    const firstIndex = commits?.findIndex((commit) => commit.hash === firstHash) ?? -1;
+    const selectedIndex = commits?.findIndex((commit) => commit.hash === hash) ?? -1;
+
+    setSelectedCommitRange(
+      extendSelection && firstHash && firstHash !== hash
+        ? firstIndex > selectedIndex
+          ? [firstHash, hash]
+          : [hash, firstHash]
+        : [hash],
+    );
+  }, [commits, selectedCommitRange, setSelectedCommitRange]);
 
   useEffect(() => {
     setCommitLimit(INITIAL_COMMIT_LIMIT);
@@ -104,7 +121,9 @@ export function CommitHistory() {
               History
             </h2>
             <p className="text-[11px] text-[var(--color-text-muted)]">
-              {commits.length} commits across all branches
+              {selectedCommitRange.length === 2
+                ? `Comparing ${selectedCommitRange[0].slice(0, 8)} → ${selectedCommitRange[1].slice(0, 8)}`
+                : `${commits.length} commits across all branches · Ctrl/⌘ or Shift-select another commit to compare`}
             </p>
           </div>
           <button
@@ -189,6 +208,8 @@ export function CommitHistory() {
                   commit={commit}
                   graph={graph}
                   branches={branches ?? []}
+                  isSelected={selectedCommitRange.includes(commit.hash)}
+                  onSelect={(selectedCommit, event) => selectCommit(selectedCommit.hash, event)}
                 />
               </div>
             );

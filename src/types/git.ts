@@ -752,6 +752,7 @@ export interface SelectedEntityState {
   repositoryPath: string | null;
   branchName: string | null;
   commitHash: string | null;
+  commitRange: string[];
   filePath: string | null;
   commitFilePath: string | null;
   fileStaged: boolean;
