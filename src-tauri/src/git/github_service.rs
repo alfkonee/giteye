@@ -1118,7 +1118,9 @@ fn run_required_process(
     repo_path: &Path,
     timeout: Duration,
 ) -> Result<String, AppError> {
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    GitCli::configure_command_environment(&mut command);
+    let mut child = command
         .args(args)
         .current_dir(repo_path)
         .stdin(Stdio::null())
@@ -1160,7 +1162,9 @@ fn run_process(
     repo_path: &Path,
     timeout: Duration,
 ) -> Option<String> {
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    GitCli::configure_command_environment(&mut command);
+    let mut child = command
         .args(args)
         .current_dir(repo_path)
         .stdin(Stdio::null())
@@ -1198,7 +1202,9 @@ fn run_process_for_request(
     timeout: Duration,
     request_context: &GithubRequestContext,
 ) -> Option<String> {
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    GitCli::configure_command_environment(&mut command);
+    let mut child = command
         .args(args)
         .current_dir(repo_path)
         .stdin(Stdio::null())

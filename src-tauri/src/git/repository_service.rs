@@ -11,6 +11,7 @@ use crate::models::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 use std::thread;
@@ -274,7 +275,7 @@ pub fn get_workspace_summary(path: &Path) -> Result<WorkspaceSummary, AppError> 
 
 pub fn init_repository(path: &Path) -> Result<RepositoryInfo, AppError> {
     std::fs::create_dir_all(path).map_err(|e| AppError::IoError(e.to_string()))?;
-    let output = Command::new("git")
+    let output = GitCli::command()
         .args(["init", "-b", "main"])
         .current_dir(path)
         .output()
@@ -303,7 +304,7 @@ pub fn clone_repository(url: &str, destination: &Path) -> Result<RepositoryInfo,
         ));
     };
 
-    let output = Command::new("git")
+    let output = GitCli::command()
         .args(["clone", url, name])
         .current_dir(parent)
         .output()

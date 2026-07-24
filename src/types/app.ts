@@ -16,6 +16,29 @@ export const DEFAULT_SETTINGS: AppSettings = {
   diffMode: "unified",
 };
 
+export interface ToolComponentStatus {
+  installed: boolean;
+  version: string | null;
+  executablePath: string | null;
+}
+
+export interface ToolchainStatus {
+  platform: string;
+  git: ToolComponentStatus;
+  lfs: ToolComponentStatus;
+  lfsEnabled: boolean;
+  installProvider: string | null;
+  canInstallGit: boolean;
+  canInstallLfs: boolean;
+  supportsCustomGitVersion: boolean;
+  userToolsDirectory: string;
+}
+
+export interface ToolInstallResult {
+  message: string;
+  status: ToolchainStatus;
+}
+
 export interface ActiveRepoState {
   repository: RepositoryInfo | null;
   isLoading: boolean;

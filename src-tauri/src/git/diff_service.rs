@@ -2,7 +2,6 @@ use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::DiffResult;
 use std::path::{Component, Path};
-use std::process::Command;
 
 fn count_diff_stats(diff_text: &str) -> (u32, u32) {
     let additions = diff_text
@@ -102,7 +101,7 @@ pub fn get_file_diff(
 }
 
 fn is_untracked(repo_path: &Path, file_path: &str) -> Result<bool, AppError> {
-    let output = Command::new("git")
+    let output = GitCli::command()
         .args(["ls-files", "--error-unmatch", "--", file_path])
         .current_dir(repo_path)
         .output()
@@ -118,7 +117,7 @@ fn is_untracked(repo_path: &Path, file_path: &str) -> Result<bool, AppError> {
 }
 
 fn untracked_file_diff(repo_path: &Path, file_path: &str) -> Result<String, AppError> {
-    let output = Command::new("git")
+    let output = GitCli::command()
         .args(["diff", "--no-index", "--", "/dev/null", file_path])
         .current_dir(repo_path)
         .output()

@@ -19,7 +19,12 @@ pub fn run() {
     builder
         .manage(watcher::RepositoryWatcherState::default())
         .manage(git::job_runner::GitJobRunnerState::default())
+        .manage(commands::toolchain::ToolchainInstallerState::default())
         .setup(|_app| {
+            if let Err(error) = git::toolchain_service::configure_from_settings(_app.handle()) {
+                eprintln!("Warning: configured Git executable is unavailable: {error}");
+                let _ = git::toolchain_service::select_git_executable(_app.handle(), None);
+            }
             if !git::cli::GitCli::is_git_available() {
                 eprintln!("Warning: Git is not installed or not in PATH");
             }
@@ -29,6 +34,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_settings::get_app_settings,
             commands::app_settings::save_app_settings,
+            commands::toolchain::get_toolchain_status,
+            commands::toolchain::install_git_toolchain,
+            commands::toolchain::install_and_enable_lfs,
+            commands::toolchain::cancel_toolchain_install,
+            commands::toolchain::select_git_executable,
             commands::repository::open_repository,
             commands::repository::init_repository,
             commands::repository::clone_repository,

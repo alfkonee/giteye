@@ -1,9 +1,9 @@
 use crate::errors::AppError;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -15,9 +15,76 @@ pub struct GitCliOutput {
 
 pub struct GitCli;
 
+static GIT_EXECUTABLE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+static TOOL_PATH: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+fn configured_git_executable() -> &'static RwLock<Option<PathBuf>> {
+    GIT_EXECUTABLE.get_or_init(|| RwLock::new(None))
+}
+
+fn configured_tool_path() -> &'static RwLock<Option<PathBuf>> {
+    TOOL_PATH.get_or_init(|| RwLock::new(None))
+}
+
 impl GitCli {
+    pub fn command() -> Command {
+        let executable = configured_git_executable()
+            .read()
+            .ok()
+            .and_then(|path| path.clone())
+            .unwrap_or_else(|| PathBuf::from("git"));
+        let mut command = Command::new(executable);
+        Self::configure_command_environment(&mut command);
+        command
+    }
+
+    pub fn configure_command_environment(command: &mut Command) {
+        let mut paths = Vec::new();
+        if let Some(executable) = Self::executable_path() {
+            if let Some(parent) = executable.parent() {
+                paths.push(parent.to_path_buf());
+            }
+        }
+        if let Some(tool_path) = configured_tool_path()
+            .read()
+            .ok()
+            .and_then(|path| path.clone())
+        {
+            paths.push(tool_path);
+        }
+        paths.extend(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        ));
+        if let Ok(path) = std::env::join_paths(paths) {
+            command.env("PATH", path);
+        }
+    }
+
+    pub fn set_executable(path: Option<PathBuf>) -> Result<(), AppError> {
+        let mut configured = configured_git_executable()
+            .write()
+            .map_err(|error| AppError::IoError(error.to_string()))?;
+        *configured = path;
+        Ok(())
+    }
+
+    pub fn executable_path() -> Option<PathBuf> {
+        configured_git_executable()
+            .read()
+            .ok()
+            .and_then(|path| path.clone())
+    }
+
+    pub fn set_tool_path(path: Option<PathBuf>) -> Result<(), AppError> {
+        let mut configured = configured_tool_path()
+            .write()
+            .map_err(|error| AppError::IoError(error.to_string()))?;
+        *configured = path;
+        Ok(())
+    }
+
     pub fn run(repo_path: &Path, args: &[&str]) -> Result<String, AppError> {
-        let output = Command::new("git")
+        let output = Self::command()
             .args(args)
             .current_dir(repo_path)
             .output()
@@ -42,7 +109,7 @@ impl GitCli {
         args: &[&str],
         allowed_exit_codes: &[i32],
     ) -> Result<(i32, String), AppError> {
-        let output = Command::new("git")
+        let output = Self::command()
             .args(args)
             .current_dir(repo_path)
             .output()
@@ -67,7 +134,7 @@ impl GitCli {
     }
 
     pub fn run_with_status(repo_path: &Path, args: &[&str]) -> Result<GitCliOutput, AppError> {
-        let output = Command::new("git")
+        let output = Self::command()
             .args(args)
             .current_dir(repo_path)
             .output()
@@ -91,7 +158,7 @@ impl GitCli {
         args: &[&str],
         timeout: Duration,
     ) -> Result<String, AppError> {
-        let mut child = Command::new("git")
+        let mut child = Self::command()
             .args(args)
             .current_dir(repo_path)
             .stdout(Stdio::piped())
@@ -140,7 +207,7 @@ impl GitCli {
         args: &[&str],
         stdin: &str,
     ) -> Result<String, AppError> {
-        let mut child = Command::new("git")
+        let mut child = Self::command()
             .args(args)
             .current_dir(repo_path)
             .stdin(Stdio::piped())
@@ -185,7 +252,7 @@ impl GitCli {
         cancel_flag: Arc<AtomicBool>,
         on_output: Arc<dyn Fn(&'static str, String) + Send + Sync>,
     ) -> Result<GitCliOutput, AppError> {
-        let mut child = Command::new("git")
+        let mut child = Self::command()
             .args(args)
             .current_dir(repo_path)
             .stdout(Stdio::piped())
@@ -241,7 +308,7 @@ impl GitCli {
     }
 
     pub fn is_git_available() -> bool {
-        Command::new("git")
+        Self::command()
             .arg("--version")
             .output()
             .map(|o| o.status.success())

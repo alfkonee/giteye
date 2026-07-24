@@ -3,11 +3,12 @@ import { useAppStore } from "../stores/app-store";
 import { RepositoryWelcome } from "../components/repository/RepositoryWelcome";
 import { RepositoryWorkspace } from "../components/repository/RepositoryWorkspace";
 import { Providers } from "./providers";
+import { ToolchainGate } from "../components/toolchain/ToolchainSetup";
 
 export default function App() {
   return (
     <Providers>
-      <AppContent />
+      <ToolchainGate><AppContent /></ToolchainGate>
     </Providers>
   );
 }

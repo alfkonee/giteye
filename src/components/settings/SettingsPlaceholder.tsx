@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
+import { Bot, Copy, FileText, GitBranch, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi, type AiProvider } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import type { SshKey } from "../../types/git";
 import { AiModelCombobox } from "./AiModelCombobox";
+import { ToolchainSettings } from "../toolchain/ToolchainSetup";
 
 export function SettingsPlaceholder() {
   const theme = useAppStore((s) => s.theme);
@@ -261,6 +262,15 @@ export function SettingsPlaceholder() {
                 </div>
               </div>
             </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<GitBranch className="h-4 w-4" />}
+              title="Git Toolchain"
+              description="Detect, install, and select user-scoped Git and Git LFS versions."
+            />
+            <ToolchainSettings />
           </section>
 
           <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">

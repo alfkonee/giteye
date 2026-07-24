@@ -11,5 +11,6 @@ pub fn save_app_settings(
     app_handle: tauri::AppHandle,
     settings: AppSettings,
 ) -> Result<AppSettings, AppError> {
-    storage::save_app_settings(&app_handle, settings)
+    // The Git path has a dedicated validated updater; theme/diff autosaves must not overwrite it.
+    storage::save_app_settings_preserving_git_path(&app_handle, settings)
 }
