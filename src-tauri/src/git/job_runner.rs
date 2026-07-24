@@ -25,6 +25,7 @@ struct GitStateChangedPayload {
 }
 
 type CompletionHook = Box<dyn FnOnce() + Send + 'static>;
+type PreflightHook = Box<dyn FnOnce() -> Result<(), AppError> + Send + 'static>;
 
 /// Internal request used by command handlers to start a GitEye-triggered Git job.
 pub struct GitJobRequest {
@@ -36,6 +37,7 @@ pub struct GitJobRequest {
     pub mutates_repo: bool,
     pub invalidation_reasons: Vec<String>,
     pub on_success: Option<CompletionHook>,
+    pub before_start: Option<PreflightHook>,
 }
 
 impl GitJobRequest {
@@ -55,6 +57,7 @@ impl GitJobRequest {
             mutates_repo: true,
             invalidation_reasons: vec!["worktree".to_string(), "refs".to_string()],
             on_success: None,
+            before_start: None,
         }
     }
 
@@ -76,6 +79,11 @@ impl GitJobRequest {
 
     pub fn on_success(mut self, hook: CompletionHook) -> Self {
         self.on_success = Some(hook);
+        self
+    }
+
+    pub fn before_start(mut self, hook: PreflightHook) -> Self {
+        self.before_start = Some(hook);
         self
     }
 }
@@ -135,6 +143,7 @@ impl GitJobRunnerState {
         let job_id_for_thread = job_id.clone();
 
         thread::spawn(move || {
+            let mut request = request;
             let _repo_guard = match wait_for_repo_guard(&repo_lock, &cancel_flag) {
                 RepoGuardWait::Acquired(guard) => guard,
                 RepoGuardWait::Canceled => {
@@ -162,6 +171,21 @@ impl GitJobRunnerState {
                 }
                 trim_retained_jobs(&jobs, &request.repo_path);
                 return;
+            }
+
+            if let Some(preflight) = request.before_start.take() {
+                if let Err(error) = preflight() {
+                    update_job(&jobs, &app, &job_id_for_thread, None, |job| {
+                        job.status = GitJobStatus::Failed;
+                        job.finished_at = Some(Utc::now());
+                        job.error = Some(redact_git_output(&error.to_string()));
+                    });
+                    if let Ok(mut cancellations) = cancellations.lock() {
+                        cancellations.remove(&job_id_for_thread);
+                    }
+                    trim_retained_jobs(&jobs, &request.repo_path);
+                    return;
+                }
             }
 
             update_job(&jobs, &app, &job_id_for_thread, None, |job| {
@@ -480,7 +504,7 @@ fn first_non_empty(value: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn redact_git_job_args(args: &[String]) -> Vec<String> {
+pub(crate) fn redact_git_job_args(args: &[String]) -> Vec<String> {
     args.iter().map(|arg| redact_git_arg(arg)).collect()
 }
 
@@ -496,7 +520,7 @@ fn redact_git_arg(value: &str) -> String {
     redact_url_userinfo(value)
 }
 
-fn redact_git_output(value: &str) -> String {
+pub(crate) fn redact_git_output(value: &str) -> String {
     let mut redacted = String::with_capacity(value.len());
     let mut token = String::new();
 
@@ -529,21 +553,26 @@ fn redact_url_userinfo(value: &str) -> String {
         .map(|index| authority_start + index)
         .unwrap_or(value.len());
     let authority = &value[authority_start..authority_suffix_start];
-    let Some(userinfo_end) = authority.rfind('@') else {
-        return value.to_string();
+    let mut redacted = if let Some(userinfo_end) = authority.rfind('@') {
+        let host = &authority[userinfo_end + 1..];
+        if host.is_empty() {
+            value.to_string()
+        } else {
+            format!(
+                "{}{}{}",
+                &value[..authority_start],
+                host,
+                &value[authority_suffix_start..]
+            )
+        }
+    } else {
+        value.to_string()
     };
-
-    let host = &authority[userinfo_end + 1..];
-    if host.is_empty() {
-        return value.to_string();
+    if let Some(secret_start) = redacted.find(['?', '#']) {
+        redacted.truncate(secret_start);
+        redacted.push_str("?<redacted>");
     }
-
-    format!(
-        "{}{}{}",
-        &value[..authority_start],
-        host,
-        &value[authority_suffix_start..]
-    )
+    redacted
 }
 
 fn lock_error<T>(error: std::sync::PoisonError<T>) -> AppError {
@@ -555,6 +584,18 @@ mod tests {
     use super::*;
     use chrono::Duration as ChronoDuration;
     use std::time::Instant;
+
+    #[test]
+    fn redact_git_job_args_strips_url_query_secrets() {
+        assert_eq!(
+            redact_git_arg("https://example.com/repo.git?access_token=secret"),
+            "https://example.com/repo.git?<redacted>"
+        );
+        assert_eq!(
+            redact_git_output("remote: https://user:secret@example.com/repo.git?token=secret"),
+            "remote: https://example.com/repo.git?<redacted>"
+        );
+    }
 
     #[test]
     fn wait_for_repo_guard_exits_when_canceled_while_queued() {
