@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReactNode } from "react";
 import {
+  AlertTriangle,
   Bell,
   ChevronDown,
   Circle,
@@ -72,6 +73,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const setDiffMode = useAppStore((s) => s.setDiffMode);
   const queryClient = useQueryClient();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [pushMenuOpen, setPushMenuOpen] = useState(false);
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
@@ -81,8 +83,12 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const transcriptOpen = useNoticeStore((s) => s.transcriptOpen);
   const toggleTranscriptOpen = useNoticeStore((s) => s.toggleTranscriptOpen);
   const branchMenuRef = useRef<HTMLDivElement>(null);
+  const pushMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
-  const { data: branches } = useQuery(gitQueries.branches(activeRepoPath, branchMenuOpen));
+  // The push menu needs the current branch's upstream to offer force-with-lease.
+  const { data: branches, isLoading: branchesLoading } = useQuery(
+    gitQueries.branches(activeRepoPath, branchMenuOpen || pushMenuOpen),
+  );
   const { data: recentRepos } = useQuery(gitQueries.recentRepositories());
   const { data: favoriteRepos } = useQuery(gitQueries.favoriteRepositories());
   const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
@@ -104,6 +110,10 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
+  const checkedOutBranch =
+    localBranches.find((branch) => branch.isCurrent) ??
+    localBranches.find((branch) => branch.shortName === currentBranch) ??
+    null;
   const workingTreeState = isClean ? "Clean" : "Uncommitted changes";
   const remoteNames = remoteNamesFromBranches(branches ?? []);
   const isRemoteOperationPending =
@@ -130,6 +140,9 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
       if (branchMenuRef.current && !branchMenuRef.current.contains(target)) {
         setBranchMenuOpen(false);
       }
+      if (pushMenuRef.current && !pushMenuRef.current.contains(target)) {
+        setPushMenuOpen(false);
+      }
       if (repoMenuRef.current && !repoMenuRef.current.contains(target)) {
         setRepoMenuOpen(false);
       }
@@ -149,6 +162,17 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         },
       },
     );
+  };
+
+  const handlePush = () => {
+    setPushMenuOpen(false);
+    pushMutation.mutate({});
+  };
+
+  const handleForcePushWithLease = () => {
+    setPushMenuOpen(false);
+    if (!checkedOutBranch) return;
+    void pushBranch(checkedOutBranch, true);
   };
 
   const openRepo = (path: string) => {
@@ -462,14 +486,57 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => pullMutation.mutate({})}
         />
-        <ToolbarButton
-          icon={<Upload className="h-4 w-4" />}
-          label="Push"
-          title="Push to remote"
-          tone="secondary"
-          disabled={!activeRepoPath || isRemoteOperationPending}
-          onClick={() => pushMutation.mutate({})}
-        />
+        <div className="relative flex items-center" ref={pushMenuRef}>
+          <ToolbarButton
+            icon={<Upload className="h-4 w-4" />}
+            label="Push"
+            title="Push to remote"
+            tone="secondary"
+            disabled={!activeRepoPath || isRemoteOperationPending}
+            onClick={handlePush}
+            className="rounded-r-none"
+          />
+          <button
+            type="button"
+            onClick={() => setPushMenuOpen((open) => !open)}
+            disabled={!activeRepoPath || isRemoteOperationPending}
+            aria-haspopup="menu"
+            aria-expanded={pushMenuOpen}
+            aria-label="More push options"
+            title="More push options"
+            className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 w-5 min-w-5 rounded-l-none border-l-0 px-0 disabled:cursor-not-allowed"
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", pushMenuOpen && "rotate-180")} />
+          </button>
+
+          {pushMenuOpen && (
+            <div
+              role="menu"
+              className="absolute left-0 top-full z-50 mt-1.5 w-[320px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]"
+            >
+              <PushMenuItem
+                icon={<Upload className="h-4 w-4 text-[var(--color-text-muted)]" />}
+                label="Push"
+                detail="Fast-forward the remote branch"
+                onClick={handlePush}
+              />
+              <PushMenuItem
+                icon={<AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />}
+                label="Force push (with lease)"
+                detail={
+                  branchesLoading
+                    ? "Loading branch details…"
+                    : checkedOutBranch
+                      ? `Overwrite ${checkedOutBranch.upstream ?? "the remote branch"} — refuses if it moved since your last fetch`
+                      : "Unavailable on a detached HEAD"
+                }
+                tone="warning"
+                disabled={!checkedOutBranch}
+                onClick={handleForcePushWithLease}
+              />
+            </div>
+          )}
+        </div>
         <ToolbarButton
           icon={<Zap className="h-4 w-4" />}
           label="Sync"
@@ -613,6 +680,45 @@ function buildRepositorySwitchItems(
   return items.filter((repo) => repo.name.toLowerCase().includes(query) || repo.path.toLowerCase().includes(query));
 }
 
+function PushMenuItem({
+  icon,
+  label,
+  detail,
+  onClick,
+  disabled,
+  tone = "default",
+}: {
+  icon: ReactNode;
+  label: string;
+  detail: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-start gap-2.5 px-2.5 py-2 text-left transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span className="min-w-0">
+        <span
+          className={cn(
+            "block truncate text-[13px] font-medium",
+            tone === "warning" ? "text-[var(--color-warning)]" : "text-[var(--color-text-primary)]",
+          )}
+        >
+          {label}
+        </span>
+        <span className="block text-[11px] text-[var(--color-text-muted)]">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
 function ToolbarButton({
   icon,
   label,
@@ -620,6 +726,7 @@ function ToolbarButton({
   onClick,
   disabled,
   tone = "ghost",
+  className,
 }: {
   icon: ReactNode;
   label?: string;
@@ -627,6 +734,7 @@ function ToolbarButton({
   onClick?: () => void;
   disabled?: boolean;
   tone?: "ghost" | "secondary" | "success";
+  className?: string;
 }) {
   return (
     <button
@@ -641,6 +749,7 @@ function ToolbarButton({
           : tone === "secondary"
             ? "giteye-btn-secondary"
             : "giteye-btn-ghost",
+        className,
       )}
     >
       {icon}
