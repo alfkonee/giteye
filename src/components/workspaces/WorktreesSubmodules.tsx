@@ -69,6 +69,11 @@ type CreateWorktreeForm = {
 
 type WorkspaceSection = "worktrees" | "submodules";
 
+interface WorktreesSubmodulesProps {
+  /** Which workspace surface to show. Mirrors the sidebar view so both stay in sync. */
+  section?: WorkspaceSection;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   Clean: "Clean",
   Dirty: "Dirty",
@@ -286,10 +291,11 @@ const EMPTY_CREATE_WORKTREE_FORM: CreateWorktreeForm = {
   createBranch: false,
 };
 
-export function WorktreesSubmodules() {
+export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodulesProps = {}) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const setActiveView = useAppStore((s) => s.setActiveView);
   const selectedWorktreePath = useAppStore((s) => s.selectedWorktreePath);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
   const selectedSubmodulePath = useAppStore((s) => s.selectedSubmodulePath);
@@ -322,8 +328,10 @@ export function WorktreesSubmodules() {
   const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const openSubmodule = useMutation(gitMutations.openSubmodule(activeRepoPath));
   const [actionError, setActionError] = useState<string | null>(null);
-  const [activeWorkspaceSection, setActiveWorkspaceSection] =
-    useState<WorkspaceSection>("worktrees");
+  const activeWorkspaceSection = section;
+  const setActiveWorkspaceSection = (next: WorkspaceSection) => {
+    if (next !== activeWorkspaceSection) setActiveView(next);
+  };
   const [worktreeFilter, setWorktreeFilter] = useState("");
   const [submoduleFilter, setSubmoduleFilter] = useState("");
   const [prunePreviewPaths, setPrunePreviewPaths] = useState<string[]>([]);
@@ -583,7 +591,7 @@ export function WorktreesSubmodules() {
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-5 py-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold tracking-tight">Submodules &amp; Worktrees</h1>
+          <h1 className="text-lg font-semibold tracking-tight">{activeWorkspaceSection === "worktrees" ? "Worktrees" : "Submodules"}</h1>
           <p className="text-xs text-[var(--color-text-muted)]">Focus on one workspace surface at a time; details and risky actions stay in the context panel.</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">

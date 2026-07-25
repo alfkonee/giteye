@@ -100,7 +100,7 @@ export const viewDefinitions: ViewDefinition[] = [
     description: "Manage linked worktrees for this repository",
     group: "core",
     icon: Layers,
-    render: () => <WorktreesSubmodules />,
+    render: () => <WorktreesSubmodules section="worktrees" />,
   },
   {
     id: "submodules",
@@ -108,7 +108,7 @@ export const viewDefinitions: ViewDefinition[] = [
     description: "Inspect, sync, and update configured submodules",
     group: "core",
     icon: Box,
-    render: () => <WorktreesSubmodules />,
+    render: () => <WorktreesSubmodules section="submodules" />,
   },
   {
     id: "remotes",

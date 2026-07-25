@@ -124,9 +124,6 @@ export function Sidebar() {
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
   const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
-  const branchCount = branchSummary
-    ? branchSummary.localCount + branchSummary.remoteCount
-    : undefined;
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
   const conflictCount =
     snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
@@ -146,7 +143,6 @@ export function Sidebar() {
     hasCollaborationData || isCollaborationView(activeView);
   const viewCounts: Partial<Record<ViewType, number | undefined>> = {
     "working-tree": statusFileCount,
-    branches: branchCount,
     "rebase-conflicts": hasConflicts ? conflictCount : undefined,
     worktrees: workspaceSummary?.worktreeCount,
     submodules: workspaceSummary?.submoduleCount,
@@ -155,6 +151,24 @@ export function Sidebar() {
     tags: tagsQuery.data?.length,
     lfs: lfsQuery.data?.files.length,
     "stacked-prs": pullRequestCount,
+  };
+  const viewCountBadges: Partial<Record<ViewType, SidebarCountBadge[]>> = {
+    branches: branchSummary
+      ? [
+          {
+            key: "local",
+            icon: <GitBranch className="h-2.5 w-2.5" />,
+            value: branchSummary.localCount,
+            title: `${branchSummary.localCount} local branches`,
+          },
+          {
+            key: "remote",
+            icon: <Globe className="h-2.5 w-2.5" />,
+            value: branchSummary.remoteCount,
+            title: `${branchSummary.remoteCount} remote branches`,
+          },
+        ]
+      : undefined,
   };
 
   useEffect(() => {
@@ -244,6 +258,7 @@ export function Sidebar() {
         label={definition.label}
         description={definition.connectEntry ? definition.description : undefined}
         count={viewCounts[definition.id]}
+        countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
         tone={
           definition.id === "rebase-conflicts" &&
@@ -636,6 +651,13 @@ function ShowMoreButton({ expanded, hiddenCount, onClick }: { expanded: boolean;
   );
 }
 
+interface SidebarCountBadge {
+  key: string;
+  icon: ReactNode;
+  value: number;
+  title: string;
+}
+
 function SidebarNavItem({
   icon,
   description,
@@ -643,6 +665,7 @@ function SidebarNavItem({
   active = false,
   indent = false,
   count,
+  countBadges,
   tone = "default",
   onClick,
   onDoubleClick,
@@ -655,6 +678,7 @@ function SidebarNavItem({
   active?: boolean;
   indent?: boolean;
   count?: number;
+  countBadges?: SidebarCountBadge[];
   tone?: "default" | "warning";
   onClick?: () => void;
   onDoubleClick?: () => void;
@@ -704,17 +728,40 @@ function SidebarNavItem({
           </span>
         )}
       </span>
-      {count !== undefined && count > 0 && (
-        <span
-          className={cn(
-            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-            active
-              ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
-              : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
-          )}
-        >
-          {count}
+      {countBadges ? (
+        <span className="flex shrink-0 items-center gap-1">
+          {countBadges
+            .filter((badge) => badge.value > 0)
+            .map((badge) => (
+              <span
+                key={badge.key}
+                title={badge.title}
+                className={cn(
+                  "flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                  active
+                    ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
+                    : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
+                )}
+              >
+                {badge.icon}
+                {badge.value}
+              </span>
+            ))}
         </span>
+      ) : (
+        count !== undefined &&
+        count > 0 && (
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+              active
+                ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
+                : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
+            )}
+          >
+            {count}
+          </span>
+        )
       )}
     </button>
   );
