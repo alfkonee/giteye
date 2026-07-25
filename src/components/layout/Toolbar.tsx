@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ReactNode } from "react";
 import {
   Bell,
@@ -20,7 +20,7 @@ import {
 import { cn } from "../../lib/cn";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
-import { CommandPalette } from "../common/CommandPalette";
+import { openCommandPalette } from "../../lib/command-palette";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import { useNoticeStore } from "../../stores/notice-store";
@@ -74,7 +74,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
   const notices = useNoticeStore((s) => s.notices);
@@ -138,19 +137,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen((open) => !open);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const closeCommandPalette = useCallback(() => setCommandPaletteOpen(false), []);
 
   const handleSync = () => {
     if (!activeRepoPath || isRemoteOperationPending) return;
@@ -497,7 +483,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
       <div className="flex min-w-[160px] flex-1 justify-center px-1">
         <button
           type="button"
-          onClick={() => setCommandPaletteOpen(true)}
+          onClick={openCommandPalette}
           className="giteye-input relative flex h-7 w-full max-w-xl items-center py-0 pl-8 pr-2.5 text-left text-[13px] text-[var(--color-text-muted)] shadow-none hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
           style={{ paddingLeft: "2rem", paddingRight: "0.625rem" }}
         >
@@ -587,7 +573,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
       />
-      <CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />
     </div>
   );
 }
