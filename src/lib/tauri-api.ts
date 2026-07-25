@@ -34,6 +34,12 @@ import type {
   GitIdentity,
   GitCredentialConfig,
   LfsStatus,
+  LfsLocks,
+  LfsCommandPreview,
+  LfsTransferRequest,
+  LfsPruneRequest,
+  LfsMigrationRequest,
+  LfsMigrationStart,
   SshStatus,
   RepositoryGithubOverview,
   PullRequestDiff,
@@ -463,6 +469,43 @@ export const gitApi = {
 
   untrackLfsPattern: (repoPath: string, pattern: string) =>
     invoke<void>("untrack_lfs_pattern", { repoPath, pattern }),
+
+  listLfsLocks: (repoPath: string, remote?: string | null) =>
+    invoke<LfsLocks>("list_lfs_locks", { repoPath, remote: remote ?? null }),
+
+  lockLfsFile: (repoPath: string, path: string, remote?: string | null) =>
+    invoke<void>("lock_lfs_file", { repoPath, path, remote: remote ?? null }),
+
+  unlockLfsFile: (
+    repoPath: string,
+    lockId: string,
+    remote?: string | null,
+    force = false,
+  ) => invoke<void>("unlock_lfs_file", { repoPath, lockId, remote: remote ?? null, force }),
+
+  previewLfsTransfer: (repoPath: string, request: LfsTransferRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_transfer", { repoPath, request }),
+
+  startLfsTransfer: (repoPath: string, request: LfsTransferRequest) =>
+    invoke<GitJobSummary>("start_lfs_transfer", { repoPath, request }),
+
+  previewLfsPrune: (repoPath: string, request: LfsPruneRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_prune", { repoPath, request }),
+
+  startLfsPrune: (repoPath: string, request: LfsPruneRequest) =>
+    invoke<GitJobSummary>("start_lfs_prune", { repoPath, request }),
+
+  previewLfsFsck: (repoPath: string, revision?: string | null) =>
+    invoke<LfsCommandPreview>("preview_lfs_fsck", { repoPath, revision: revision ?? null }),
+
+  startLfsFsck: (repoPath: string, revision?: string | null) =>
+    invoke<GitJobSummary>("start_lfs_fsck", { repoPath, revision: revision ?? null }),
+
+  previewLfsMigration: (repoPath: string, request: LfsMigrationRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_migration", { repoPath, request }),
+
+  startLfsMigration: (repoPath: string, request: LfsMigrationRequest) =>
+    invoke<LfsMigrationStart>("start_lfs_migration", { repoPath, request }),
 
   getSshStatus: () => invoke<SshStatus>("get_ssh_status"),
 

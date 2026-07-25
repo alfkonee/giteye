@@ -1,11 +1,11 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, GitBranch, Globe2, HardDrive, Pencil, Plus, RefreshCw, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud } from "lucide-react";
+import { Archive, ArrowLeftRight, GitBranch, Globe2, HardDrive, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud, Wrench } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
-import type { Branch, GitTag, LfsTrackPattern, Remote, StashEntry } from "../../types/git";
+import type { Branch, GitTag, LfsCommandPreview, LfsMigrationMode, LfsMigrationRequest, LfsTrackPattern, LfsTransferOperation, LfsTransferRequest, Remote, StashEntry } from "../../types/git";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -575,9 +575,32 @@ export function LfsView() {
   const installMutation = useMutation(gitMutations.installLfs(queryClient, activeRepoPath));
   const trackMutation = useMutation(gitMutations.trackLfsPattern(queryClient, activeRepoPath));
   const untrackMutation = useMutation(gitMutations.untrackLfsPattern(queryClient, activeRepoPath));
+  const lockMutation = useMutation(gitMutations.lockLfsFile(queryClient, activeRepoPath));
+  const unlockMutation = useMutation(gitMutations.unlockLfsFile(queryClient, activeRepoPath));
+  const transferMutation = useMutation(gitMutations.startLfsTransfer(queryClient, activeRepoPath));
+  const pruneMutation = useMutation(gitMutations.startLfsPrune(queryClient, activeRepoPath));
+  const fsckMutation = useMutation(gitMutations.startLfsFsck(queryClient, activeRepoPath));
+  const migrationMutation = useMutation(gitMutations.startLfsMigration(queryClient, activeRepoPath));
   const [pattern, setPattern] = useState("");
-  const pending = installMutation.isPending || trackMutation.isPending || untrackMutation.isPending;
-  const mutationError = installMutation.error ?? trackMutation.error ?? untrackMutation.error;
+  const [lockPath, setLockPath] = useState("");
+  const [lockRemote, setLockRemote] = useState("origin");
+  const [remote, setRemote] = useState("origin");
+  const [transferOperation, setTransferOperation] = useState<LfsTransferOperation>("fetch");
+  const [transferRef, setTransferRef] = useState("");
+  const [transferInclude, setTransferInclude] = useState("");
+  const [transferExclude, setTransferExclude] = useState("");
+  const [transferAll, setTransferAll] = useState(false);
+  const [pruneVerifyRemote, setPruneVerifyRemote] = useState(true);
+  const [pruneForce, setPruneForce] = useState(false);
+  const [fsckRevision, setFsckRevision] = useState("");
+  const [migrationMode, setMigrationMode] = useState<LfsMigrationMode>("import");
+  const [migrationInclude, setMigrationInclude] = useState("");
+  const [migrationExclude, setMigrationExclude] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const previewBusyRef = useRef(false);
+  const locksQuery = useQuery(gitQueries.lfsLocks(activeRepoPath, lockRemote.trim() || null, Boolean(lfsStatus?.available)));
+  const pending = previewBusy || [installMutation, trackMutation, untrackMutation, lockMutation, unlockMutation, transferMutation, pruneMutation, fsckMutation, migrationMutation].some((mutation) => mutation.isPending);
+  const mutationError = [installMutation, trackMutation, untrackMutation, lockMutation, unlockMutation, transferMutation, pruneMutation, fsckMutation, migrationMutation].find((mutation) => mutation.error)?.error;
 
   const trackPattern = () => {
     const nextPattern = pattern.trim();
@@ -585,17 +608,91 @@ export function LfsView() {
     trackMutation.mutate(nextPattern, { onSuccess: () => setPattern("") });
   };
 
+  const previewAndConfirm = async (loadPreview: () => Promise<LfsCommandPreview>, action: string) => {
+    if (previewBusyRef.current) return false;
+    previewBusyRef.current = true;
+    setPreviewBusy(true);
+    try {
+      const preview = await loadPreview();
+      const warning = preview.destructive
+        ? "\n\nWarning: the requested operation is destructive. Review the preview carefully."
+        : "";
+      return window.confirm(
+        `${action}?\n\n${preview.description}\n\nCommand:\n${preview.command.join(" ")}\n\nPreview:\n${formatPreviewForDialog(preview.lines)}${warning}`,
+      );
+    } catch (previewError) {
+      window.alert(`Unable to preview ${action.toLowerCase()}: ${errorMessage(previewError)}`);
+      return false;
+    } finally {
+      previewBusyRef.current = false;
+      setPreviewBusy(false);
+    }
+  };
+
+  const startTransfer = async () => {
+    if (!activeRepoPath) return;
+    const request: LfsTransferRequest = {
+      operation: transferOperation,
+      remote: remote.trim() || null,
+      reference: transferOperation === "pull" || (transferOperation === "push" && transferAll) ? null : transferRef.trim() || null,
+      include: transferAll ? null : transferInclude.trim() || null,
+      exclude: transferAll ? null : transferExclude.trim() || null,
+      all: transferAll,
+    };
+    if (await previewAndConfirm(() => gitApi.previewLfsTransfer(activeRepoPath, request), `Run LFS ${transferOperation}`)) {
+      transferMutation.mutate(request);
+    }
+  };
+
+  const startPrune = async () => {
+    if (!activeRepoPath) return;
+    const request = { verifyRemote: pruneVerifyRemote, force: pruneForce };
+    if (await previewAndConfirm(() => gitApi.previewLfsPrune(activeRepoPath, request), "Prune local LFS objects")) {
+      pruneMutation.mutate(request);
+    }
+  };
+
+  const startFsck = async () => {
+    if (!activeRepoPath) return;
+    const revision = fsckRevision.trim() || null;
+    if (await previewAndConfirm(() => gitApi.previewLfsFsck(activeRepoPath, revision), "Run LFS integrity repair")) {
+      fsckMutation.mutate(revision);
+    }
+  };
+
+  const startMigration = async () => {
+    if (!activeRepoPath || !migrationInclude.trim()) return;
+    const request: LfsMigrationRequest = {
+      mode: migrationMode,
+      include: migrationInclude.trim(),
+      exclude: migrationExclude.trim() || null,
+      includeRefs: [],
+      everything: false,
+      remote: remote.trim() || null,
+    };
+    const confirmed = await previewAndConfirm(
+      () => gitApi.previewLfsMigration(activeRepoPath, request),
+      `Rewrite Git history with LFS migrate ${migrationMode}`,
+    );
+    if (confirmed && window.confirm("This rewrites commit history and requires a clean worktree. GitEye will create a recovery branch before starting. Continue?")) {
+      migrationMutation.mutate(request);
+    }
+  };
+
+  const fieldClass = "min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]";
+  const locks = [...(locksQuery.data?.ours ?? []), ...(locksQuery.data?.theirs ?? [])];
+
   return (
     <section className="flex h-full flex-col bg-[var(--color-bg-primary)]">
       <Header
         icon={<HardDrive className="h-4 w-4" />}
         title="Git LFS"
-        detail={lfsStatus?.available ? lfsStatus.version ?? "Git LFS available" : "Large file storage status"}
+        detail={lfsStatus?.available ? `${lfsStatus.version ?? "Git LFS available"}${lfsStatus.gitVersion ? ` · ${lfsStatus.gitVersion}` : ""}` : "Large file storage status"}
         action={<ActionButton disabled={pending || !activeRepoPath} onClick={() => installMutation.mutate()} tone="primary">Install local hooks</ActionButton>}
       />
-      {(error || mutationError || lfsStatus?.error) && (
+      {(error || mutationError || locksQuery.error || lfsStatus?.error) && (
         <div className="border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-danger)]">
-          {errorMessage(error ?? mutationError ?? lfsStatus?.error)}
+          {errorMessage(error ?? mutationError ?? locksQuery.error ?? lfsStatus?.error)}
         </div>
       )}
       <div className="flex-1 overflow-y-auto p-4">
@@ -604,7 +701,14 @@ export function LfsView() {
         ) : !lfsStatus?.available ? (
           <EmptyState message="Git LFS is not available for this repository. Install git-lfs, then install local hooks here." />
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <LfsStatusCard label="Hooks" value={lfsStatus.hooksInstalled ? "Installed" : "Missing"} />
+              <LfsStatusCard label="Endpoint" value={lfsStatus.endpoint ?? "Default / not reported"} mono />
+              <LfsStatusCard label="Media directory" value={lfsStatus.localMediaDir ?? "Not reported"} mono />
+              <LfsStatusCard label="Concurrent transfers" value={lfsStatus.concurrentTransfers?.toString() ?? "Default"} />
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -613,15 +717,15 @@ export function LfsView() {
                 </div>
               </div>
               <div className="mt-3 flex gap-2">
-                <input
+                 <input
                   value={pattern}
                   onChange={(event) => setPattern(event.target.value)}
                   onKeyDown={(event) => event.key === "Enter" && trackPattern()}
                   placeholder="*.psd or assets/**"
-                  className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
+                   className={`${fieldClass} flex-1`}
                 />
                 <ActionButton disabled={pending || !pattern.trim()} onClick={trackPattern} tone="primary">Track</ActionButton>
-              </div>
+             </div>
               <div className="mt-4 space-y-2">
                 {lfsStatus.trackedPatterns.length > 0 ? (
                   lfsStatus.trackedPatterns.map((trackedPattern) => (
@@ -653,7 +757,10 @@ export function LfsView() {
                         <div className="truncate font-mono text-[var(--color-text-primary)]">{file.path}</div>
                         <div className="truncate font-mono text-[10px] text-[var(--color-text-muted)]">{file.oid}</div>
                       </div>
-                      <div className="self-center text-[var(--color-text-secondary)]">{file.size ?? "—"}</div>
+                       <div className="flex items-center gap-2 self-center text-[var(--color-text-secondary)]">
+                         <span>{file.size ?? "—"}</span>
+                         <ActionButton disabled={pending || locks.some((lock) => lock.path === file.path)} onClick={() => lockMutation.mutate({ path: file.path, remote: lockRemote.trim() || null })}><LockKeyhole className="h-3 w-3" />Lock</ActionButton>
+                       </div>
                     </div>
                   ))
                 ) : (
@@ -661,11 +768,82 @@ export function LfsView() {
                 )}
               </div>
             </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]"><LockKeyhole className="h-4 w-4 text-[var(--color-accent)]" />File locks</h3><p className="text-xs text-[var(--color-text-muted)]">Coordinate edits to lockable LFS files through the configured remote.</p></div>
+                <ActionButton disabled={pending || locksQuery.isFetching} onClick={() => locksQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />Refresh</ActionButton>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_180px_auto]">
+                <input className={fieldClass} value={lockPath} onChange={(event) => setLockPath(event.target.value)} placeholder="Path to lock" />
+                <input className={fieldClass} value={lockRemote} onChange={(event) => setLockRemote(event.target.value)} placeholder="Remote (origin)" />
+                <ActionButton disabled={pending || !lockPath.trim()} onClick={() => lockMutation.mutate({ path: lockPath.trim(), remote: lockRemote.trim() || null }, { onSuccess: () => setLockPath("") })} tone="primary">Lock file</ActionButton>
+              </div>
+              <div className="mt-4 overflow-hidden rounded-lg border border-[var(--color-border-muted)]">
+                {locksQuery.isLoading ? <div className="p-4"><EmptyState message="Loading LFS locks…" /></div> : locks.length === 0 ? <div className="p-4"><EmptyState message="No LFS locks reported by the remote." /></div> : locks.map((lock) => (
+                  <div key={lock.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-muted)] px-3 py-2 text-xs last:border-b-0">
+                    <div className="min-w-0"><div className="truncate font-mono text-[var(--color-text-primary)]">{lock.path}</div><div className="text-[10px] text-[var(--color-text-muted)]">{lock.ours ? "Locked by you" : `Locked by ${lock.owner ?? "another user"}`}{lock.lockedAt ? ` · ${formatRelativeTime(lock.lockedAt)}` : ""} · ID {lock.id}</div></div>
+                    <ActionButton disabled={pending} tone={lock.ours ? "default" : "danger"} onClick={() => {
+                      const force = !lock.ours;
+                      if (!force || window.confirm(`Force unlock ${lock.path}, owned by ${lock.owner ?? "another user"}?`)) unlockMutation.mutate({ lockId: lock.id, remote: lockRemote.trim() || null, force });
+                    }}>{lock.ours ? "Unlock" : "Force unlock"}</ActionButton>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><ArrowLeftRight className="h-4 w-4 text-[var(--color-accent)]" />Transfer objects</h3>
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">Preview downloads, worktree population, or uploads before queuing them.</p>
+                <div className="mt-3 grid gap-2">
+                  <select className={fieldClass} value={transferOperation} onChange={(event) => { setTransferOperation(event.target.value as LfsTransferOperation); setTransferAll(false); }}><option value="fetch">Fetch</option><option value="pull">Pull</option><option value="push">Push</option></select>
+                  <div className={`grid gap-2 ${transferOperation === "pull" ? "" : "grid-cols-2"}`}><input className={fieldClass} value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="Remote" />{transferOperation !== "pull" ? <input className={fieldClass} value={transferRef} onChange={(event) => setTransferRef(event.target.value)} placeholder={transferOperation === "push" && !transferAll ? "Ref (required)" : "Ref (optional)"} disabled={transferOperation === "push" && transferAll} /> : null}</div>
+                  {transferOperation !== "push" ? <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={transferInclude} onChange={(event) => setTransferInclude(event.target.value)} placeholder="Include paths" /><input className={fieldClass} value={transferExclude} onChange={(event) => setTransferExclude(event.target.value)} placeholder="Exclude paths" /></div> : null}
+                  {transferOperation !== "pull" ? <LfsCheckbox checked={transferAll} onChange={setTransferAll} label="All refs / objects" /> : null}
+                  <ActionButton disabled={pending || (transferOperation === "push" && (!remote.trim() || (!transferAll && !transferRef.trim())))} onClick={startTransfer} tone="primary">Preview and start</ActionButton>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-[var(--color-accent)]" />Integrity and cleanup</h3>
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">Verify LFS pointers or remove old local objects after a dry run.</p>
+                <div className="mt-3 grid gap-2">
+                  <input className={fieldClass} value={fsckRevision} onChange={(event) => setFsckRevision(event.target.value)} placeholder="Fsck revision (default HEAD)" />
+                  <ActionButton disabled={pending} onClick={startFsck}>Preview and run fsck</ActionButton>
+                  <div className="my-1 border-t border-[var(--color-border-muted)]" />
+                  <LfsCheckbox checked={pruneVerifyRemote} onChange={setPruneVerifyRemote} label="Verify objects exist remotely" />
+                  <LfsCheckbox checked={pruneForce} onChange={setPruneForce} label="Force prune" />
+                  <ActionButton disabled={pending} onClick={startPrune} tone="danger">Preview and prune</ActionButton>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[color:rgba(248,81,73,0.35)] bg-[var(--color-bg-secondary)] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><Wrench className="h-4 w-4 text-[var(--color-danger)]" />History migration</h3>
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">Rewrite selected history. A clean worktree is required and a recovery branch is created automatically.</p>
+                <div className="mt-3 grid gap-2">
+                  <select className={fieldClass} value={migrationMode} onChange={(event) => setMigrationMode(event.target.value as LfsMigrationMode)}><option value="import">Import into LFS</option><option value="export">Export from LFS</option></select>
+                  <input className={fieldClass} value={migrationInclude} onChange={(event) => setMigrationInclude(event.target.value)} placeholder="Include pattern (required)" />
+                  <input className={fieldClass} value={migrationExclude} onChange={(event) => setMigrationExclude(event.target.value)} placeholder="Exclude pattern" />
+                  <p className="text-[10px] text-[var(--color-text-muted)]">Migration is limited to the checked-out branch and does not fetch remote refs, keeping execution identical to the preview.</p>
+                  <ActionButton disabled={pending || !migrationInclude.trim()} onClick={startMigration} tone="danger">Preview history rewrite</ActionButton>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
     </section>
   );
+}
+
+function LfsStatusCard({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return <div className="min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3"><div className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{label}</div><div className={`mt-1 truncate text-xs text-[var(--color-text-primary)] ${mono ? "font-mono" : ""}`} title={value}>{value}</div></div>;
+}
+
+function LfsCheckbox({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+  return <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="accent-[var(--color-accent)]" />{label}</label>;
 }
 
 function LfsPatternRow({ trackedPattern, disabled, onUntrack }: { trackedPattern: LfsTrackPattern; disabled: boolean; onUntrack: () => void }) {

@@ -151,6 +151,11 @@ export interface GitCredentialConfig {
 export interface LfsStatus {
   available: boolean;
   version: string | null;
+  gitVersion: string | null;
+  hooksInstalled: boolean;
+  endpoint: string | null;
+  localMediaDir: string | null;
+  concurrentTransfers: number | null;
   trackedPatterns: LfsTrackPattern[];
   files: LfsFile[];
   error: string | null;
@@ -165,6 +170,58 @@ export interface LfsFile {
   oid: string;
   size: string | null;
   path: string;
+}
+
+export interface LfsLock {
+  id: string;
+  path: string;
+  owner: string | null;
+  lockedAt: string | null;
+  ours: boolean;
+}
+
+export interface LfsLocks {
+  ours: LfsLock[];
+  theirs: LfsLock[];
+}
+
+export interface LfsCommandPreview {
+  command: string[];
+  lines: string[];
+  destructive: boolean;
+  description: string;
+}
+
+export type LfsTransferOperation = "fetch" | "pull" | "push";
+
+export interface LfsTransferRequest {
+  operation: LfsTransferOperation;
+  remote?: string | null;
+  reference?: string | null;
+  include?: string | null;
+  exclude?: string | null;
+  all: boolean;
+}
+
+export interface LfsPruneRequest {
+  verifyRemote: boolean;
+  force: boolean;
+}
+
+export type LfsMigrationMode = "import" | "export";
+
+export interface LfsMigrationRequest {
+  mode: LfsMigrationMode;
+  include: string;
+  exclude?: string | null;
+  includeRefs: string[];
+  everything: boolean;
+  remote?: string | null;
+}
+
+export interface LfsMigrationStart {
+  backupBranch: string;
+  job: GitJobSummary;
 }
 
 export interface SshStatus {

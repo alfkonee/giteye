@@ -26,6 +26,9 @@ import type {
   StartRebaseRequest,
   RebaseTodoItem,
   ResetMode,
+  LfsMigrationRequest,
+  LfsPruneRequest,
+  LfsTransferRequest,
 } from "../types/git";
 import { useNoticeStore } from "../stores/notice-store";
 
@@ -309,6 +312,8 @@ export const gitKeys = {
     [...gitKeys.repository(repoPath), "git-credential-config"] as const,
   lfsStatus: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "lfs-status"] as const,
+  lfsLocks: (repoPath: string | null | undefined, remote?: string | null) =>
+    [...gitKeys.repository(repoPath), "lfs-locks", remote ?? null] as const,
   sshStatus: () => [...gitKeys.all, "ssh-status"] as const,
   remotes: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "remotes"] as const,
@@ -950,6 +955,12 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.lfsStatus(repoPath),
       queryFn: () => gitApi.getLfsStatus(repoPath!),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
+  lfsLocks: (repoPath: string | null, remote?: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.lfsLocks(repoPath, remote),
+      queryFn: () => gitApi.listLfsLocks(repoPath!, remote),
       enabled: enabledRepo(repoPath) && enabled,
     }),
 
@@ -1739,6 +1750,72 @@ export const gitMutations = {
       },
       onError: (error, _pattern, context) =>
         failGitActionNotice(context, error),
+    }),
+
+  lockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ path, remote }: { path: string; remote?: string | null }) =>
+        gitApi.lockLfsFile(repoPath!, path, remote),
+      onMutate: ({ path }) => startGitActionNotice("Locking LFS file", path, repoPath),
+      onSuccess: async (_data, request, context) => {
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        finishGitActionNotice(context, "LFS lock acquired.");
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  unlockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ lockId, remote, force }: { lockId: string; remote?: string | null; force: boolean }) =>
+        gitApi.unlockLfsFile(repoPath!, lockId, remote, force),
+      onMutate: ({ lockId, force }) =>
+        startGitActionNotice(force ? "Force-unlocking LFS file" : "Unlocking LFS file", lockId, repoPath),
+      onSuccess: async (_data, request, context) => {
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        finishGitActionNotice(context, "LFS lock released.");
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsTransfer: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsTransferRequest) => gitApi.startLfsTransfer(repoPath!, request),
+      onMutate: (request) =>
+        startGitActionNotice(`Starting LFS ${request.operation}`, request.remote || "default remote", repoPath),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsPrune: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsPruneRequest) => gitApi.startLfsPrune(repoPath!, request),
+      onMutate: () => startGitActionNotice("Pruning LFS objects", "Local LFS cache", repoPath, RECOVERY_HINTS.hardDiscard),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsFsck: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (revision?: string | null) => gitApi.startLfsFsck(repoPath!, revision),
+      onMutate: (revision) => startGitActionNotice("Repairing LFS integrity", revision || "HEAD", repoPath),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsMigration: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsMigrationRequest) => gitApi.startLfsMigration(repoPath!, request),
+      onMutate: (request) =>
+        startGitActionNotice(`Starting LFS migrate ${request.mode}`, request.include, repoPath, RECOVERY_HINTS.reset),
+      onSuccess: (result, _request, context) =>
+        finishGitActionNotice(
+          context,
+          `${result.job.title} queued. Recovery branch ${result.backupBranch} will be created when the job starts.`,
+        ),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
 
   generateSshKey: (queryClient: QueryClient) =>
