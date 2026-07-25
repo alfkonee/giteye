@@ -128,3 +128,11 @@ pub fn set_repository_favorite(
 ) -> Result<Vec<storage::FavoriteRepo>, AppError> {
     storage::set_repository_favorite(&app_handle, &repo_path, &name, favorite)
 }
+
+#[tauri::command]
+pub fn remove_recent_repository(
+    app_handle: AppHandle,
+    repo_path: String,
+) -> Result<Vec<storage::RecentRepo>, AppError> {
+    storage::remove_recent_repository(&app_handle, &repo_path)
+}

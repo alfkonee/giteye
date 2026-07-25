@@ -12,9 +12,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{mpsc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use std::thread;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SnapshotFingerprint {
@@ -55,8 +55,6 @@ static BRANCH_SUMMARY_CACHE: LazyLock<Mutex<HashMap<String, BranchSummaryCacheEn
 static WORKSPACE_SUMMARY_CACHE: LazyLock<Mutex<HashMap<String, WorkspaceSummaryCacheEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-const OPEN_CONTEXT_BUDGET: Duration = Duration::from_millis(100);
-
 pub fn get_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
     let repo_key = canonical_repo_key(path);
     let fingerprint = snapshot_fingerprint(path, &repo_key)?;
@@ -71,7 +69,16 @@ pub fn get_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppErr
 }
 fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
     let name = GitCli::repo_name_from_path(path);
-    let output = GitCli::run(path, &["status", "--porcelain=v2", "--branch", "-z"])?;
+    let output = GitCli::run(
+        path,
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=all",
+            "-z",
+        ],
+    )?;
     let entries: Vec<&str> = output
         .split('\0')
         .filter(|entry| !entry.is_empty())
@@ -218,13 +225,12 @@ pub fn get_workspace_summary(path: &Path) -> Result<WorkspaceSummary, AppError> 
         return Ok(summary);
     }
 
-    let (worktree_count, dirty_worktree_count) = worktree_service::worktree_count_and_dirty(path)?;
+    let worktree_count = worktree_service::worktree_count(path)?;
     let (submodule_count, behind_submodule_count) =
         submodule_service::submodule_count_and_behind(path)?;
 
     let summary = WorkspaceSummary {
         worktree_count,
-        dirty_worktree_count,
         submodule_count,
         behind_submodule_count,
     };
@@ -294,47 +300,7 @@ pub fn warm_repository_context(path: PathBuf, include_github: bool) {
 }
 
 pub fn prime_repository_context_with_budget(path: PathBuf, include_github: bool) {
-    let (tx, rx) = mpsc::channel();
-    let mut task_count = 2;
-
-    {
-        let tx = tx.clone();
-        let path = path.clone();
-        thread::spawn(move || {
-            let _ = get_branch_summary(&path);
-            let _ = tx.send(());
-        });
-    }
-
-    {
-        let tx = tx.clone();
-        let path = path.clone();
-        thread::spawn(move || {
-            let _ = get_workspace_summary(&path);
-            let _ = tx.send(());
-        });
-    }
-
-    if include_github {
-        task_count += 1;
-        let tx = tx.clone();
-        thread::spawn(move || {
-            let _ = crate::git::github_service::get_repository_github_overview(&path);
-            let _ = tx.send(());
-        });
-    }
-
-    drop(tx);
-
-    let deadline = std::time::Instant::now() + OPEN_CONTEXT_BUDGET;
-    for _ in 0..task_count {
-        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
-            break;
-        };
-        if rx.recv_timeout(remaining).is_err() {
-            break;
-        }
-    }
+    warm_repository_context(path, include_github);
 }
 
 pub fn note_repository_change(path: &Path, reason: RepoStateReason) {
@@ -826,6 +792,30 @@ mod tests {
             .files
             .iter()
             .any(|file| file.path == "untracked.txt" && file.status == "??"));
+    }
+
+    #[test]
+    fn repository_snapshot_lists_files_inside_untracked_directories() {
+        let temp = TestDir::new("snapshot-untracked-directory");
+        create_source_repo(&temp.path);
+        fs::create_dir_all(temp.path.join(".agents/skills")).expect("create nested directory");
+        fs::write(temp.path.join(".agents/config.json"), "{}\n").expect("write config");
+        fs::write(temp.path.join(".agents/skills/review.md"), "review\n")
+            .expect("write nested file");
+
+        let snapshot = get_repository_snapshot(&temp.path).expect("snapshot");
+
+        let paths: Vec<&str> = snapshot
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            vec![".agents/config.json", ".agents/skills/review.md"]
+        );
+        assert_eq!(snapshot.summary.total_count, 2);
+        assert_eq!(snapshot.summary.untracked_count, 2);
     }
 
     #[test]

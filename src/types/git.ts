@@ -39,7 +39,6 @@ export interface BranchSummary {
 
 export interface WorkspaceSummary {
   worktreeCount: number;
-  dirtyWorktreeCount: number;
   submoduleCount: number;
   behindSubmoduleCount: number;
 }
@@ -74,6 +73,13 @@ export interface CommitDetails {
   timestamp: string;
   parents: string[];
   changedFiles: string[];
+}
+
+export interface CommitRequest {
+  message: string;
+  signOff?: boolean;
+  noVerify?: boolean;
+  allowEmpty?: boolean;
 }
 
 export type ResetMode = "soft" | "mixed" | "hard";
@@ -145,6 +151,11 @@ export interface GitCredentialConfig {
 export interface LfsStatus {
   available: boolean;
   version: string | null;
+  gitVersion: string | null;
+  hooksInstalled: boolean;
+  endpoint: string | null;
+  localMediaDir: string | null;
+  concurrentTransfers: number | null;
   trackedPatterns: LfsTrackPattern[];
   files: LfsFile[];
   error: string | null;
@@ -159,6 +170,58 @@ export interface LfsFile {
   oid: string;
   size: string | null;
   path: string;
+}
+
+export interface LfsLock {
+  id: string;
+  path: string;
+  owner: string | null;
+  lockedAt: string | null;
+  ours: boolean;
+}
+
+export interface LfsLocks {
+  ours: LfsLock[];
+  theirs: LfsLock[];
+}
+
+export interface LfsCommandPreview {
+  command: string[];
+  lines: string[];
+  destructive: boolean;
+  description: string;
+}
+
+export type LfsTransferOperation = "fetch" | "pull" | "push";
+
+export interface LfsTransferRequest {
+  operation: LfsTransferOperation;
+  remote?: string | null;
+  reference?: string | null;
+  include?: string | null;
+  exclude?: string | null;
+  all: boolean;
+}
+
+export interface LfsPruneRequest {
+  verifyRemote: boolean;
+  force: boolean;
+}
+
+export type LfsMigrationMode = "import" | "export";
+
+export interface LfsMigrationRequest {
+  mode: LfsMigrationMode;
+  include: string;
+  exclude?: string | null;
+  includeRefs: string[];
+  everything: boolean;
+  remote?: string | null;
+}
+
+export interface LfsMigrationStart {
+  backupBranch: string;
+  job: GitJobSummary;
 }
 
 export interface SshStatus {
@@ -436,6 +499,10 @@ export interface CheckRunSummary {
   name: string;
   state: string | null;
   conclusion: string | null;
+  bucket: string | null;
+  workflow: string | null;
+  event: string | null;
+  description: string | null;
   url: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -705,7 +772,7 @@ export interface GitJobRecord extends GitJobSummary {
   output?: GitJobStreamLine[];
 }
 
-export type GlobalViewType = "repo-hub";
+export type GlobalViewType = "repo-hub" | "settings";
 
 export type RepositoryViewType =
   | "working-tree"
@@ -716,6 +783,7 @@ export type RepositoryViewType =
   | "tags"
   | "lfs"
   | "collaboration-connect"
+  | "ci-status"
   | "stacked-prs"
   | "review-studio"
   | "worktrees"
@@ -723,7 +791,7 @@ export type RepositoryViewType =
   | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
-  | "settings";
+  | "custom-command";
 
 export type ViewType = RepositoryViewType;
 
@@ -741,6 +809,7 @@ export interface SelectedEntityState {
   repositoryPath: string | null;
   branchName: string | null;
   commitHash: string | null;
+  commitRange: string[];
   filePath: string | null;
   commitFilePath: string | null;
   fileStaged: boolean;

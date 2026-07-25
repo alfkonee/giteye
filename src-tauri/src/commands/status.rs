@@ -68,10 +68,20 @@ pub fn unstage_all(repo_path: String, jobs: State<'_, GitJobRunnerState>) -> Res
 pub fn commit(
     repo_path: String,
     message: String,
+    sign_off: Option<bool>,
+    no_verify: Option<bool>,
+    allow_empty: Option<bool>,
     jobs: State<'_, GitJobRunnerState>,
 ) -> Result<(), AppError> {
     jobs.with_repo_mutation_lock(&repo_path, || {
-        GitCli::run(Path::new(&repo_path), &["commit", "-m", &message])?;
-        Ok(())
+        status_service::commit(
+            Path::new(&repo_path),
+            &message,
+            status_service::CommitOptions {
+                sign_off: sign_off.unwrap_or(false),
+                no_verify: no_verify.unwrap_or(false),
+                allow_empty: allow_empty.unwrap_or(false),
+            },
+        )
     })
 }

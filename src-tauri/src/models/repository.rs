@@ -54,7 +54,6 @@ pub struct BranchSummary {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub worktree_count: u32,
-    pub dirty_worktree_count: u32,
     pub submodule_count: u32,
     pub behind_submodule_count: u32,
 }

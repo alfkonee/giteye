@@ -3,6 +3,14 @@ use crate::git::patch_service;
 use crate::models::PatchApplyRequest;
 use std::path::Path;
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardFileRequest {
+    file_path: String,
+    staged: bool,
+    untracked: bool,
+}
+
 #[tauri::command]
 pub fn apply_patch(repo_path: String, request: PatchApplyRequest) -> Result<(), AppError> {
     patch_service::apply_patch(Path::new(&repo_path), request)
@@ -44,4 +52,13 @@ pub fn discard_file(
     untracked: bool,
 ) -> Result<(), AppError> {
     patch_service::discard_file(Path::new(&repo_path), &file_path, staged, untracked)
+}
+
+#[tauri::command]
+pub fn discard_files(repo_path: String, files: Vec<DiscardFileRequest>) -> Result<(), AppError> {
+    let repo_path = Path::new(&repo_path);
+    for file in files {
+        patch_service::discard_file(repo_path, &file.file_path, file.staged, file.untracked)?;
+    }
+    Ok(())
 }

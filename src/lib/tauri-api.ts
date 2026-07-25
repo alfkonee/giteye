@@ -1,10 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
+import { tracedInvoke as invoke } from "./invoke-trace";
+import type { AppSettings } from "../types/app";
 import type {
   RepositoryInfo,
   RepositorySnapshot,
   BranchSummary,
   WorkspaceSummary,
   GitStatusFile,
+  CommitRequest,
   CommitSummary,
   CommitDetails,
   Branch,
@@ -32,6 +34,12 @@ import type {
   GitIdentity,
   GitCredentialConfig,
   LfsStatus,
+  LfsLocks,
+  LfsCommandPreview,
+  LfsTransferRequest,
+  LfsPruneRequest,
+  LfsMigrationRequest,
+  LfsMigrationStart,
   SshStatus,
   RepositoryGithubOverview,
   PullRequestDiff,
@@ -88,9 +96,67 @@ export interface BisectStartRequest {
   paths?: string[];
 }
 
+export type AiProvider = "openai" | "claude" | "deepseek" | "openrouter";
+export type AiApiKeySource = "environment" | "stored" | "missing";
+
+export interface AiProviderView {
+  id: AiProvider;
+  label: string;
+  defaultModel: string;
+  models: string[];
+}
+
+export interface AiPrompts {
+  commitMessage: string;
+  conflictResolution: string;
+}
+
+export interface AiConfigView {
+  provider: AiProvider;
+  model: string;
+  apiKeyConfigured: boolean;
+  apiKeySource: AiApiKeySource;
+  providers: AiProviderView[];
+  prompts: AiPrompts;
+  defaultPrompts: AiPrompts;
+}
+
+export interface SaveAiConfigRequest {
+  provider: AiProvider;
+  model: string;
+  apiKey: string | null;
+  prompts: AiPrompts;
+}
+
+export interface ListAiModelsRequest {
+  provider: AiProvider;
+  apiKey: string | null;
+}
+
+export interface AiModelView {
+  id: string;
+  label: string;
+  contextLength: number | null;
+}
+
+export type AiModelListSource = "live" | "fallback";
+
+export interface AiModelListView {
+  provider: AiProvider;
+  models: AiModelView[];
+  source: AiModelListSource;
+  warning: string | null;
+}
+
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
 
 export const gitApi = {
+  getAppSettings: () =>
+    invoke<AppSettings>("get_app_settings"),
+
+  saveAppSettings: (settings: AppSettings) =>
+    invoke<AppSettings>("save_app_settings", { settings }),
+
   openRepository: (path: string) =>
     invoke<RepositorySnapshot>("open_repository", { path }),
 
@@ -126,6 +192,9 @@ export const gitApi = {
       name,
       favorite,
     }),
+
+  removeRecentRepository: (repoPath: string) =>
+    invoke<RecentRepo[]>("remove_recent_repository", { repoPath }),
 
   startRepositoryWatch: (repoPath: string) =>
     invoke<void>("start_repository_watch", { repoPath }),
@@ -167,8 +236,14 @@ export const gitApi = {
     invoke<void>("cancel_repository_github_work", { repoPath }),
   unstageAll: (repoPath: string) => invoke<void>("unstage_all", { repoPath }),
 
-  commit: (repoPath: string, message: string) =>
-    invoke<void>("commit", { repoPath, message }),
+  commit: (repoPath: string, request: CommitRequest) =>
+    invoke<void>("commit", {
+      repoPath,
+      message: request.message,
+      signOff: request.signOff ?? false,
+      noVerify: request.noVerify ?? false,
+      allowEmpty: request.allowEmpty ?? false,
+    }),
 
   // Commits
   getCommitHistory: (repoPath: string, limit?: number) =>
@@ -205,8 +280,18 @@ export const gitApi = {
       confirmDiscardChanges,
     }),
 
-  amendCommit: (repoPath: string, message?: string | null) =>
-    invoke<void>("amend_commit", { repoPath, message: message ?? null }),
+  amendCommit: (
+    repoPath: string,
+    message?: string | null,
+    options?: Omit<CommitRequest, "message">,
+  ) =>
+    invoke<void>("amend_commit", {
+      repoPath,
+      message: message ?? null,
+      signOff: options?.signOff ?? false,
+      noVerify: options?.noVerify ?? false,
+      allowEmpty: options?.allowEmpty ?? false,
+    }),
 
   previewAmend: (repoPath: string, message?: string | null) =>
     invoke<AmendPreview>("preview_amend", { repoPath, message: message ?? null }),
@@ -362,6 +447,18 @@ export const gitApi = {
       helper,
     }),
 
+  testGitAuthentication: (repoPath: string, remote?: string | null) =>
+    invoke<{ success: boolean; remote: string; message: string }>(
+      "test_git_authentication",
+      { repoPath, remote: remote ?? null },
+    ),
+
+  clearCredentialCache: (repoPath: string, host?: string | null) =>
+    invoke<string>("clear_credential_cache", {
+      repoPath,
+      host: host ?? null,
+    }),
+
   getLfsStatus: (repoPath: string) =>
     invoke<LfsStatus>("get_lfs_status", { repoPath }),
 
@@ -372,6 +469,43 @@ export const gitApi = {
 
   untrackLfsPattern: (repoPath: string, pattern: string) =>
     invoke<void>("untrack_lfs_pattern", { repoPath, pattern }),
+
+  listLfsLocks: (repoPath: string, remote?: string | null) =>
+    invoke<LfsLocks>("list_lfs_locks", { repoPath, remote: remote ?? null }),
+
+  lockLfsFile: (repoPath: string, path: string, remote?: string | null) =>
+    invoke<void>("lock_lfs_file", { repoPath, path, remote: remote ?? null }),
+
+  unlockLfsFile: (
+    repoPath: string,
+    lockId: string,
+    remote?: string | null,
+    force = false,
+  ) => invoke<void>("unlock_lfs_file", { repoPath, lockId, remote: remote ?? null, force }),
+
+  previewLfsTransfer: (repoPath: string, request: LfsTransferRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_transfer", { repoPath, request }),
+
+  startLfsTransfer: (repoPath: string, request: LfsTransferRequest) =>
+    invoke<GitJobSummary>("start_lfs_transfer", { repoPath, request }),
+
+  previewLfsPrune: (repoPath: string, request: LfsPruneRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_prune", { repoPath, request }),
+
+  startLfsPrune: (repoPath: string, request: LfsPruneRequest) =>
+    invoke<GitJobSummary>("start_lfs_prune", { repoPath, request }),
+
+  previewLfsFsck: (repoPath: string, revision?: string | null) =>
+    invoke<LfsCommandPreview>("preview_lfs_fsck", { repoPath, revision: revision ?? null }),
+
+  startLfsFsck: (repoPath: string, revision?: string | null) =>
+    invoke<GitJobSummary>("start_lfs_fsck", { repoPath, revision: revision ?? null }),
+
+  previewLfsMigration: (repoPath: string, request: LfsMigrationRequest) =>
+    invoke<LfsCommandPreview>("preview_lfs_migration", { repoPath, request }),
+
+  startLfsMigration: (repoPath: string, request: LfsMigrationRequest) =>
+    invoke<LfsMigrationStart>("start_lfs_migration", { repoPath, request }),
 
   getSshStatus: () => invoke<SshStatus>("get_ssh_status"),
 
@@ -528,6 +662,12 @@ export const gitApi = {
   getCommitDiff: (repoPath: string, commitHash: string) =>
     invoke<DiffResult>("get_commit_diff", { repoPath, commitHash }),
 
+  getCommitRangeDiff: (repoPath: string, baseHash: string, targetHash: string, filePath: string) =>
+    invoke<DiffResult>("get_commit_range_diff", { repoPath, baseHash, targetHash, filePath }),
+
+  getCommitRangeFiles: (repoPath: string, baseHash: string, targetHash: string) =>
+    invoke<string[]>("get_commit_range_files", { repoPath, baseHash, targetHash }),
+
   applyPatch: (repoPath: string, request: PatchApplyRequest) =>
     invoke<void>("apply_patch", { repoPath, request }),
 
@@ -542,6 +682,11 @@ export const gitApi = {
 
   discardFile: (repoPath: string, filePath: string, staged: boolean, untracked: boolean) =>
     invoke<void>("discard_file", { repoPath, filePath, staged, untracked }),
+
+  discardFiles: (
+    repoPath: string,
+    files: Array<{ filePath: string; staged: boolean; untracked: boolean }>,
+  ) => invoke<void>("discard_files", { repoPath, files }),
 
   // Worktrees
   listWorktrees: (repoPath: string) =>
@@ -817,4 +962,31 @@ export const gitApi = {
 
   closePullRequest: (repoPath: string, number: number) =>
     invoke<void>("close_pull_request", { repoPath, number }),
+
+  exportSettings: (outputPath: string, theme: string, diffMode: string) =>
+    invoke<string>("export_settings", { outputPath, theme, diffMode }),
+
+  importSettings: (inputPath: string) =>
+    invoke<{ theme: string; diffMode: string }>("import_settings", { inputPath }),
+
+  runCustomGitCommand: (repoPath: string, args: string[]) =>
+    invoke<{ success: boolean; stdout: string; stderr: string; exitCode: number }>(
+      "run_custom_git_command",
+      { repoPath, args },
+    ),
+
+  getAiConfig: () =>
+    invoke<AiConfigView>("get_ai_config"),
+
+  saveAiConfig: (request: SaveAiConfigRequest) =>
+    invoke<AiConfigView>("save_ai_config", { request }),
+
+  listAiModels: (request: ListAiModelsRequest) =>
+    invoke<AiModelListView>("list_ai_models", { request }),
+
+  resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
+    invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),
+
+  suggestCommitMessage: (diffs: Array<{ filePath: string; status: string; diffText: string }>) =>
+    invoke<string>("suggest_commit_message", { diffs }),
 };

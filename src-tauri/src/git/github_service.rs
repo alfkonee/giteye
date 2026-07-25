@@ -865,6 +865,10 @@ fn fetch_check_runs(
     struct GhCheckRun {
         name: Option<String>,
         state: Option<String>,
+        bucket: Option<String>,
+        workflow: Option<String>,
+        event: Option<String>,
+        description: Option<String>,
         link: Option<String>,
         started_at: Option<String>,
         completed_at: Option<String>,
@@ -880,7 +884,7 @@ fn fetch_check_runs(
         "--repo",
         repository.as_str(),
         "--json",
-        "name,state,link,startedAt,completedAt",
+        "name,state,bucket,workflow,event,description,link,startedAt,completedAt",
     ]);
 
     let json = if let Some(request_context) = request_context {
@@ -897,6 +901,10 @@ fn fetch_check_runs(
             name: check.name.unwrap_or_default(),
             state: check.state,
             conclusion: None,
+            bucket: check.bucket,
+            workflow: check.workflow,
+            event: check.event,
+            description: check.description,
             url: check.link,
             started_at: check.started_at,
             completed_at: check.completed_at,

@@ -20,6 +20,7 @@ import {
 import { cn } from "../../lib/cn";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
+import { openCommandPalette } from "../../lib/command-palette";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import { useNoticeStore } from "../../stores/notice-store";
@@ -39,13 +40,6 @@ type RepositorySwitchItem = {
   path: string;
   name: string;
   isFavorite: boolean;
-};
-
-type CommandItem = {
-  label: string;
-  detail: string;
-  disabled?: boolean;
-  run: () => void;
 };
 
 function remoteNamesFromBranches(branches: Branch[]) {
@@ -72,6 +66,7 @@ function splitRemoteBranch(branch: Branch) {
 export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const diffMode = useAppStore((s) => s.diffMode);
   const setDiffMode = useAppStore((s) => s.setDiffMode);
@@ -79,14 +74,12 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [repoMenuOpen, setRepoMenuOpen] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
-  const [commandValue, setCommandValue] = useState("");
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
   const notices = useNoticeStore((s) => s.notices);
   const operationTranscript = useNoticeStore((s) => s.operationTranscript);
   const transcriptOpen = useNoticeStore((s) => s.transcriptOpen);
   const toggleTranscriptOpen = useNoticeStore((s) => s.toggleTranscriptOpen);
-  const setTranscriptOpen = useNoticeStore((s) => s.setTranscriptOpen);
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath, branchMenuOpen));
@@ -130,46 +123,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
     () => buildRepositorySwitchItems(recentRepos ?? [], favoriteRepos ?? [], repoSearch),
     [favoriteRepos, recentRepos, repoSearch],
   );
-
-  const commandItems = useMemo<CommandItem[]>(() => {
-    const navigate = (view: Parameters<typeof setActiveView>[0]) => () => setActiveView(view);
-    const disabled = !activeRepoPath;
-    return [
-      { label: "Open Working Tree", detail: "Show staged and unstaged changes", disabled, run: navigate("working-tree") },
-      { label: "Open History", detail: "Show commit history", disabled, run: navigate("history") },
-      { label: "Open Branches", detail: "Rename, track, push, and delete local or remote branches", disabled, run: navigate("branches") },
-      { label: "Open Remotes", detail: "Add, edit, prune, delete, fetch, pull, and push remotes", disabled, run: navigate("remotes") },
-      { label: "Open Stashes", detail: "Create and apply stashes", disabled, run: navigate("stashes") },
-      { label: "Open Git LFS", detail: "Manage large-file tracking patterns", disabled, run: navigate("lfs") },
-      { label: "Open Tags", detail: "Create, push, and delete local or remote tags", disabled, run: navigate("tags") },
-      { label: "Open Worktrees", detail: "Manage linked worktrees", disabled, run: navigate("worktrees") },
-      { label: "Open Submodules", detail: "Sync and update submodules", disabled, run: navigate("submodules") },
-      { label: "Open Search & Archaeology", detail: "Search commits, files, blame, grep, pickaxe, reflog, and lost commits", disabled, run: navigate("archaeology") },
-      { label: "Open Diagnostics & Bisect", detail: "Run fsck, maintenance/gc, signature checks, and guided git bisect", disabled, run: navigate("diagnostics") },
-      { label: "Open Rebase Resolver", detail: "Inspect rebase todo and conflicts", disabled, run: navigate("rebase-conflicts") },
-      { label: "Open Settings", detail: "Application settings", run: navigate("settings") },
-      { label: "Open Operation Transcript", detail: "Show completed Git actions and recovery hints", run: () => setTranscriptOpen(true) },
-      { label: "Refresh Repository", detail: "Invalidate live Git data", disabled, run: () => void invalidateGitState(queryClient, activeRepoPath) },
-      { label: "Fetch Remotes", detail: "git fetch", disabled: disabled || isRemoteOperationPending, run: () => fetchMutation.mutate(undefined) },
-      { label: "Pull Current Branch", detail: "git pull", disabled: disabled || isRemoteOperationPending, run: () => pullMutation.mutate({}) },
-      { label: "Push Current Branch", detail: "git push", disabled: disabled || isRemoteOperationPending, run: () => pushMutation.mutate({}) },
-      { label: "Toggle Diff Mode", detail: diffMode === "split" ? "Switch to unified diff" : "Switch to split diff", disabled, run: () => setDiffMode(diffMode === "split" ? "unified" : "split") },
-    ];
-  }, [activeRepoPath, diffMode, fetchMutation, isRemoteOperationPending, pullMutation, pushMutation, queryClient, setActiveView, setDiffMode, setTranscriptOpen]);
-
-  const visibleCommands = useMemo(() => {
-    const query = commandValue.trim().toLowerCase();
-    if (!query) return [];
-    return commandItems
-      .filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(query))
-      .slice(0, 6);
-  }, [commandItems, commandValue]);
-
-  const runCommand = (command: CommandItem) => {
-    if (command.disabled) return;
-    command.run();
-    setCommandValue("");
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -326,7 +279,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <button
           type="button"
           onClick={() => setActiveRepoPath(null)}
-          className="flex h-7 w-8 items-center justify-center rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
           title="Repo Hub"
         >
           <Home className="h-4 w-4" />
@@ -336,7 +289,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           <button
             type="button"
             onClick={() => setRepoMenuOpen((open) => !open)}
-            className="flex h-7 max-w-[560px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:border-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]"
+            className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 max-w-[560px] gap-1.5 px-2 text-[13px] font-semibold text-[var(--color-text-primary)]"
             title={
               submoduleParent
                 ? `${repoName ?? "Repository"} is submodule ${submoduleParent.submodulePath} of parent repository ${submoduleParent.name} (${submoduleParent.path})`
@@ -368,7 +321,8 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                   value={repoSearch}
                   onChange={(event) => setRepoSearch(event.target.value)}
                   placeholder="Search recent and favorite repositories…"
-                  className="h-8 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-7 pr-2 text-[12px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+                  className="giteye-input h-8 text-[12px]"
+                  style={{ paddingLeft: "1.75rem", paddingRight: "0.5rem" }}
                   autoFocus
                 />
               </div>
@@ -383,7 +337,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                       onClick={() => openRepo(repo.path)}
                       className={cn(
                         "grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--color-bg-hover)]",
-                        activeRepoPath === repo.path && "bg-[var(--color-bg-selected)]/30",
+                        activeRepoPath === repo.path && "giteye-selected-row",
                       )}
                     >
                       <span className="min-w-0">
@@ -421,7 +375,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           <div className="relative" ref={branchMenuRef}>
             <button
               onClick={() => setBranchMenuOpen((open) => !open)}
-              className="flex h-7 max-w-[200px] items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[13px] text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-text-primary)]"
+              className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 max-w-[200px] gap-1.5 px-2 text-[13px] font-medium text-[var(--color-text-secondary)]"
               title="Checkout branch; right-click branch rows for rename, tracking, push, and delete actions"
             >
               <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -447,20 +401,20 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                     className={cn(
                       "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors",
                       branch.isCurrent
-                        ? "bg-[var(--color-bg-selected)] text-white"
+                        ? "giteye-selected-row text-[var(--color-text-primary)]"
                         : "text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]",
                     )}
                   >
-                    <GitBranch className={cn("h-4 w-4 shrink-0", branch.isCurrent ? "text-white" : "text-[var(--color-text-muted)]")} />
+                    <GitBranch className={cn("h-4 w-4 shrink-0", branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]")} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{branch.shortName}</span>
                       {branch.upstream && (
-                        <span className={cn("block truncate text-[10px]", branch.isCurrent ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+                        <span className="block truncate text-[10px] text-[var(--color-text-muted)]">
                           {trackingLabel(branch)}
                         </span>
                       )}
                     </span>
-                    {branch.isCurrent && <span className="text-[11px] opacity-80">current</span>}
+                    {branch.isCurrent && <span className="text-[11px] font-medium text-[var(--color-accent)]">current</span>}
                   </button>
                 ))}
                 {remoteBranches.length > 0 && (
@@ -496,6 +450,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Download className="h-4 w-4" />}
           label="Fetch"
           title="Fetch from remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => fetchMutation.mutate(undefined)}
         />
@@ -503,6 +458,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<GitMerge className="h-4 w-4" />}
           label="Pull"
           title="Pull from remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => pullMutation.mutate({})}
         />
@@ -510,6 +466,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Upload className="h-4 w-4" />}
           label="Push"
           title="Push to remote"
+          tone="secondary"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={() => pushMutation.mutate({})}
         />
@@ -517,48 +474,23 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           icon={<Zap className="h-4 w-4" />}
           label="Sync"
           title="Pull then push"
+          tone="success"
           disabled={!activeRepoPath || isRemoteOperationPending}
           onClick={handleSync}
         />
       </div>
 
       <div className="flex min-w-[160px] flex-1 justify-center px-1">
-        <div className="relative w-full max-w-xl">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-text-muted)]" />
-          <input
-            type="text"
-            value={commandValue}
-            onChange={(event) => setCommandValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && visibleCommands[0]) {
-                event.preventDefault();
-                runCommand(visibleCommands[0]);
-              }
-              if (event.key === "Escape") {
-                setCommandValue("");
-              }
-            }}
-            placeholder="Search files, branches, commands..."
-            className="h-7 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] pl-8 pr-2.5 text-[13px] text-[var(--color-text-primary)] shadow-[var(--shadow-panel)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/20"
-          />
-          {visibleCommands.length > 0 && (
-            <div className="absolute left-0 right-0 top-9 z-50 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-              {visibleCommands.map((command) => (
-                <button
-                  key={command.label}
-                  type="button"
-                  disabled={command.disabled}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => runCommand(command)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span className="truncate">{command.label}</span>
-                  <span className="truncate text-xs text-[var(--color-text-muted)]">{command.detail}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="giteye-input relative flex h-7 w-full max-w-xl items-center py-0 pl-8 pr-2.5 text-left text-[13px] text-[var(--color-text-muted)] shadow-none hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          style={{ paddingLeft: "2rem", paddingRight: "0.625rem" }}
+        >
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" />
+          <span className="truncate">Search files, branches, commands...</span>
+          <kbd className="giteye-kbd ml-auto">⌘K</kbd>
+        </button>
       </div>
 
       {activeNotice && (
@@ -616,7 +548,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <ToolbarButton
           icon={<Settings className="h-4 w-4" />}
           title="Settings"
-          onClick={() => setActiveView("settings")}
+          onClick={() => setGlobalView("settings")}
         />
       </div>
       <BranchSwitchDialog
@@ -687,19 +619,29 @@ function ToolbarButton({
   title,
   onClick,
   disabled,
+  tone = "ghost",
 }: {
   icon: ReactNode;
   label?: string;
   title?: string;
   onClick?: () => void;
   disabled?: boolean;
+  tone?: "ghost" | "secondary" | "success";
 }) {
   return (
     <button
       onClick={onClick}
       title={title ?? label}
       disabled={disabled}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+      className={cn(
+        "giteye-btn giteye-btn-sm h-7 gap-1.5 text-[12px] disabled:cursor-not-allowed",
+        label ? "px-2" : "giteye-btn-icon",
+        tone === "success"
+          ? "giteye-btn-success"
+          : tone === "secondary"
+            ? "giteye-btn-secondary"
+            : "giteye-btn-ghost",
+      )}
     >
       {icon}
       {label && <span className="hidden lg:inline">{label}</span>}

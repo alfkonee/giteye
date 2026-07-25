@@ -9,7 +9,9 @@ mod watcher;
 pub fn run() {
     configure_linux_webkit_environment();
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init());
 
     #[cfg(debug_assertions)]
     let builder = builder.plugin(tauri_plugin_mcp_bridge::init());
@@ -25,6 +27,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app_settings::get_app_settings,
+            commands::app_settings::save_app_settings,
             commands::repository::open_repository,
             commands::repository::init_repository,
             commands::repository::clone_repository,
@@ -36,6 +40,7 @@ pub fn run() {
             commands::repository::list_recent_repositories,
             commands::repository::list_favorite_repositories,
             commands::repository::set_repository_favorite,
+            commands::repository::remove_recent_repository,
             commands::jobs::list_git_jobs,
             commands::jobs::get_git_job,
             commands::jobs::cancel_git_job,
@@ -82,10 +87,24 @@ pub fn run() {
             commands::config::set_git_identity,
             commands::config::get_git_credential_config,
             commands::config::set_git_credential_helper,
+            commands::config::test_git_authentication,
+            commands::config::clear_credential_cache,
+            commands::config::run_custom_git_command,
             commands::lfs::get_lfs_status,
             commands::lfs::install_lfs,
             commands::lfs::track_lfs_pattern,
             commands::lfs::untrack_lfs_pattern,
+            commands::lfs::list_lfs_locks,
+            commands::lfs::lock_lfs_file,
+            commands::lfs::unlock_lfs_file,
+            commands::lfs::preview_lfs_transfer,
+            commands::lfs::start_lfs_transfer,
+            commands::lfs::preview_lfs_prune,
+            commands::lfs::start_lfs_prune,
+            commands::lfs::preview_lfs_fsck,
+            commands::lfs::start_lfs_fsck,
+            commands::lfs::preview_lfs_migration,
+            commands::lfs::start_lfs_migration,
             commands::ssh::get_ssh_status,
             commands::ssh::generate_ssh_key,
             commands::ssh::add_ssh_key_to_agent,
@@ -118,11 +137,14 @@ pub fn run() {
             commands::tags::delete_remote_tag_dry_run,
             commands::diff::get_file_diff,
             commands::diff::get_commit_diff,
+            commands::diff::get_commit_range_diff,
+            commands::diff::get_commit_range_files,
             commands::patch::apply_patch,
             commands::patch::stage_hunk,
             commands::patch::unstage_hunk,
             commands::patch::discard_hunk,
             commands::patch::discard_file,
+            commands::patch::discard_files,
             commands::worktrees::list_worktrees,
             commands::worktrees::create_worktree,
             commands::github::cancel_repository_github_work,
@@ -179,6 +201,13 @@ pub fn run() {
             commands::github::remove_pull_request_label,
             commands::github::merge_pull_request,
             commands::github::close_pull_request,
+            commands::ai::get_ai_config,
+            commands::ai::save_ai_config,
+            commands::ai::list_ai_models,
+            commands::ai::resolve_conflict_with_ai,
+            commands::ai::suggest_commit_message,
+            commands::settings_io::export_settings,
+            commands::settings_io::import_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -190,8 +219,8 @@ fn configure_linux_webkit_environment() {
     // libraries. That mismatch has produced blank windows on newer Linux desktops.
     if std::env::var_os("GIO_MODULE_DIR").is_none() {
         if let Some(app_dir) = std::env::var_os("APPDIR") {
-            let gio_modules = std::path::PathBuf::from(app_dir)
-                .join("usr/lib/x86_64-linux-gnu/gio/modules");
+            let gio_modules =
+                std::path::PathBuf::from(app_dir).join("usr/lib/x86_64-linux-gnu/gio/modules");
             if gio_modules.is_dir() {
                 std::env::set_var("GIO_MODULE_DIR", gio_modules);
             }

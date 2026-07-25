@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { formatDryRunPreview } from "../../lib/git-preview";
-import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud } from "lucide-react";
+import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { BranchSwitchDialog } from "./BranchSwitchDialog";
 import { BranchContextMenu } from "./BranchContextMenu";
@@ -110,6 +110,20 @@ export function BranchList() {
       { branchName: branchToSwitch.shortName, strategy },
       { onSuccess: () => setBranchToSwitch(null) },
     );
+  };
+
+  const checkoutRemote = (branch: Branch) => {
+    const localName = branch.shortName.split("/").slice(1).join("/");
+    if (!localName) return;
+    createMutation.mutate({ name: localName, checkout: true, startPoint: branch.shortName });
+  };
+
+  const trackedByLocal = (branch: Branch): string | null => {
+    const remoteRef = branch.shortName;
+    const trackingLocal = localBranches.find(
+      (local) => local.upstream === remoteRef,
+    );
+    return trackingLocal ? trackingLocal.shortName : null;
   };
 
   const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
@@ -328,16 +342,39 @@ export function BranchList() {
         {remoteBranches.length > 0 && (
           <>
             <div className="px-3 pt-3 pb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Remote</div>
-            {remoteBranches.map((branch) => (
+            {remoteBranches.map((branch) => {
+              const trackedBy = trackedByLocal(branch);
+              return (
               <div
                 key={branch.name}
                 className="group flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--color-bg-surface)] cursor-pointer text-xs text-[var(--color-text-secondary)]"
                 onDoubleClick={() => requestBranchSwitch(branch)}
                 onContextMenu={(event) => openBranchContextMenu(event, branch)}
-                title="Double-click to switch remote branch, right-click for branch actions"
+                title={trackedBy ? `Tracked by local branch "${trackedBy}"` : "Double-click to switch remote branch, right-click for branch actions"}
               >
                 <GitBranch className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{branch.shortName}</span>
+                {trackedBy && (
+                  <span className="hidden shrink-0 truncate text-[10px] text-[var(--color-accent)] xl:inline" title={`Tracked by ${trackedBy}`}>
+                    {trackedBy}
+                  </span>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    checkoutRemote(branch);
+                  }}
+                  disabled={Boolean(trackedBy) || createMutation.isPending}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 transition-all group-focus-within:opacity-100 group-hover:opacity-100",
+                    trackedBy
+                      ? "cursor-not-allowed text-[var(--color-text-muted)]"
+                      : "text-[var(--color-accent)] hover:bg-[var(--color-bg-surface)]",
+                  )}
+                  title={trackedBy ? `Already tracked by "${trackedBy}"` : "Checkout and track this remote branch"}
+                >
+                  {trackedBy ? <Check className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -349,7 +386,8 @@ export function BranchList() {
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>

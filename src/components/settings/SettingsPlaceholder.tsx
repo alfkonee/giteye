@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User } from "lucide-react";
+import { Bot, Copy, FileText, KeyRound, Monitor, Moon, ShieldCheck, Sun, User, Trash2, Radio, Download, Upload } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitApi, type AiProvider } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import type { SshKey } from "../../types/git";
+import { AiModelCombobox } from "./AiModelCombobox";
 
 export function SettingsPlaceholder() {
   const theme = useAppStore((s) => s.theme);
@@ -17,23 +19,112 @@ export function SettingsPlaceholder() {
   const { data: credentialConfig, isLoading: credentialLoading, error: credentialError } = useQuery(gitQueries.gitCredentialConfig(activeRepoPath));
   const saveCredentialHelperMutation = useMutation(gitMutations.setGitCredentialHelper(queryClient, activeRepoPath));
   const { data: sshStatus, isLoading: sshLoading, error: sshError } = useQuery(gitQueries.sshStatus());
+  const { data: aiConfig, isLoading: aiLoading, error: aiError } = useQuery(gitQueries.aiConfig());
+  const saveAiConfig = useMutation(gitMutations.saveAiConfig(queryClient));
   const generateSshKey = useMutation(gitMutations.generateSshKey(queryClient));
   const addSshKeyToAgent = useMutation(gitMutations.addSshKeyToAgent(queryClient));
   const [localName, setLocalName] = useState("");
   const [localEmail, setLocalEmail] = useState("");
   const [credentialHelper, setCredentialHelperInput] = useState("");
+  const [aiProvider, setAiProvider] = useState<AiProvider>("openai");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiApiKeyRevision, setAiApiKeyRevision] = useState(0);
+  const [commitMessagePrompt, setCommitMessagePrompt] = useState("");
+  const [conflictResolutionPrompt, setConflictResolutionPrompt] = useState("");
   const [sshKeyName, setSshKeyName] = useState("id_giteye");
   const [sshKeyComment, setSshKeyComment] = useState("");
   const [copiedSshKey, setCopiedSshKey] = useState<string | null>(null);
+  const [authTestResult, setAuthTestResult] = useState<{ success: boolean; remote: string; message: string } | null>(null);
   const setDiffMode = useAppStore((s) => s.setDiffMode);
+
+  const testAuthMutation = useMutation({
+    mutationFn: () => gitApi.testGitAuthentication(activeRepoPath!, null),
+    onSuccess: (result) => setAuthTestResult(result),
+    onError: () => setAuthTestResult({ success: false, remote: "origin", message: "Unable to test authentication. Check your network connection." }),
+  });
+
+  const clearCredentialCacheMutation = useMutation({
+    mutationFn: () => gitApi.clearCredentialCache(activeRepoPath!, null),
+    onSuccess: (message) => setAuthTestResult({ success: true, remote: "", message }),
+  });
+
+  const [exportImportMessage, setExportImportMessage] = useState<string | null>(null);
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const filePath = await save({
+        title: "Export GitEye Settings",
+        defaultPath: "giteye-settings.json",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!filePath) return;
+      return gitApi.exportSettings(filePath, theme, diffMode);
+    },
+    onSuccess: (result) => setExportImportMessage(result ?? null),
+    onError: (error) => setExportImportMessage(`Export failed: ${error}`),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        title: "Import GitEye Settings",
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        multiple: false,
+      });
+      if (!selected) return null;
+      const filePath = typeof selected === "string" ? selected : selected[0];
+      const bundle = await gitApi.importSettings(filePath);
+      return bundle;
+    },
+    onSuccess: (bundle) => {
+      if (!bundle) return;
+      if (bundle.theme) setTheme(bundle.theme as "dark" | "light");
+      if (bundle.diffMode) setDiffMode(bundle.diffMode as "unified" | "split");
+      void queryClient.invalidateQueries({ queryKey: ["git", "recent-repositories"] });
+      void queryClient.invalidateQueries({ queryKey: ["git", "favorite-repositories"] });
+      setExportImportMessage("Settings imported successfully. Restart any open repositories to apply all changes.");
+    },
+    onError: (error) => setExportImportMessage(`Import failed: ${error}`),
+  });
 
   const isDark = theme === "dark";
   const identityPending = identityLoading || setGitIdentity.isPending;
   const identityErrorText = identityError ?? setGitIdentity.error;
   const credentialPending = credentialLoading || saveCredentialHelperMutation.isPending;
   const credentialErrorText = credentialError ?? saveCredentialHelperMutation.error;
+  const aiPending = aiLoading || saveAiConfig.isPending;
+  const aiErrorText = aiError ?? saveAiConfig.error;
   const sshPending = sshLoading || generateSshKey.isPending || addSshKeyToAgent.isPending;
   const sshErrorText = sshError ?? generateSshKey.error ?? addSshKeyToAgent.error;
+  const aiProviders = aiConfig?.providers ?? [
+    { id: "openai" as const, label: "OpenAI", defaultModel: "gpt-4o-mini", models: ["gpt-4o-mini"] },
+    { id: "claude" as const, label: "Claude", defaultModel: "claude-sonnet-4-20250514", models: ["claude-sonnet-4-20250514"] },
+    { id: "deepseek" as const, label: "DeepSeek", defaultModel: "deepseek-chat", models: ["deepseek-chat", "deepseek-reasoner"] },
+    { id: "openrouter" as const, label: "OpenRouter", defaultModel: "openai/gpt-4o-mini", models: ["openai/gpt-4o-mini"] },
+  ];
+  const selectedAiProvider = aiProviders.find((provider) => provider.id === aiProvider) ?? aiProviders[0];
+  const aiModelRequest = selectedAiProvider
+    ? {
+        provider: aiProvider,
+        apiKey: aiApiKey.trim() || null,
+      }
+    : null;
+  const aiModelsQuery = useQuery(
+    gitQueries.aiModels(
+      aiModelRequest,
+      aiConfig?.apiKeySource ?? null,
+      aiApiKeyRevision,
+    ),
+  );
+  const aiModelList =
+    aiModelsQuery.data?.models ??
+    selectedAiProvider.models.map((model) => ({
+      id: model,
+      label: model,
+      contextLength: null,
+    }));
 
   useEffect(() => {
     setLocalName(gitIdentity?.localName ?? "");
@@ -43,6 +134,15 @@ export function SettingsPlaceholder() {
   useEffect(() => {
     setCredentialHelperInput(credentialConfig?.localHelpers[0] ?? "");
   }, [credentialConfig?.localHelpers]);
+
+  useEffect(() => {
+    if (!aiConfig) return;
+    setAiProvider(aiConfig.provider);
+    setAiModel(aiConfig.model);
+    setAiApiKey("");
+    setCommitMessagePrompt(aiConfig.prompts.commitMessage);
+    setConflictResolutionPrompt(aiConfig.prompts.conflictResolution);
+  }, [aiConfig]);
 
   const saveIdentity = () => {
     setGitIdentity.mutate({ name: localName.trim() || null, email: localEmail.trim() || null });
@@ -63,6 +163,38 @@ export function SettingsPlaceholder() {
     saveCredentialHelperMutation.mutate(null);
   };
 
+  const chooseAiProvider = (provider: AiProvider) => {
+    const nextProvider = aiProviders.find((option) => option.id === provider);
+    if (!nextProvider) return;
+    setAiProvider(provider);
+    setAiModel(nextProvider.defaultModel);
+    setAiApiKey("");
+  };
+
+  const saveAiProviderSettings = () => {
+    saveAiConfig.mutate({
+      provider: aiProvider,
+      model: aiModel.trim(),
+      apiKey: aiApiKey.trim() ? aiApiKey.trim() : null,
+      prompts: {
+        commitMessage: commitMessagePrompt,
+        conflictResolution: conflictResolutionPrompt,
+      },
+    });
+  };
+
+  const clearStoredAiKey = () => {
+    saveAiConfig.mutate({
+      provider: aiProvider,
+      model: aiModel.trim(),
+      apiKey: "",
+      prompts: {
+        commitMessage: commitMessagePrompt,
+        conflictResolution: conflictResolutionPrompt,
+      },
+    });
+  };
+
   const createSshKey = () => {
     generateSshKey.mutate({ name: sshKeyName.trim(), comment: sshKeyComment.trim() || null });
   };
@@ -75,7 +207,7 @@ export function SettingsPlaceholder() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-bg-primary)]">
+    <div className="flex h-full min-w-0 flex-1 flex-col bg-[var(--color-bg-primary)]">
       <div className="flex h-11 items-center border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4">
         <div>
           <h2 className="text-[13px] font-semibold text-[var(--color-text-primary)]">Settings</h2>
@@ -89,7 +221,7 @@ export function SettingsPlaceholder() {
             <SettingsHeader
               icon={<Monitor className="h-4 w-4" />}
               title="Appearance"
-              description="Tune the desktop shell for your environment."
+              description="Tune the desktop shell for your environment. Theme and diff mode are saved automatically."
             />
             <div className="divide-y divide-[var(--color-border-muted)]">
               <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -127,6 +259,202 @@ export function SettingsPlaceholder() {
                     Split
                   </ThemeButton>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Bot className="h-4 w-4" />}
+              title="AI Provider"
+              description="Choose the backend provider for commit messages and conflict resolution."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Provider</span>
+                  <select
+                    value={aiProvider}
+                    onChange={(event) => chooseAiProvider(event.target.value as AiProvider)}
+                    className="giteye-input w-full text-[12px]"
+                  >
+                    {aiProviders.map((provider) => (
+                      <option key={provider.id} value={provider.id}>{provider.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Model</span>
+                  <AiModelCombobox
+                    value={aiModel}
+                    onChange={setAiModel}
+                    models={aiModelList}
+                    isLoading={aiModelsQuery.isFetching}
+                    warning={aiModelsQuery.data?.warning ?? (aiModelsQuery.error ? String(aiModelsQuery.error) : null)}
+                    placeholder={selectedAiProvider.defaultModel}
+                    onRefresh={() => void aiModelsQuery.refetch()}
+                    disabled={aiPending}
+                  />
+                </div>
+              </div>
+
+              <label className="space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">API key</span>
+                <input
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(event) => {
+                    setAiApiKey(event.target.value);
+                    setAiApiKeyRevision((revision) => revision + 1);
+                  }}
+                  placeholder={
+                    aiConfig?.apiKeySource === "environment"
+                      ? "Configured via environment"
+                      : aiConfig?.apiKeySource === "stored"
+                      ? "Configured — leave blank to keep current key"
+                      : "Paste provider API key"
+                  }
+                  className="giteye-input w-full text-[12px]"
+                />
+              </label>
+
+              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+                Active: <span className="text-[var(--color-text-secondary)]">{aiProviders.find((provider) => provider.id === aiConfig?.provider)?.label ?? "OpenAI"} · {aiConfig?.model ?? "gpt-4o-mini"}</span>
+                <span className="mx-2">·</span>
+                API key: <span className="text-[var(--color-text-secondary)]">{aiConfig?.apiKeySource ?? "missing"}</span>
+              </div>
+              {aiErrorText ? <p className="text-[var(--color-danger)]">{String(aiErrorText)}</p> : null}
+              <div className="flex justify-end gap-2">
+                <button disabled={aiPending || aiConfig?.apiKeySource !== "stored"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
+                <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</button>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Bot className="h-4 w-4" />}
+              title="AI Prompts"
+              description="Customize the instructions GitEye sends for each available AI workflow."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Commit message</span>
+                <textarea
+                  value={commitMessagePrompt}
+                  onChange={(event) => setCommitMessagePrompt(event.target.value)}
+                  rows={5}
+                  disabled={aiPending}
+                  className="giteye-input min-h-24 w-full resize-y text-[12px] leading-relaxed"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Merge conflict resolution</span>
+                <textarea
+                  value={conflictResolutionPrompt}
+                  onChange={(event) => setConflictResolutionPrompt(event.target.value)}
+                  rows={5}
+                  disabled={aiPending}
+                  className="giteye-input min-h-24 w-full resize-y text-[12px] leading-relaxed"
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  disabled={aiPending}
+                  onClick={() => {
+                    setCommitMessagePrompt(aiConfig?.defaultPrompts.commitMessage ?? "");
+                    setConflictResolutionPrompt(aiConfig?.defaultPrompts.conflictResolution ?? "");
+                  }}
+                  className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Restore defaults
+                </button>
+                <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {saveAiConfig.isPending ? "Saving…" : "Save AI prompts"}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<KeyRound className="h-4 w-4" />}
+              title="SSH Keys"
+              description="Local keys used by git remotes and GitHub SSH authentication."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+                Directory: <span className="text-[var(--color-text-secondary)]">{sshStatus?.sshDir ?? "~/.ssh"}</span>
+                <span className="mx-2">·</span>
+                ssh-keygen: <span className={sshStatus?.sshKeygenAvailable ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>{sshStatus?.sshKeygenAvailable ? "available" : "missing"}</span>
+                <span className="mx-2">·</span>
+                agent: <span className={sshStatus?.agentAvailable ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}>{sshStatus?.agentAvailable ? `${sshStatus.agentIdentities.length} loaded` : "unavailable"}</span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Key filename</span>
+                  <input value={sshKeyName} onChange={(event) => setSshKeyName(event.target.value)} placeholder="id_giteye" className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Comment</span>
+                  <input value={sshKeyComment} onChange={(event) => setSshKeyComment(event.target.value)} placeholder="name@example.com" className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
+                </label>
+                <button disabled={sshPending || !sshStatus?.sshKeygenAvailable || !sshKeyName.trim()} onClick={createSshKey} className="self-end rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Generate</button>
+              </div>
+
+              {sshStatus?.agentError ? <p className="text-[var(--color-warning)]">{sshStatus.agentError}</p> : null}
+              {sshErrorText ? <p className="text-[var(--color-danger)]">{String(sshErrorText)}</p> : null}
+
+              <div className="space-y-2">
+                {sshLoading ? <p className="text-[var(--color-text-muted)]">Inspecting SSH keys…</p> : null}
+                {!sshLoading && sshStatus?.keys.length === 0 ? <p className="text-[var(--color-text-muted)]">No public SSH keys found.</p> : null}
+                {sshStatus?.keys.map((key) => (
+                  <SshKeyCard
+                    key={key.publicKeyPath}
+                    keyItem={key}
+                    pending={sshPending}
+                    copied={copiedSshKey === key.name}
+                    onAddToAgent={() => addSshKeyToAgent.mutate(key.name)}
+                    onCopyPublicKey={() => copyPublicSshKey(key)}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+            <SettingsHeader
+              icon={<Download className="h-4 w-4" />}
+              title="Export / Import"
+              description="Back up and restore your GitEye settings."
+            />
+            <div className="space-y-4 px-4 py-3 text-[12px]">
+              <p className="text-[var(--color-text-secondary)]">
+                Export settings includes your theme, diff mode preferences, AI provider/model and prompts, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
+              </p>
+              {exportImportMessage ? (
+                <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-3 text-[11px] text-[var(--color-accent)]">
+                  {exportImportMessage}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  disabled={exportMutation.isPending || importMutation.isPending}
+                  onClick={() => { setExportImportMessage(null); exportMutation.mutate(); }}
+                  className="flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {exportMutation.isPending ? "Exporting…" : "Export Settings"}
+                </button>
+                <button
+                  disabled={exportMutation.isPending || importMutation.isPending}
+                  onClick={() => { setExportImportMessage(null); importMutation.mutate(); }}
+                  className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {importMutation.isPending ? "Importing…" : "Import Settings"}
+                </button>
               </div>
             </div>
           </section>
@@ -193,71 +521,40 @@ export function SettingsPlaceholder() {
                     Global: <span className="font-mono text-[var(--color-text-secondary)]">{credentialConfig?.globalHelpers.join(", ") || "unset"}</span>
                   </div>
                   <p className="text-[11px] text-[var(--color-text-muted)]">Shell-command helpers beginning with <span className="font-mono">!</span> are rejected. GitEye does not display or store credential secrets.</p>
+                  {authTestResult ? (
+                    <div className={cn("rounded-lg border p-3 text-[11px]", authTestResult.success ? "border-[var(--color-success)]/30 bg-[var(--color-success)]/5 text-[var(--color-success)]" : "border-[var(--color-warning)]/30 bg-[var(--color-warning)]/5 text-[var(--color-warning)]")}>
+                      {authTestResult.message}
+                    </div>
+                  ) : null}
                   {credentialErrorText ? <p className="text-[var(--color-danger)]">{String(credentialErrorText)}</p> : null}
-                  <div className="flex justify-end gap-2">
-                    <button disabled={credentialPending} onClick={clearCredentialHelper} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
-                    <button disabled={credentialPending} onClick={saveCredentialHelper} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save helper</button>
+                  <div className="flex justify-between gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        disabled={credentialPending || testAuthMutation.isPending || !activeRepoPath}
+                        onClick={() => { setAuthTestResult(null); testAuthMutation.mutate(); }}
+                        className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Attempt a silent remote authentication check"
+                      >
+                        <Radio className="h-3.5 w-3.5" />
+                        {testAuthMutation.isPending ? "Testing…" : "Test Auth"}
+                      </button>
+                      <button
+                        disabled={credentialPending || clearCredentialCacheMutation.isPending || !activeRepoPath}
+                        onClick={() => { setAuthTestResult(null); clearCredentialCacheMutation.mutate(); }}
+                        className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Clear cached credentials for the origin remote host"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {clearCredentialCacheMutation.isPending ? "Clearing…" : "Clear Cache"}
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button disabled={credentialPending} onClick={clearCredentialHelper} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
+                      <button disabled={credentialPending} onClick={saveCredentialHelper} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save helper</button>
+                    </div>
                   </div>
                 </>
               )}
-            </div>
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-            <SettingsHeader
-              icon={<KeyRound className="h-4 w-4" />}
-              title="SSH Keys"
-              description="Local keys used by git remotes and GitHub SSH authentication."
-            />
-            <div className="space-y-4 px-4 py-3 text-[12px]">
-              <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
-                Directory: <span className="text-[var(--color-text-secondary)]">{sshStatus?.sshDir ?? "~/.ssh"}</span>
-                <span className="mx-2">·</span>
-                ssh-keygen: <span className={sshStatus?.sshKeygenAvailable ? "text-[var(--color-success)]" : "text-[var(--color-danger)]"}>{sshStatus?.sshKeygenAvailable ? "available" : "missing"}</span>
-                <span className="mx-2">·</span>
-                agent: <span className={sshStatus?.agentAvailable ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}>{sshStatus?.agentAvailable ? `${sshStatus.agentIdentities.length} loaded` : "unavailable"}</span>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Key filename</span>
-                  <input value={sshKeyName} onChange={(event) => setSshKeyName(event.target.value)} placeholder="id_giteye" className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Comment</span>
-                  <input value={sshKeyComment} onChange={(event) => setSshKeyComment(event.target.value)} placeholder="name@example.com" className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
-                </label>
-                <button disabled={sshPending || !sshStatus?.sshKeygenAvailable || !sshKeyName.trim()} onClick={createSshKey} className="self-end rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Generate</button>
-              </div>
-
-              {sshStatus?.agentError ? <p className="text-[var(--color-warning)]">{sshStatus.agentError}</p> : null}
-              {sshErrorText ? <p className="text-[var(--color-danger)]">{String(sshErrorText)}</p> : null}
-
-              <div className="space-y-2">
-                {sshLoading ? <p className="text-[var(--color-text-muted)]">Inspecting SSH keys…</p> : null}
-                {!sshLoading && sshStatus?.keys.length === 0 ? <p className="text-[var(--color-text-muted)]">No public SSH keys found.</p> : null}
-                {sshStatus?.keys.map((key) => (
-                  <SshKeyCard
-                    key={key.publicKeyPath}
-                    keyItem={key}
-                    pending={sshPending}
-                    copied={copiedSshKey === key.name}
-                    onAddToAgent={() => addSshKeyToAgent.mutate(key.name)}
-                    onCopyPublicKey={() => copyPublicSshKey(key)}
-                  />
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-            <SettingsHeader
-              icon={<FileText className="h-4 w-4" />}
-              title="Git"
-              description="Command-line integration."
-            />
-            <div className="px-4 py-3 text-[12px] text-[var(--color-text-muted)]">
-              GitEye uses git from your system PATH.
             </div>
           </section>
         </div>

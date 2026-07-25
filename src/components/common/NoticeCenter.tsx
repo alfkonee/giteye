@@ -37,7 +37,7 @@ export function NoticeCenter() {
     <aside
       aria-live="polite"
       aria-label="Action notices"
-      className="pointer-events-none fixed bottom-20 right-4 z-[80] flex w-[420px] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-16 right-4 z-[80] flex w-[380px] max-w-[calc(100vw-2rem)] flex-col gap-2"
     >
       {transcriptOpen && (
         <OperationTranscriptPanel
@@ -63,7 +63,7 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
   return (
     <div
       className={cn(
-        "pointer-events-auto overflow-hidden rounded-xl border bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)]",
+        "pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md",
         notice.status === "error"
           ? "border-[var(--color-danger)]/45"
           : notice.status === "success"
@@ -152,12 +152,12 @@ function OperationTranscriptPanel({
   onClear: () => void;
 }) {
   return (
-    <section className="pointer-events-auto overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)]">
-      <header className="flex items-center gap-2 border-b border-[var(--color-border-muted)] px-3 py-2">
+    <section className="pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md">
+      <header className="giteye-panel-header border-b border-[var(--color-border-muted)] px-3 py-2">
         <History className="h-4 w-4 text-[var(--color-accent)]" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-[var(--color-text-primary)]">Operation transcript</h2>
-          <p className="text-[11px] text-[var(--color-text-muted)]">Recent completed Git actions, retained after toast expiry.</p>
+          <p className="text-[11px] text-[var(--color-text-muted)]">Recent completed Git actions</p>
         </div>
         <button
           type="button"

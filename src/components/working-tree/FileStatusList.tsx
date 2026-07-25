@@ -5,11 +5,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitMutations } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { Plus, Minus, ChevronDown, ChevronRight, Archive, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { cn } from "../../lib/cn";
 import { FileTree } from "../common/FileTree";
+import { Button, SegmentedControl } from "../ui";
+import {
+  WorkingTreePathContextMenu,
+  type WorkingTreePathTarget,
+} from "./WorkingTreePathContextMenu";
 
 interface FileStatusListProps {
   title: string;
@@ -88,6 +93,7 @@ function statusTone(status: FileStatus): string {
 export function FileStatusList({ title, files, isLoading, repoPath, staged }: FileStatusListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
+  const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const queryClient = useQueryClient();
   const stageMutation = useMutation(gitMutations.stageFile(queryClient, repoPath));
@@ -96,6 +102,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const unstageAllMutation = useMutation(gitMutations.unstageAll(queryClient, repoPath));
   const stashPathMutation = useMutation(gitMutations.createStashForPaths(queryClient, repoPath));
   const discardFileMutation = useMutation(gitMutations.discardFile(queryClient, repoPath));
+  const discardFilesMutation = useMutation(gitMutations.discardFiles(queryClient, repoPath));
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
@@ -154,12 +161,95 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
+  const openFileContextMenu = (event: MouseEvent, file: GitStatusFile) => {
+    event.preventDefault();
+    setSelectedFile(file.path, staged);
+    setContextTarget({
+      kind: "file",
+      path: file.path,
+      files: [file],
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const openDirectoryContextMenu = (
+    event: MouseEvent,
+    path: string,
+    directoryFiles: GitStatusFile[],
+  ) => {
+    event.preventDefault();
+    setContextTarget({
+      kind: "directory",
+      path,
+      files: directoryFiles,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const handleStashTarget = (target: WorkingTreePathTarget) => {
+    const includesPartialChanges = target.files.some((file) => file.staged && file.unstaged);
+    if (
+      includesPartialChanges &&
+      !confirm(
+        `"${target.path}" includes files with both staged and unstaged changes. Stashing this ${target.kind} will stash both. Continue?`,
+      )
+    ) {
+      return;
+    }
+    stashPathMutation.mutate({
+      message: `WIP ${target.path}`,
+      includeUntracked: target.files.some(
+        (file) => parseFileStatus(file.status) === "untracked",
+      ),
+      paths: [target.path],
+    });
+  };
+
+  const handleDiscardTarget = (target: WorkingTreePathTarget) => {
+    if (target.kind === "file") {
+      handleDiscardFile(target.files[0]);
+      return;
+    }
+
+    const includesPartialChanges = staged && target.files.some((file) => file.unstaged);
+    const scope = includesPartialChanges
+      ? "staged and unstaged changes"
+      : staged
+        ? "staged changes"
+        : "unstaged changes";
+    if (
+      !confirm(
+        `Discard ${scope} for ${target.files.length} files in "${target.path}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
+      )
+    ) {
+      return;
+    }
+
+    discardFilesMutation.mutate({
+      path: target.path,
+      files: target.files.map((file) => ({
+        filePath: file.path,
+        staged,
+        untracked: parseFileStatus(file.status) === "untracked",
+      })),
+    });
+  };
+
+  const contextMenuPending =
+    stageMutation.isPending ||
+    unstageMutation.isPending ||
+    stashPathMutation.isPending ||
+    discardFileMutation.isPending ||
+    discardFilesMutation.isPending;
+
   return (
     <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-3 py-1.5 backdrop-blur">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -171,30 +261,24 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           {files.length}
         </span>
         <div className="flex-1" />
-        <div className="flex overflow-hidden rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[10px]">
-          <button
-            type="button"
-            onClick={() => setViewMode("tree")}
-            className={cn("px-2 py-0.5", viewMode === "tree" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
-          >
-            Tree
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("list")}
-            className={cn("px-2 py-0.5", viewMode === "list" ? "bg-[var(--color-bg-selected)] text-white" : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]")}
-          >
-            List
-          </button>
-        </div>
+        <SegmentedControl
+          items={[
+            { id: "tree", label: "Tree" },
+            { id: "list", label: "List" },
+          ]}
+          value={viewMode}
+          onChange={(id) => setViewMode(id as "tree" | "list")}
+          className="text-[10px]"
+        />
         {files.length > 0 && (
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
             disabled={isBulkMutating}
-            className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-text-secondary)] shadow-sm transition-colors hover:border-[var(--color-border)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {staged ? "Unstage all" : "Stage all"}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -218,8 +302,8 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           ) : (
             <div className="space-y-1.5">
               {groups.map((group) => (
-                <div key={group.key} className="overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45 shadow-sm">
-                  <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/50 px-2 py-1">
+                <div key={group.key} className="overflow-hidden rounded-lg bg-[var(--color-bg-secondary)]/35 ring-1 ring-inset ring-[var(--color-border-muted)]/70">
+                  <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)]/60 bg-[var(--color-bg-tertiary)]/30 px-2 py-1">
                     <span className={cn("h-2 w-2 rounded-full", group.accentClass)} />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
                       {group.title}
@@ -235,12 +319,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                       className="rounded-none border-0 bg-transparent"
                       selectedKey={selectedFileStaged === staged ? selectedFilePath : null}
                       onSelect={handleFileClick}
+                      onFileContextMenu={openFileContextMenu}
+                      onDirectoryContextMenu={openDirectoryContextMenu}
                       renderIcon={(file) => (
                         <StatusBadge status={parseFileStatus(file.status)} className="h-4 w-4 text-[9px]" />
                       )}
-                      renderSubtext={(file, isSelected) =>
+                      renderSubtext={(file) =>
                         file.oldPath ? (
-                          <span className={cn("block truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                          <span className="block truncate text-[10px] leading-3 text-[var(--color-text-muted)]">
                             renamed from {file.oldPath}
                           </span>
                         ) : null
@@ -263,14 +349,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                 )}
                                 title="Stash selected file"
                               >
-                                <Archive className="h-3.5 w-3.5" />
+                                <Archive className="h-4 w-4" />
                               </button>
                             )}
                             <button
@@ -280,14 +366,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               }}
                               disabled={isMutating}
                               className={cn(
-                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
-                                  ? "text-white hover:bg-white/15"
+                                  ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                               )}
                               title="Discard file changes"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={(event) => {
@@ -296,15 +382,15 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                               }}
                               disabled={isMutating}
                               className={cn(
-                                "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                 isSelected
-                                  ? "text-white hover:bg-white/15"
+                                  ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                   : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                 statusTone(status),
                               )}
                               title={staged ? "Unstage" : "Stage"}
                             >
-                              {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                              {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                             </button>
                           </div>
                         );
@@ -331,28 +417,29 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                             className={cn(
                               "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_76px] items-center gap-1.5 px-2 py-0.5 transition-colors",
                               isSelected
-                                ? "bg-[var(--color-bg-selected)] text-white"
+                                ? "giteye-selected-row"
                                 : "hover:bg-[var(--color-bg-hover)]",
                             )}
                             onClick={() => handleFileClick(file)}
+                            onContextMenu={(event) => openFileContextMenu(event, file)}
                           >
                             <StatusBadge status={status} className="h-4 w-4 text-[9px]" />
                             <div className="min-w-0">
                               <div
                                 className={cn(
                                   "truncate text-[12px] font-medium leading-4",
-                                  isSelected ? "text-white" : "text-[var(--color-text-primary)]",
+                                  isSelected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
                                 )}
                               >
                                 {directory && (
-                                  <span className={cn("font-normal", isSelected ? "text-white/55" : "text-[var(--color-text-muted)]")}>
+                                  <span className="font-normal text-[var(--color-text-muted)]">
                                     {directory}
                                   </span>
                                 )}
                                 <span>{name}</span>
                               </div>
                               {file.oldPath && (
-                                <div className={cn("truncate text-[10px] leading-3", isSelected ? "text-white/60" : "text-[var(--color-text-muted)]")}>
+                                <div className="truncate text-[10px] leading-3 text-[var(--color-text-muted)]">
                                   renamed from {file.oldPath}
                                 </div>
                               )}
@@ -366,14 +453,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                   }}
                                   disabled={isMutating}
                                   className={cn(
-                                    "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                    "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                     isSelected
-                                      ? "text-white hover:bg-white/15"
+                                      ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                       : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                   )}
                                   title="Stash selected file"
                                 >
-                                  <Archive className="h-3.5 w-3.5" />
+                                  <Archive className="h-4 w-4" />
                                 </button>
                               )}
                               <button
@@ -383,14 +470,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
                                 )}
                                 title="Discard file changes"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={(event) => {
@@ -399,15 +486,15 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 }}
                                 disabled={isMutating}
                                 className={cn(
-                                  "rounded p-0.5 transition-all disabled:cursor-not-allowed disabled:opacity-50",
+                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
                                   isSelected
-                                    ? "text-white hover:bg-white/15"
+                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
                                     : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
                                   statusTone(status),
                                 )}
                                 title={staged ? "Unstage" : "Stage"}
                               >
-                                {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                                {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                               </button>
                             </div>
                           </div>
@@ -421,6 +508,17 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           )}
         </div>
       )}
+      <WorkingTreePathContextMenu
+        target={contextTarget}
+        repoPath={repoPath}
+        staged={staged}
+        pending={contextMenuPending}
+        onStage={(path) => stageMutation.mutate(path)}
+        onUnstage={(path) => unstageMutation.mutate(path)}
+        onStash={handleStashTarget}
+        onDiscard={handleDiscardTarget}
+        onClose={() => setContextTarget(null)}
+      />
     </div>
   );
 }

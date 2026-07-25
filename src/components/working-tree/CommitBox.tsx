@@ -2,26 +2,55 @@ import { useState } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
-import { cn } from "../../lib/cn";
-import { GitCommitHorizontal, Sparkles } from "lucide-react";
+import { gitApi } from "../../lib/tauri-api";
+import { Sparkles, GitCommitHorizontal } from "lucide-react";
+import { Button, Textarea } from "../ui";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const [message, setMessage] = useState("");
+  const [signOff, setSignOff] = useState(false);
+  const [noVerify, setNoVerify] = useState(false);
+  const [allowEmpty, setAllowEmpty] = useState(false);
   const queryClient = useQueryClient();
   const commitMutation = useMutation(gitMutations.commit(queryClient, activeRepoPath));
   const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
   const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: aiConfig } = useQuery(gitQueries.aiConfig());
+
+  const aiSuggestionMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeRepoPath) throw new Error("Open a repository before generating a commit message.");
+      const stagedFiles = snapshot?.files.filter((f) => f.staged) ?? [];
+      const diffs = await Promise.all(stagedFiles.map(async (file) => {
+        const diff = await gitApi.getFileDiff(activeRepoPath, file.path, true);
+        return {
+          filePath: file.path,
+          status: file.status,
+          diffText: diff.diffText || `${file.status} ${file.path}${file.oldPath ? ` (from ${file.oldPath})` : ""}`,
+        };
+      }));
+      return gitApi.suggestCommitMessage(diffs);
+    },
+    onSuccess: (suggestion) => {
+      setMessage(suggestion);
+    },
+  });
 
   const branchName = repoInfo?.currentBranch ?? "current branch";
   const subjectLength = message.split("\n", 1)[0]?.length ?? 0;
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
+  const commitBlocked = !message.trim() || (!allowEmpty && stagedCount === 0);
+  const aiProviderLabel = aiConfig?.providers.find((provider) => provider.id === aiConfig.provider)?.label ?? "OpenAI";
+  const aiStatus = `AI: ${aiProviderLabel} · ${aiConfig?.model ?? "gpt-4o-mini"}${aiConfig?.apiKeyConfigured === false ? " · key missing" : ""}`;
+  const aiSuggestionError = aiSuggestionMutation.error?.message ?? null;
 
   const handleCommit = () => {
-    if (!message.trim()) return;
-    commitMutation.mutate(message.trim(), {
+    const commitMessage = message.trim();
+    if (!commitMessage || (!allowEmpty && stagedCount === 0)) return;
+    commitMutation.mutate({ message: commitMessage, signOff, noVerify, allowEmpty }, {
       onSuccess: () => {
         setMessage("");
         setSelectedFile(null, false);
@@ -42,7 +71,7 @@ export function CommitBox() {
       return;
     }
     amendMutation.mutate(
-      { message: message.trim() || null },
+      { message: message.trim() || null, signOff, noVerify, allowEmpty },
       {
         onSuccess: () => {
           setMessage("");
@@ -80,20 +109,57 @@ export function CommitBox() {
             {subjectLength}/72
           </span>
         </div>
-        <textarea
+        <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Summary (required) — Ctrl+Enter commits to ${branchName}`}
           rows={3}
-          className="w-full resize-none rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-2 text-[13px] leading-5 text-[var(--color-text-primary)] shadow-inner outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
+          className="w-full text-[13px]"
         />
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[var(--color-text-muted)]">
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={signOff}
+              onChange={(event) => setSignOff(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Sign-off <span className="text-[var(--color-text-subtle)]">(-s)</span>
+            </span>
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={noVerify}
+              onChange={(event) => setNoVerify(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Skip hooks <span className="text-[var(--color-text-subtle)]">(--no-verify)</span>
+            </span>
+          </label>
+          <label className="inline-flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={allowEmpty}
+              onChange={(event) => setAllowEmpty(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              Allow empty <span className="text-[var(--color-text-subtle)]">(--allow-empty)</span>
+            </span>
+          </label>
+        </div>
         <div className="mt-2 flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
             {commitMutation.isPending
               ? "Committing..."
               : amendMutation.isPending
               ? "Amending HEAD..."
+              : aiSuggestionError
+              ? `AI error: ${aiSuggestionError}`
               : commitMutation.isError
               ? `Error: ${commitMutation.error}`
               : amendMutation.isError
@@ -102,32 +168,40 @@ export function CommitBox() {
               ? "Committed!"
               : amendMutation.isSuccess
               ? "HEAD amended!"
+              : stagedCount === 0 && !allowEmpty
+              ? "Stage files first, or enable Allow empty for marker commits."
               : "Write a concise summary; add details on following lines."}
           </span>
           <div className="flex shrink-0 items-center gap-2">
-            <button
+            <span className="text-[11px] text-[var(--color-text-muted)]">{aiStatus}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Sparkles className="h-3.5 w-3.5" />}
+              onClick={() => aiSuggestionMutation.mutate()}
+              disabled={stagedCount === 0 || aiSuggestionMutation.isPending || commitMutation.isPending || amendMutation.isPending}
+              title={stagedCount === 0 ? "Stage files first to generate a suggestion" : `Generate a commit message using ${aiProviderLabel}${aiConfig?.apiKeyConfigured ? "" : " (API key missing)"}`}
+            >
+              {aiSuggestionMutation.isPending ? "Thinking…" : "Suggest"}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
               onClick={handleAmend}
               disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
               title={`Amend HEAD with ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}. Leave the message blank to reuse the current HEAD message.`}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border border-[color:rgba(248,81,73,0.45)] px-3 py-1.5 text-[13px] font-semibold text-[var(--color-danger)] shadow-sm transition-colors hover:bg-[color:rgba(248,81,73,0.08)]",
-                "disabled:cursor-not-allowed disabled:opacity-40"
-              )}
             >
               Amend HEAD
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Sparkles className="h-3.5 w-3.5" />}
               onClick={handleCommit}
-              disabled={!message.trim() || commitMutation.isPending || amendMutation.isPending}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors",
-                "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
-                "disabled:cursor-not-allowed disabled:opacity-40"
-              )}
+              disabled={commitBlocked || commitMutation.isPending || amendMutation.isPending}
             >
-              <Sparkles className="h-3.5 w-3.5" />
               Commit
-            </button>
+            </Button>
           </div>
         </div>
       </div>

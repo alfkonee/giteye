@@ -42,8 +42,22 @@ pub fn preview_amend(repo_path: String, message: Option<String>) -> Result<Amend
 }
 
 #[tauri::command]
-pub fn amend_commit(repo_path: String, message: Option<String>) -> Result<(), AppError> {
-    history_service::amend_commit(Path::new(&repo_path), message.as_deref())
+pub fn amend_commit(
+    repo_path: String,
+    message: Option<String>,
+    sign_off: Option<bool>,
+    no_verify: Option<bool>,
+    allow_empty: Option<bool>,
+) -> Result<(), AppError> {
+    history_service::amend_commit(
+        Path::new(&repo_path),
+        message.as_deref(),
+        history_service::AmendOptions {
+            sign_off: sign_off.unwrap_or(false),
+            no_verify: no_verify.unwrap_or(false),
+            allow_empty: allow_empty.unwrap_or(false),
+        },
+    )
 }
 
 #[tauri::command]

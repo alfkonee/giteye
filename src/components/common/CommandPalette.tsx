@@ -4,14 +4,18 @@ import type { LucideIcon } from "lucide-react";
 import {
   CheckCircle2,
   Command,
+  Download,
   FileText,
   FolderGit2,
   GitBranch,
+  Home,
   Moon,
   RefreshCw,
   Search,
+  Settings,
   Sun,
   TerminalSquare,
+  Upload,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { COMMAND_PALETTE_OPEN_EVENT } from "../../lib/command-palette";
@@ -19,6 +23,7 @@ import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data
 import { viewDefinitions, viewGroups } from "../../lib/view-registry";
 import { useAppStore } from "../../stores/app-store";
 import { useJobStore } from "../../stores/job-store";
+import { useNoticeStore } from "../../stores/notice-store";
 import type { FavoriteRepo, RecentRepo } from "../../types/git";
 
 type PaletteItemKind = "command" | "repository" | "view";
@@ -59,11 +64,13 @@ export function CommandPalette() {
   const openRepoPaths = useAppStore((state) => state.openRepoPaths);
   const setActiveRepoPath = useAppStore((state) => state.setActiveRepoPath);
   const setActiveView = useAppStore((state) => state.setActiveView);
+  const setGlobalView = useAppStore((state) => state.setGlobalView);
   const theme = useAppStore((state) => state.theme);
   const setTheme = useAppStore((state) => state.setTheme);
   const diffMode = useAppStore((state) => state.diffMode);
   const setDiffMode = useAppStore((state) => state.setDiffMode);
   const setCommandLogOpen = useJobStore((state) => state.setCommandLogOpen);
+  const setTranscriptOpen = useNoticeStore((state) => state.setTranscriptOpen);
   const queryClient = useQueryClient();
   const { data: recentRepos } = useQuery({
     ...gitQueries.recentRepositories(),
@@ -76,6 +83,10 @@ export function CommandPalette() {
   const openRepository = useMutation(
     gitMutations.openRepository(queryClient, setActiveRepoPath),
   );
+  const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
+  const pullMutation = useMutation(gitMutations.pull(queryClient, activeRepoPath));
+  const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
+  const remoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -133,6 +144,28 @@ export function CommandPalette() {
       }));
       const commandItems: PaletteItem[] = [
       {
+        id: "command:repo-hub",
+        kind: "command",
+        section: "Navigation",
+        label: "Open Repo Hub",
+        detail: "Return to the global repository home screen",
+        keywords: "home repositories recent favorite workspace",
+        icon: Home,
+        priority: 96,
+        run: () => setGlobalView("repo-hub"),
+      },
+      {
+        id: "command:settings",
+        kind: "command",
+        section: "Navigation",
+        label: "Open Settings",
+        detail: "Configure application, Git, and AI preferences",
+        keywords: "preferences configuration theme git ai models",
+        icon: Settings,
+        priority: 88,
+        run: () => setGlobalView("settings"),
+      },
+      {
         id: "command:refresh-repository",
         kind: "command",
         section: "Commands",
@@ -154,6 +187,53 @@ export function CommandPalette() {
         icon: TerminalSquare,
         priority: 90,
         run: () => setCommandLogOpen(true),
+      },
+      {
+        id: "command:operation-transcript",
+        kind: "command",
+        section: "Commands",
+        label: "Open Operation Transcript",
+        detail: "Review completed Git actions and recovery guidance",
+        keywords: "operations notifications actions recovery history",
+        icon: TerminalSquare,
+        priority: 89,
+        run: () => setTranscriptOpen(true),
+      },
+      {
+        id: "command:fetch",
+        kind: "command",
+        section: "Git Actions",
+        label: "Fetch Remotes",
+        detail: "Fetch updates from configured remotes",
+        keywords: "git fetch remote download sync",
+        icon: Download,
+        disabled: !activeRepoPath || remoteOperationPending,
+        priority: 84,
+        run: () => fetchMutation.mutate(undefined),
+      },
+      {
+        id: "command:pull",
+        kind: "command",
+        section: "Git Actions",
+        label: "Pull Current Branch",
+        detail: "Fetch and integrate the current upstream branch",
+        keywords: "git pull remote download merge rebase",
+        icon: Download,
+        disabled: !activeRepoPath || remoteOperationPending,
+        priority: 83,
+        run: () => pullMutation.mutate({}),
+      },
+      {
+        id: "command:push",
+        kind: "command",
+        section: "Git Actions",
+        label: "Push Current Branch",
+        detail: "Push the current branch to its configured remote",
+        keywords: "git push remote upload publish",
+        icon: Upload,
+        disabled: !activeRepoPath || remoteOperationPending,
+        priority: 82,
+        run: () => pushMutation.mutate({}),
       },
       {
         id: "command:toggle-theme",
@@ -185,15 +265,21 @@ export function CommandPalette() {
       activeRepoPath,
       diffMode,
       favoriteRepos,
+      fetchMutation,
       openRepoPaths,
       openRepository,
+      pullMutation,
+      pushMutation,
       queryClient,
       recentRepos,
+      remoteOperationPending,
       setActiveRepoPath,
       setActiveView,
       setCommandLogOpen,
       setDiffMode,
+      setGlobalView,
       setTheme,
+      setTranscriptOpen,
       theme,
     ],
   );

@@ -29,7 +29,11 @@ pub use config::{GitCredentialConfig, GitIdentity};
 pub use diff::DiffResult;
 pub use history::{AmendPreview, ReflogEntry, ResetMode, ResetPreview, ResetPreviewFile};
 pub use job::GitJobSummary;
-pub use lfs::{LfsFile, LfsStatus, LfsTrackPattern};
+pub use lfs::{
+    LfsCommandPreview, LfsFile, LfsLock, LfsLocks, LfsMigrationMode, LfsMigrationRequest,
+    LfsMigrationStart, LfsPruneRequest, LfsStatus, LfsTrackPattern, LfsTransferOperation,
+    LfsTransferRequest,
+};
 pub use patch::{PatchApplyOperation, PatchApplyRequest};
 pub use remote::Remote;
 pub use repository::{

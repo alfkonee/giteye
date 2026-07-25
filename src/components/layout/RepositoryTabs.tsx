@@ -41,10 +41,10 @@ export function RepositoryTabs() {
         type="button"
         onClick={() => setActiveRepoPath(null)}
         className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
+          "giteye-btn giteye-btn-sm h-8 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
           activeRepoPath
-            ? "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-            : "bg-[var(--color-bg-selected)] text-white",
+            ? "giteye-btn-ghost text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+            : "giteye-nav-active border border-[var(--color-border-accent)] text-[var(--color-text-primary)]",
         )}
         title="Open Repo Hub"
       >
@@ -67,7 +67,7 @@ export function RepositoryTabs() {
               className={cn(
                 "group inline-flex h-8 max-w-[300px] shrink-0 items-stretch overflow-hidden rounded-lg border text-left text-xs transition-colors",
                 isActive
-                  ? "border-[var(--color-accent)]/50 bg-[var(--color-bg-selected)] text-white shadow-sm"
+                  ? "giteye-nav-active border-[var(--color-border-accent)] text-[var(--color-text-primary)]"
                   : "border-transparent bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
               )}
               title={repoPath}
@@ -80,7 +80,7 @@ export function RepositoryTabs() {
                 <span className="min-w-0">
                   <span className="block truncate font-semibold">{repoName}</span>
                   {branchName ? (
-                    <span className={cn("mt-0.5 flex min-w-0 items-center gap-1 truncate", isActive ? "text-white/75" : "text-[var(--color-text-muted)]")}>
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[var(--color-text-muted)]">
                       <GitBranch className="h-3 w-3 shrink-0" />
                       <span className="truncate">{branchName}</span>
                     </span>
@@ -88,16 +88,8 @@ export function RepositoryTabs() {
                 </span>
                 {repoInfo ? (
                   <span
-                    className={cn(
-                      "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px]",
-                      repoInfo.isClean
-                        ? isActive
-                          ? "bg-white/15 text-white/80"
-                          : "bg-[var(--color-bg-surface)] text-[var(--color-success)]"
-                        : isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-[var(--color-bg-surface)] text-[var(--color-warning)]",
-                    )}
+                    className="giteye-chip shrink-0 px-1.5 py-0 text-[10px]"
+                    data-tone={repoInfo.isClean ? "success" : "warning"}
                   >
                     <Circle className="h-2 w-2 fill-current" />
                     {repoInfo.isClean ? "Clean" : "Dirty"}
@@ -108,12 +100,8 @@ export function RepositoryTabs() {
                 <button
                   type="button"
                   onClick={() => openCommandLog(repoPath)}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1 self-center rounded-full px-1.5 py-0.5 text-[10px]",
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "bg-[var(--color-bg-surface)] text-[var(--color-accent)]",
-                  )}
+                  className="giteye-chip shrink-0 self-center px-1.5 py-0 text-[10px]"
+                  data-tone="accent"
                   title="Open command log for this repository"
                 >
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -124,8 +112,8 @@ export function RepositoryTabs() {
                 type="button"
                 onClick={() => closeRepoPath(repoPath)}
                 className={cn(
-                  "mr-1 self-center rounded p-0.5 opacity-60 transition-opacity hover:bg-black/10 hover:opacity-100",
-                  isActive ? "text-white" : "text-[var(--color-text-muted)]",
+                  "mr-1 self-center rounded p-0.5 opacity-60 transition-colors hover:bg-[var(--color-bg-hover)] hover:opacity-100",
+                  isActive ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
                 )}
                 title={`Close ${repoName}`}
               >

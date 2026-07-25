@@ -5,13 +5,18 @@ import {
 } from "@tanstack/react-query";
 import {
   gitApi,
+  type AiApiKeySource,
+  type AiProvider,
   type BisectStartRequest,
   type CheckoutBranchStrategy,
   type PatchApplyRequest,
   type PushBranchRequest,
+  type ListAiModelsRequest,
+  type SaveAiConfigRequest,
 } from "./tauri-api";
 import type {
   BlameFileRequest,
+  CommitRequest,
   CommitSearchRequest,
   FileHistoryRequest,
   GitGrepRequest,
@@ -21,6 +26,9 @@ import type {
   StartRebaseRequest,
   RebaseTodoItem,
   ResetMode,
+  LfsMigrationRequest,
+  LfsPruneRequest,
+  LfsTransferRequest,
 } from "../types/git";
 import { useNoticeStore } from "../stores/notice-store";
 
@@ -130,6 +138,11 @@ export interface DiscardFileRequest {
   staged: boolean;
   untracked: boolean;
 }
+
+export interface DiscardFilesRequest {
+  path: string;
+  files: DiscardFileRequest[];
+}
 export interface RequestPullRequestReviewRequest {
   number: number;
   reviewers: string[];
@@ -175,7 +188,7 @@ export interface ResetToCommitRequest extends HistoryCommitRequest {
   confirmDiscardChanges: boolean;
 }
 
-export interface AmendCommitRequest {
+export interface AmendCommitRequest extends Omit<CommitRequest, "message"> {
   message?: string | null;
 }
 
@@ -212,6 +225,13 @@ export const gitKeys = {
     [...gitKeys.all, "favorite-repositories"] as const,
   gitJobs: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "jobs", repoPath ?? null] as const,
+  aiConfig: () => [...gitKeys.all, "ai-config"] as const,
+  aiModels: (
+    provider: AiProvider | null,
+    hasInlineApiKey: boolean,
+    inlineApiKeyRevision: number,
+    apiKeySource: AiApiKeySource | null,
+  ) => [...gitKeys.all, "ai-models", provider, hasInlineApiKey, inlineApiKeyRevision, apiKeySource] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -240,6 +260,17 @@ export const gitKeys = {
     repoPath: string | null | undefined,
     commitHash: string | null | undefined,
   ) => [...gitKeys.repository(repoPath), "commit-diff", commitHash] as const,
+  commitRangeDiff: (
+    repoPath: string | null | undefined,
+    baseHash: string | null | undefined,
+    targetHash: string | null | undefined,
+    filePath: string | null | undefined,
+  ) => [...gitKeys.repository(repoPath), "commit-range-diff", baseHash, targetHash, filePath] as const,
+  commitRangeFiles: (
+    repoPath: string | null | undefined,
+    baseHash: string | null | undefined,
+    targetHash: string | null | undefined,
+  ) => [...gitKeys.repository(repoPath), "commit-range-files", baseHash, targetHash] as const,
   reflog: (repoPath: string | null | undefined, limit?: number) =>
     [...gitKeys.repository(repoPath), "reflog", limit ?? null] as const,
   reflogSearch: (
@@ -281,6 +312,8 @@ export const gitKeys = {
     [...gitKeys.repository(repoPath), "git-credential-config"] as const,
   lfsStatus: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "lfs-status"] as const,
+  lfsLocks: (repoPath: string | null | undefined, remote?: string | null) =>
+    [...gitKeys.repository(repoPath), "lfs-locks", remote ?? null] as const,
   sshStatus: () => [...gitKeys.all, "ssh-status"] as const,
   remotes: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "remotes"] as const,
@@ -395,6 +428,16 @@ export function invalidateGitStateByReason(
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: [...gitKeys.repository(repoPath), "commit-diff"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "commit-range-diff"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "commit-range-files"],
       }),
     );
     invalidations.push(
@@ -614,6 +657,30 @@ export const gitQueries = {
       queryFn: () => gitApi.listGitJobs(repoPath ?? null),
     }),
 
+  aiConfig: () =>
+    queryOptions({
+      queryKey: gitKeys.aiConfig(),
+      queryFn: () => gitApi.getAiConfig(),
+    }),
+
+  aiModels: (
+    request: ListAiModelsRequest | null,
+    apiKeySource: AiApiKeySource | null,
+    inlineApiKeyRevision: number,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.aiModels(
+        request?.provider ?? null,
+        Boolean(request?.apiKey),
+        inlineApiKeyRevision,
+        apiKeySource,
+      ),
+      queryFn: () => gitApi.listAiModels(request!),
+      enabled: Boolean(request?.provider && !request.apiKey),
+      staleTime: 5 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+    }),
+
   status: (repoPath: string | null) =>
     queryOptions({
       queryKey: gitKeys.repositorySnapshot(repoPath),
@@ -682,6 +749,29 @@ export const gitQueries = {
       queryKey: gitKeys.commitDiff(repoPath, commitHash),
       queryFn: () => gitApi.getCommitDiff(repoPath!, commitHash!),
       enabled: enabledRepo(repoPath) && Boolean(commitHash),
+    }),
+
+  commitRangeDiff: (
+    repoPath: string | null,
+    baseHash: string | null,
+    targetHash: string | null,
+    filePath: string | null,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.commitRangeDiff(repoPath, baseHash, targetHash, filePath),
+      queryFn: () => gitApi.getCommitRangeDiff(repoPath!, baseHash!, targetHash!, filePath!),
+      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash) && Boolean(filePath),
+    }),
+
+  commitRangeFiles: (
+    repoPath: string | null,
+    baseHash: string | null,
+    targetHash: string | null,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.commitRangeFiles(repoPath, baseHash, targetHash),
+      queryFn: () => gitApi.getCommitRangeFiles(repoPath!, baseHash!, targetHash!),
+      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash),
     }),
 
   reflog: (repoPath: string | null, limit?: number, enabled = true) =>
@@ -867,6 +957,12 @@ export const gitQueries = {
       queryFn: () => gitApi.getLfsStatus(repoPath!),
       enabled: enabledRepo(repoPath) && enabled,
     }),
+  lfsLocks: (repoPath: string | null, remote?: string | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.lfsLocks(repoPath, remote),
+      queryFn: () => gitApi.listLfsLocks(repoPath!, remote),
+      enabled: enabledRepo(repoPath) && enabled,
+    }),
 
   sshStatus: () =>
     queryOptions({
@@ -988,16 +1084,53 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
+  removeRecentRepository: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (repoPath: string) =>
+        gitApi.removeRecentRepository(repoPath),
+      onMutate: (repoPath) =>
+        startGitActionNotice(
+          "Removing from recents",
+          repoPath.split("/").pop() ?? repoPath,
+          repoPath,
+        ),
+      onSuccess: async (_data, _variables, context) => {
+        await refreshRepositoryLists(queryClient, context);
+        finishGitActionNotice(context, "Removed from recent repositories.");
+      },
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  saveAiConfig: (queryClient: QueryClient) =>
+    mutationOptions({
+      mutationFn: (request: SaveAiConfigRequest) =>
+        gitApi.saveAiConfig(request),
+      onMutate: (request) =>
+        startGitActionNotice(
+          "Saving AI provider",
+          `${request.provider} · ${request.model || "default model"}`,
+          null,
+        ),
+      onSuccess: (config, _request, context) => {
+        queryClient.setQueryData(gitKeys.aiConfig(), config);
+        void queryClient.invalidateQueries({ queryKey: [...gitKeys.all, "ai-models"] });
+        finishGitActionNotice(context, "AI provider settings saved.");
+      },
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
+    }),
+
   stageFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.stageFile(repoPath!, filePath),
       onMutate: (filePath) =>
-        startGitActionNotice("Staging file", filePath, repoPath),
+        startGitActionNotice("Staging path", filePath, repoPath),
       onSuccess: async (_data, _filePath, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
           context,
-          "File staged and repository views refreshed.",
+          "Path staged and repository views refreshed.",
         );
       },
       onError: (error, _filePath, context) =>
@@ -1008,12 +1141,12 @@ export const gitMutations = {
     mutationOptions({
       mutationFn: (filePath: string) => gitApi.unstageFile(repoPath!, filePath),
       onMutate: (filePath) =>
-        startGitActionNotice("Unstaging file", filePath, repoPath),
+        startGitActionNotice("Unstaging path", filePath, repoPath),
       onSuccess: async (_data, _filePath, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
           context,
-          "File unstaged and repository views refreshed.",
+          "Path unstaged and repository views refreshed.",
         );
       },
       onError: (error, _filePath, context) =>
@@ -1105,6 +1238,28 @@ export const gitMutations = {
         failGitActionNotice(context, error),
     }),
 
+  discardFiles: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: DiscardFilesRequest) =>
+        gitApi.discardFiles(repoPath!, request.files),
+      onMutate: (request) =>
+        startGitActionNotice(
+          "Discarding folder changes",
+          request.path,
+          repoPath,
+          RECOVERY_HINTS.hardDiscard,
+        ),
+      onSuccess: async (_data, _request, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context);
+        finishGitActionNotice(
+          context,
+          "Folder changes discarded and repository views refreshed.",
+        );
+      },
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
+    }),
+
   stageAll: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: () => gitApi.stageAll(repoPath!),
@@ -1147,11 +1302,11 @@ export const gitMutations = {
 
   commit: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (message: string) => gitApi.commit(repoPath!, message),
-      onMutate: (message) =>
+      mutationFn: (request: CommitRequest) => gitApi.commit(repoPath!, request),
+      onMutate: (request) =>
         startGitActionNotice(
           "Creating commit",
-          message.split("\n", 1)[0],
+          request.message.split("\n", 1)[0],
           repoPath,
         ),
       onSuccess: async (_data, _message, context) => {
@@ -1259,8 +1414,8 @@ export const gitMutations = {
 
   amendCommit: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ message }: AmendCommitRequest) =>
-        gitApi.amendCommit(repoPath!, message),
+      mutationFn: ({ message, signOff, noVerify, allowEmpty }: AmendCommitRequest) =>
+        gitApi.amendCommit(repoPath!, message, { signOff, noVerify, allowEmpty }),
       onMutate: ({ message }) =>
         startGitActionNotice(
           "Amending HEAD commit",
@@ -1595,6 +1750,72 @@ export const gitMutations = {
       },
       onError: (error, _pattern, context) =>
         failGitActionNotice(context, error),
+    }),
+
+  lockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ path, remote }: { path: string; remote?: string | null }) =>
+        gitApi.lockLfsFile(repoPath!, path, remote),
+      onMutate: ({ path }) => startGitActionNotice("Locking LFS file", path, repoPath),
+      onSuccess: async (_data, request, context) => {
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        finishGitActionNotice(context, "LFS lock acquired.");
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  unlockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ lockId, remote, force }: { lockId: string; remote?: string | null; force: boolean }) =>
+        gitApi.unlockLfsFile(repoPath!, lockId, remote, force),
+      onMutate: ({ lockId, force }) =>
+        startGitActionNotice(force ? "Force-unlocking LFS file" : "Unlocking LFS file", lockId, repoPath),
+      onSuccess: async (_data, request, context) => {
+        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        finishGitActionNotice(context, "LFS lock released.");
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsTransfer: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsTransferRequest) => gitApi.startLfsTransfer(repoPath!, request),
+      onMutate: (request) =>
+        startGitActionNotice(`Starting LFS ${request.operation}`, request.remote || "default remote", repoPath),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsPrune: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsPruneRequest) => gitApi.startLfsPrune(repoPath!, request),
+      onMutate: () => startGitActionNotice("Pruning LFS objects", "Local LFS cache", repoPath, RECOVERY_HINTS.hardDiscard),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsFsck: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (revision?: string | null) => gitApi.startLfsFsck(repoPath!, revision),
+      onMutate: (revision) => startGitActionNotice("Repairing LFS integrity", revision || "HEAD", repoPath),
+      onSuccess: (job, _request, context) =>
+        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
+    }),
+
+  startLfsMigration: (_queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: LfsMigrationRequest) => gitApi.startLfsMigration(repoPath!, request),
+      onMutate: (request) =>
+        startGitActionNotice(`Starting LFS migrate ${request.mode}`, request.include, repoPath, RECOVERY_HINTS.reset),
+      onSuccess: (result, _request, context) =>
+        finishGitActionNotice(
+          context,
+          `${result.job.title} queued. Recovery branch ${result.backupBranch} will be created when the job starts.`,
+        ),
+      onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
 
   generateSshKey: (queryClient: QueryClient) =>

@@ -1,6 +1,5 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { Branch, CommitSummary } from "../../types/git";
-import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
 import { Cloud, GitBranch } from "lucide-react";
@@ -12,6 +11,8 @@ interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
   branches: Branch[];
+  isSelected: boolean;
+  onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
 }
 
 interface DisplayRef {
@@ -23,17 +24,16 @@ interface DisplayRef {
 
 /**
  * Dense commit row with a colored commit graph, hash, message, ref pills,
- * author, and relative time. Selected rows use the `--color-bg-selected`
- * token for clear highlighting.
+ * author, and relative time. Selected rows use the shared soft-selection
+ * surface so graph colors and metadata stay legible.
  */
 export function CommitListItem({
   commit,
   graph,
   branches,
+  isSelected,
+  onSelect,
 }: CommitListItemProps) {
-  const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
-  const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
-  const isSelected = selectedCommitHash === commit.hash;
   const displayRefs = buildDisplayRefs(commit.refs, branches);
   const isHead = displayRefs.some((ref) => ref.isHead);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -41,7 +41,7 @@ export function CommitListItem({
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setSelectedCommitHash(commit.hash);
+    onSelect(commit, event);
     setContextMenu({ x: event.clientX, y: event.clientY });
   };
 
@@ -49,19 +49,9 @@ export function CommitListItem({
     gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px 40px`,
   };
 
-  if (isSelected) {
-    Object.assign(style, {
-      color: "#ffffff",
-      ["--color-text-primary" as string]: "#ffffff",
-      ["--color-text-secondary" as string]: "rgba(255,255,255,0.78)",
-      ["--color-text-muted" as string]: "rgba(255,255,255,0.58)",
-      ["--color-accent" as string]: "rgba(255,255,255,0.92)",
-    });
-  }
-
   return (
     <div
-      onClick={() => setSelectedCommitHash(commit.hash)}
+      onClick={(event) => onSelect(commit, event)}
       onContextMenu={openContextMenu}
       role="row"
       aria-selected={isSelected}
@@ -69,7 +59,7 @@ export function CommitListItem({
         "grid h-[42px] items-center gap-2 rounded-lg px-2.5 transition-colors select-none",
         isHead && "font-semibold",
         isSelected
-          ? "bg-[var(--color-bg-selected)] text-white shadow-md shadow-[var(--color-accent)]/10 ring-1 ring-inset ring-[var(--color-accent)]/45"
+          ? "giteye-selected-row"
           : isHead
             ? "bg-[var(--color-bg-secondary)]/70 ring-1 ring-inset ring-[var(--color-border-muted)] hover:bg-[var(--color-bg-secondary)]"
             : "hover:bg-[var(--color-bg-secondary)]",
@@ -99,7 +89,9 @@ export function CommitListItem({
                 className={cn(
                   "inline-flex max-w-[110px] items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
                   isSelected
-                    ? "border-white/30 bg-white/15 text-white"
+                    ? ref.isRemote
+                      ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)]/80 text-[var(--color-text-secondary)]"
+                      : "border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
                     : ref.isRemote
                       ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
                       : "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
@@ -328,17 +320,15 @@ function CommitGraph({
           cx={laneX(graph.commitLane)}
           cy={centerY}
           r={nodeRadius}
-          fill={selected ? "#fff" : graph.color}
-          stroke={selected ? "#fff" : "var(--color-bg-primary)"}
+          fill={graph.color}
+          stroke="var(--color-bg-primary)"
           strokeWidth="1.75"
         />
         <circle
           cx={laneX(graph.commitLane)}
           cy={centerY}
           r={selected ? 1.75 : 1.5}
-          fill={
-            selected ? "var(--color-bg-selected)" : "var(--color-bg-primary)"
-          }
+          fill="var(--color-bg-primary)"
         />
       </svg>
     </span>

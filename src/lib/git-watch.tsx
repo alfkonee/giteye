@@ -82,6 +82,7 @@ export function GitJobEventListener() {
       ingestEvent(payload);
       updateJobNotice(payload, jobNoticeIds, startNotice, updateNotice, finishNotice);
       refreshRepositoryListsForCompletedClone(queryClient, payload);
+      refreshLfsDataForCompletedJob(queryClient, payload);
     }).then((cleanup) => {
       if (disposed) {
         cleanup();
@@ -105,6 +106,19 @@ function refreshRepositoryListsForCompletedClone(queryClient: QueryClient, event
   void Promise.all([
     queryClient.invalidateQueries({ queryKey: gitKeys.recentRepositories() }),
     queryClient.invalidateQueries({ queryKey: gitKeys.favoriteRepositories() }),
+  ]);
+}
+
+function refreshLfsDataForCompletedJob(queryClient: QueryClient, event: GitJobEvent) {
+  if (!event.kind.startsWith("lfs.") || !isTerminalJobStatus(event.status)) return;
+  void Promise.all([
+    queryClient.invalidateQueries({ queryKey: gitKeys.lfsStatus(event.repoPath) }),
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return key[0] === "git" && key[1] === "repository" && key[2] === event.repoPath && key[3] === "lfs-locks";
+      },
+    }),
   ]);
 }
 
