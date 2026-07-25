@@ -77,7 +77,8 @@ export function RepositoryWelcome() {
   const [path, setPath] = useState("");
   const [repoSearch, setRepoSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const stalePromptKeyRef = useRef("");
+  const handledStalePathsRef = useRef(new Set<string>());
+  const stalePromptBusyRef = useRef(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
@@ -149,22 +150,36 @@ export function RepositoryWelcome() {
 
   useEffect(() => {
     if (globalView !== "repo-hub") return;
-    const staleRepositories = (recents ?? []).filter((repo) => repo.isStale);
-    if (staleRepositories.length === 0) {
-      stalePromptKeyRef.current = "";
-      return;
+    // A removal round invalidates `recents` after every entry, re-running this effect
+    // with a shrinking stale list; without this guard each round would re-prompt.
+    if (stalePromptBusyRef.current) return;
+
+    const currentStalePaths = new Set((recents ?? []).filter((repo) => repo.isStale).map((repo) => repo.path));
+    for (const handledPath of handledStalePathsRef.current) {
+      // Let an entry prompt again if it goes stale after being removed or dismissed.
+      if (!currentStalePaths.has(handledPath)) handledStalePathsRef.current.delete(handledPath);
     }
 
-    const promptKey = staleRepositories.map((repo) => repo.path).sort().join("\n");
-    if (stalePromptKeyRef.current === promptKey) return;
-    stalePromptKeyRef.current = promptKey;
+    const staleRepositories = (recents ?? []).filter(
+      (repo) => repo.isStale && !handledStalePathsRef.current.has(repo.path),
+    );
+    if (staleRepositories.length === 0) return;
+
+    for (const repository of staleRepositories) {
+      handledStalePathsRef.current.add(repository.path);
+    }
     const preview = staleRepositories.slice(0, 5).map((repo) => `• ${repo.name}: ${repo.path}`).join("\n");
     const remaining = staleRepositories.length > 5 ? `\n…and ${staleRepositories.length - 5} more` : "";
     if (!window.confirm(`GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`)) return;
 
+    stalePromptBusyRef.current = true;
     void (async () => {
-      for (const repository of staleRepositories) {
-        await removeRecentMutation.mutateAsync(repository.path);
+      try {
+        for (const repository of staleRepositories) {
+          await removeRecentMutation.mutateAsync(repository.path);
+        }
+      } finally {
+        stalePromptBusyRef.current = false;
       }
     })();
   }, [globalView, recents, removeRecentMutation]);

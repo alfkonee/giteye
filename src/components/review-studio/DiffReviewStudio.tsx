@@ -316,8 +316,9 @@ export function DiffReviewStudio() {
   const checkRows = (prDiff?.checkRuns ?? []).map(
     statusFromCheck,
   );
-  const reviewRows = (prDiff?.reviews ?? []).map(
-    (review) => reviewFromSummary(review, currentPr?.author),
+  const reviewRows = useMemo(
+    () => (prDiff?.reviews ?? []).map((review) => reviewFromSummary(review, currentPr?.author)),
+    [prDiff?.reviews, currentPr?.author],
   );
   const timelineRows = useMemo(() => {
     const reviews: TimelineRow[] = reviewRows.map((review, index) => ({
