@@ -146,30 +146,44 @@ pub fn remove_recent_repository(
     Ok(repositories)
 }
 
+const RELATIONSHIP_ENRICHMENT_BATCH_SIZE: usize = 4;
+
 fn enrich_recent_relationships(repositories: &mut [storage::RecentRepo]) {
-    for repository in repositories {
-        repository.is_stale = !Path::new(&repository.path).exists();
-        if repository.is_stale {
-            continue;
-        }
-        if let Some(parent) =
-            repository_service::detect_repository_parent(Path::new(&repository.path))
-        {
-            repository.parent_path = Some(parent.path);
-            repository.parent_name = Some(parent.name);
-            repository.relationship_kind = Some(parent.relationship_kind);
-        }
+    for batch in repositories.chunks_mut(RELATIONSHIP_ENRICHMENT_BATCH_SIZE) {
+        std::thread::scope(|scope| {
+            for repository in batch {
+                scope.spawn(move || {
+                    repository.is_stale = !Path::new(&repository.path).exists();
+                    if repository.is_stale {
+                        return;
+                    }
+                    if let Some(parent) =
+                        repository_service::detect_repository_parent(Path::new(&repository.path))
+                    {
+                        repository.parent_path = Some(parent.path);
+                        repository.parent_name = Some(parent.name);
+                        repository.relationship_kind = Some(parent.relationship_kind);
+                    }
+                });
+            }
+        });
     }
 }
 
 fn enrich_favorite_relationships(repositories: &mut [storage::FavoriteRepo]) {
-    for repository in repositories {
-        if let Some(parent) =
-            repository_service::detect_repository_parent(Path::new(&repository.path))
-        {
-            repository.parent_path = Some(parent.path);
-            repository.parent_name = Some(parent.name);
-            repository.relationship_kind = Some(parent.relationship_kind);
-        }
+    for batch in repositories.chunks_mut(RELATIONSHIP_ENRICHMENT_BATCH_SIZE) {
+        std::thread::scope(|scope| {
+            for repository in batch {
+                scope.spawn(move || {
+                    if let Some(parent) =
+                        repository_service::detect_repository_parent(Path::new(&repository.path))
+                    {
+                        repository.parent_path = Some(parent.path);
+                        repository.parent_name = Some(parent.name);
+                        repository.relationship_kind = Some(parent.relationship_kind);
+                    }
+                });
+            }
+        });
     }
 }
