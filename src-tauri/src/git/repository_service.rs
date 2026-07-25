@@ -186,6 +186,40 @@ fn detect_submodule_parent(path: &Path) -> Option<RepositoryParent> {
         name: GitCli::repo_name_from_path(&parent_path),
         path: parent_path.to_string_lossy().to_string(),
         submodule_path,
+        relationship_kind: "submodule".to_string(),
+    })
+}
+
+pub fn detect_repository_parent(path: &Path) -> Option<RepositoryParent> {
+    if let Some(parent) = detect_submodule_parent(path) {
+        return Some(parent);
+    }
+
+    if GitCli::run(path, &["rev-parse", "--is-bare-repository"])
+        .ok()?
+        .trim()
+        == "true"
+    {
+        return None;
+    }
+
+    let common_dir = GitCli::run(
+        path,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .ok()?;
+    let common_dir = PathBuf::from(common_dir.trim()).canonicalize().ok()?;
+    let parent_path = common_dir.parent()?.canonicalize().ok()?;
+    let repo_path = path.canonicalize().ok()?;
+    if parent_path == repo_path {
+        return None;
+    }
+
+    Some(RepositoryParent {
+        name: GitCli::repo_name_from_path(&parent_path),
+        path: parent_path.to_string_lossy().to_string(),
+        submodule_path: GitCli::repo_name_from_path(path),
+        relationship_kind: "worktree".to_string(),
     })
 }
 

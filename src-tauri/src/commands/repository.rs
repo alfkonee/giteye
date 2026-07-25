@@ -109,14 +109,18 @@ pub fn warm_repository_context(repo_path: String, include_github: bool) -> Resul
 pub fn list_recent_repositories(
     app_handle: AppHandle,
 ) -> Result<Vec<storage::RecentRepo>, AppError> {
-    storage::load_recent_repositories(&app_handle)
+    let mut repositories = storage::load_recent_repositories(&app_handle)?;
+    enrich_recent_relationships(&mut repositories);
+    Ok(repositories)
 }
 
 #[tauri::command]
 pub fn list_favorite_repositories(
     app_handle: AppHandle,
 ) -> Result<Vec<storage::FavoriteRepo>, AppError> {
-    storage::load_favorite_repositories(&app_handle)
+    let mut repositories = storage::load_favorite_repositories(&app_handle)?;
+    enrich_favorite_relationships(&mut repositories);
+    Ok(repositories)
 }
 
 #[tauri::command]
@@ -126,7 +130,10 @@ pub fn set_repository_favorite(
     name: String,
     favorite: bool,
 ) -> Result<Vec<storage::FavoriteRepo>, AppError> {
-    storage::set_repository_favorite(&app_handle, &repo_path, &name, favorite)
+    let mut repositories =
+        storage::set_repository_favorite(&app_handle, &repo_path, &name, favorite)?;
+    enrich_favorite_relationships(&mut repositories);
+    Ok(repositories)
 }
 
 #[tauri::command]
@@ -134,5 +141,49 @@ pub fn remove_recent_repository(
     app_handle: AppHandle,
     repo_path: String,
 ) -> Result<Vec<storage::RecentRepo>, AppError> {
-    storage::remove_recent_repository(&app_handle, &repo_path)
+    let mut repositories = storage::remove_recent_repository(&app_handle, &repo_path)?;
+    enrich_recent_relationships(&mut repositories);
+    Ok(repositories)
+}
+
+const RELATIONSHIP_ENRICHMENT_BATCH_SIZE: usize = 4;
+
+fn enrich_recent_relationships(repositories: &mut [storage::RecentRepo]) {
+    for batch in repositories.chunks_mut(RELATIONSHIP_ENRICHMENT_BATCH_SIZE) {
+        std::thread::scope(|scope| {
+            for repository in batch {
+                scope.spawn(move || {
+                    repository.is_stale = !Path::new(&repository.path).exists();
+                    if repository.is_stale {
+                        return;
+                    }
+                    if let Some(parent) =
+                        repository_service::detect_repository_parent(Path::new(&repository.path))
+                    {
+                        repository.parent_path = Some(parent.path);
+                        repository.parent_name = Some(parent.name);
+                        repository.relationship_kind = Some(parent.relationship_kind);
+                    }
+                });
+            }
+        });
+    }
+}
+
+fn enrich_favorite_relationships(repositories: &mut [storage::FavoriteRepo]) {
+    for batch in repositories.chunks_mut(RELATIONSHIP_ENRICHMENT_BATCH_SIZE) {
+        std::thread::scope(|scope| {
+            for repository in batch {
+                scope.spawn(move || {
+                    if let Some(parent) =
+                        repository_service::detect_repository_parent(Path::new(&repository.path))
+                    {
+                        repository.parent_path = Some(parent.path);
+                        repository.parent_name = Some(parent.name);
+                        repository.relationship_kind = Some(parent.relationship_kind);
+                    }
+                });
+            }
+        });
+    }
 }

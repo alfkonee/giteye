@@ -1,8 +1,8 @@
 import type { GitStatusFile, FileStatus } from "../../types/git";
 import { parseFileStatus } from "../../types/git";
 import { StatusBadge } from "../common/StatusBadge";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { gitMutations } from "../../lib/git-data";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { Plus, Minus, ChevronDown, ChevronRight, Archive, Trash2 } from "lucide-react";
 import { useState, type MouseEvent } from "react";
@@ -95,6 +95,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
+  const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
   const stageMutation = useMutation(gitMutations.stageFile(queryClient, repoPath));
   const unstageMutation = useMutation(gitMutations.unstageFile(queryClient, repoPath));
@@ -103,6 +104,9 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const stashPathMutation = useMutation(gitMutations.createStashForPaths(queryClient, repoPath));
   const discardFileMutation = useMutation(gitMutations.discardFile(queryClient, repoPath));
   const discardFilesMutation = useMutation(gitMutations.discardFiles(queryClient, repoPath));
+  const submodulesQuery = useQuery(gitQueries.submodules(repoPath, Boolean(repoPath)));
+  const openSubmodule = useMutation(gitMutations.openSubmodule(repoPath));
+  const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
@@ -242,7 +246,18 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     unstageMutation.isPending ||
     stashPathMutation.isPending ||
     discardFileMutation.isPending ||
-    discardFilesMutation.isPending;
+    discardFilesMutation.isPending ||
+    openSubmodule.isPending ||
+    openRepository.isPending;
+  const contextSubmodule = contextTarget?.kind === "file"
+    ? (submodulesQuery.data ?? []).find((submodule) => submodule.path === contextTarget.path)
+    : null;
+
+  const handleOpenSubmodule = (submodulePath: string) => {
+    openSubmodule.mutate(submodulePath, {
+      onSuccess: (absolutePath) => openRepository.mutate(absolutePath),
+    });
+  };
 
   return (
     <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
@@ -513,10 +528,12 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         repoPath={repoPath}
         staged={staged}
         pending={contextMenuPending}
+        submodulePath={contextSubmodule?.path}
         onStage={(path) => stageMutation.mutate(path)}
         onUnstage={(path) => unstageMutation.mutate(path)}
         onStash={handleStashTarget}
         onDiscard={handleDiscardTarget}
+        onOpenSubmodule={handleOpenSubmodule}
         onClose={() => setContextTarget(null)}
       />
     </div>

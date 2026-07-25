@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
   FileCode2,
   Filter,
@@ -10,6 +12,8 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   UnifiedDiffFallback,
   type DiffLineSelection,
@@ -39,19 +43,27 @@ interface ReviewRow {
   age: string;
   url: string | null;
   isAuthor: boolean;
+  createdAt: string | null;
 }
 
 interface CheckRow {
   name: string;
   status: string;
   passed: boolean;
+  description: string | null;
+  workflow: string | null;
+  url: string | null;
 }
 
-interface ActivityRow {
+interface TimelineRow {
+  id: string;
+  kind: "comment" | "review" | "checkpoint";
   author: string;
-  message: string;
+  body: string;
+  detail: string | null;
   age: string;
   url: string | null;
+  createdAt: string | null;
 }
 
 type ReviewStudioTab = "conversations" | "files" | "checks";
@@ -110,6 +122,9 @@ const statusFromCheck = (check: CheckRunSummary): CheckRow => {
     name: check.name,
     status: passed ? "Pass" : stateLabel(check.conclusion ?? check.state),
     passed,
+    description: check.description,
+    workflow: check.workflow,
+    url: check.url,
   };
 };
 
@@ -126,24 +141,50 @@ const reviewFromSummary = (
     age: formatRelative(review.submittedAt),
     url: review.url,
     isAuthor: Boolean(author && review.author === author),
+    createdAt: review.submittedAt,
   };
 };
 
-const activityFromSummary = (activity: ActivityItem): ActivityRow => ({
+const activityFromSummary = (activity: ActivityItem): TimelineRow => ({
+  id: activity.id,
+  kind: "checkpoint",
   author: activity.actor ?? "GitHub",
-  message: activity.title?.trim() || stateLabel(activity.kind),
+  body: activity.title?.trim() || stateLabel(activity.kind),
+  detail: stateLabel(activity.kind),
   age: formatRelative(activity.createdAt),
   url: activity.url,
+  createdAt: activity.createdAt,
 });
 
-const commentFromSummary = (comment: ReviewCommentSummary): ActivityRow => ({
+const commentFromSummary = (comment: ReviewCommentSummary): TimelineRow => ({
+  id: `comment-${comment.id}`,
+  kind: "comment",
   author: comment.author ?? "GitHub reviewer",
-  message: comment.path
-    ? `${comment.path}${comment.line ? `:${comment.line}` : ""} — ${comment.body || "No comment body returned."}`
-    : comment.body || "No comment body returned.",
+  body: comment.body || "No comment body returned.",
+  detail: comment.path ? `${comment.path}${comment.line ? `:${comment.line}` : ""}` : null,
   age: formatRelative(comment.createdAt),
   url: comment.url,
+  createdAt: comment.createdAt,
 });
+
+function MarkdownBody({ children }: { children: string }) {
+  return (
+    <div className="mt-2 break-words text-sm leading-6 text-[var(--color-text-secondary)] [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border)] [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-[var(--color-bg-surface)] [&_code]:px-1 [&_li]:ml-5 [&_li]:list-disc [&_ol>li]:list-decimal [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-[var(--color-bg-surface)] [&_pre]:p-3">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children: linkChildren }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] underline underline-offset-2">
+              {linkChildren}
+            </a>
+          ),
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 function EmptyState({ message }: { message: string }) {
   return (
@@ -203,6 +244,7 @@ export function DiffReviewStudio() {
     useState<DiffLineSelection | null>(null);
   const [lineCommentBody, setLineCommentBody] = useState("");
   const [activeTab, setActiveTab] = useState<ReviewStudioTab>("conversations");
+  const [checksExpanded, setChecksExpanded] = useState(true);
   const [mergeMethod, setMergeMethod] = useState<MergeMethod>("squash");
   const [finalizeWithAdmin, setFinalizeWithAdmin] = useState(false);
   const [deleteHeadBranch, setDeleteHeadBranch] = useState(true);
@@ -274,15 +316,31 @@ export function DiffReviewStudio() {
   const checkRows = (prDiff?.checkRuns ?? []).map(
     statusFromCheck,
   );
-  const reviewRows = (prDiff?.reviews ?? []).map(
-    (review) => reviewFromSummary(review, currentPr?.author),
+  const reviewRows = useMemo(
+    () => (prDiff?.reviews ?? []).map((review) => reviewFromSummary(review, currentPr?.author)),
+    [prDiff?.reviews, currentPr?.author],
   );
-  const activityRows = [
-    ...(prDiff?.comments ?? []).map(commentFromSummary),
-    ...(prDiff?.activity ?? [])
-      .slice(0, 8)
-      .map(activityFromSummary),
-  ];
+  const timelineRows = useMemo(() => {
+    const reviews: TimelineRow[] = reviewRows.map((review, index) => ({
+      id: `review-${index}-${review.name}-${review.createdAt ?? review.state}`,
+      kind: "review",
+      author: review.name,
+      body: review.body,
+      detail: review.state,
+      age: review.age,
+      url: review.url,
+      createdAt: review.createdAt,
+    }));
+    return [
+      ...(prDiff?.comments ?? []).map(commentFromSummary),
+      ...reviews,
+      ...(prDiff?.activity ?? []).map(activityFromSummary),
+    ].sort((left, right) => {
+      const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
+      const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
+      return leftTime - rightTime;
+    });
+  }, [prDiff?.activity, prDiff?.comments, reviewRows]);
   const passingChecks = checkRows.filter((check) => check.passed).length;
   const providerDetail = !activeRepoPath
     ? "Open a repository to load GitHub review metadata."
@@ -299,7 +357,7 @@ export function DiffReviewStudio() {
     livePrs.length > 0
       ? "text-[var(--color-success)]"
       : "text-[var(--color-text-muted)]";
-  const commentCount = activityRows.length + reviewRows.length;
+  const commentCount = timelineRows.length;
   const filePatches = useMemo(
     () => splitPullRequestDiff(prDiff?.diffText),
     [prDiff?.diffText],
@@ -781,37 +839,56 @@ export function DiffReviewStudio() {
           </>
         ) : activeTab === "checks" ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg-secondary)] p-4">
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4">
-              <div className="mb-3 flex items-center justify-between">
+            <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
+              <button
+                type="button"
+                aria-expanded={checksExpanded}
+                onClick={() => setChecksExpanded((expanded) => !expanded)}
+                className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-[var(--color-bg-hover)]"
+              >
+                {checksExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 <h3 className="font-semibold">Checks</h3>
-                <span className="text-xs text-[var(--color-text-secondary)]">
+                <span className="ml-auto text-xs text-[var(--color-text-secondary)]">
                   {passingChecks} of {checkRows.length} passing
                 </span>
-              </div>
-              {checkRows.length > 0 ? (
-                checkRows.map((check) => (
-                  <div
-                    key={check.name}
-                    className="mt-3 flex items-center justify-between text-sm first:mt-0"
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <ShieldCheck className="h-4 w-4" />
-                      {check.name}
-                    </span>
-                    <span
-                      className={
-                        check.passed
-                          ? "text-[var(--color-success)]"
-                          : "text-[var(--color-text-muted)]"
-                      }
-                    >
-                      {check.status}
-                    </span>
+              </button>
+              {checksExpanded ? (
+                checkRows.length > 0 ? (
+                  <div className="grid gap-px border-t border-[var(--color-border)] bg-[var(--color-border-muted)] sm:grid-cols-2 xl:grid-cols-3">
+                    {checkRows.map((check, index) => (
+                      <button
+                        key={`${check.name}-${index}`}
+                        type="button"
+                        disabled={!check.url}
+                        onClick={() => check.url && window.open(check.url, "_blank")}
+                        title={check.name}
+                        className="grid min-h-20 grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-2 bg-[var(--color-bg-primary)] p-3 text-left hover:bg-[var(--color-bg-hover)] disabled:cursor-default"
+                      >
+                        <span className={check.passed ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]"}>
+                          {check.passed ? <CheckCircle2 className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="line-clamp-3 block break-words text-[11px] font-medium leading-4 text-[var(--color-text-primary)]">
+                            {check.name}
+                          </span>
+                          {(check.workflow || check.description) ? (
+                            <span className="mt-1 line-clamp-2 block text-[10px] leading-4 text-[var(--color-text-muted)]">
+                              {check.workflow ?? check.description}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className={check.passed ? "text-[10px] text-[var(--color-success)]" : "text-[10px] text-[var(--color-text-muted)]"}>
+                          {check.status}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <EmptyState message="No checks returned by GitHub." />
-              )}
+                ) : (
+                  <div className="border-t border-[var(--color-border)] p-4">
+                    <EmptyState message="No checks returned by GitHub." />
+                  </div>
+                )
+              ) : null}
             </div>
           </div>
         ) : (
@@ -866,65 +943,41 @@ export function DiffReviewStudio() {
                   </button>
                 </div>
               </div>
-              <div className="space-y-3">
-                {reviewRows.length > 0
-                  ? reviewRows.map((review) => (
-                      <div
-                        key={`${review.name}-${review.state}`}
-                        className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3 text-sm"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-medium">{review.name}</span>
-                          <span className="text-xs text-[var(--color-text-muted)]">
-                            {review.age} · {review.state}
-                          </span>
-                        </div>
-                        <p className="mt-2 whitespace-pre-wrap text-[var(--color-text-secondary)]">
-                          {review.body}
-                        </p>
-                        {review.url ? (
-                          <button
-                            type="button"
-                            onClick={() => window.open(review.url!, "_blank")}
-                            className="mt-2 text-xs text-[var(--color-accent)]"
-                          >
-                            Open review
-                          </button>
-                        ) : null}
-                      </div>
-                    ))
-                  : null}
-                {activityRows.length > 0 ? (
-                  activityRows.map((activity) => (
-                    <div
-                      key={`${activity.author}-${activity.message}`}
-                      className="rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3 text-sm"
-                    >
+              <div className="relative pl-8 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-[var(--color-border)]">
+                {timelineRows.length > 0 ? (
+                  timelineRows.map((item) => item.kind === "checkpoint" ? (
+                    <div key={item.id} className="relative mb-3 flex min-h-8 items-center gap-3 text-xs text-[var(--color-text-muted)]">
+                      <span className="absolute -left-8 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-accent)]">
+                        <GitPullRequestArrow className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <b className="text-[var(--color-text-secondary)]">{item.author}</b> {item.body}
+                      </span>
+                      <span className="shrink-0">{item.age}</span>
+                    </div>
+                  ) : (
+                    <article key={item.id} className="relative mb-4 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3">
+                      <span className="absolute -left-[33px] top-3 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
+                        <Circle className="h-2.5 w-2.5 fill-[var(--color-accent)] text-[var(--color-accent)]" />
+                      </span>
                       <div className="flex items-center justify-between gap-3">
-                        <b className="text-[var(--color-text-primary)]">
-                          {activity.author}
-                        </b>
-                        <span className="text-xs text-[var(--color-text-muted)]">
-                          {activity.age}
-                        </span>
+                        <b className="text-sm text-[var(--color-text-primary)]">{item.author}</b>
+                        <span className="text-xs text-[var(--color-text-muted)]">{item.age}</span>
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-[var(--color-text-secondary)]">
-                        {activity.message}
-                      </p>
-                      {activity.url ? (
-                        <button
-                          type="button"
-                          onClick={() => window.open(activity.url!, "_blank")}
-                          className="mt-2 text-xs text-[var(--color-accent)]"
-                        >
+                      {item.detail ? (
+                        <div className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]">{item.detail}</div>
+                      ) : null}
+                      <MarkdownBody>{item.body}</MarkdownBody>
+                      {item.url ? (
+                        <button type="button" onClick={() => window.open(item.url!, "_blank")} className="mt-2 text-xs text-[var(--color-accent)]">
                           Open on GitHub
                         </button>
                       ) : null}
-                    </div>
+                    </article>
                   ))
-                ) : reviewRows.length === 0 ? (
+                ) : (
                   <EmptyState message="No review activity returned by GitHub." />
-                ) : null}
+                )}
               </div>
             </section>
           </div>
