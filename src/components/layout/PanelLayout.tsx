@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
@@ -8,6 +8,7 @@ import { CommitDetails } from "../commit-history/CommitDetails";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
 import { EmptyState } from "../common/EmptyState";
+import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen } from "lucide-react";
 
@@ -18,6 +19,7 @@ export function PanelLayout() {
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const diffMode = useAppStore((s) => s.diffMode);
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
+  const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const queryClient = useQueryClient();
   const activeViewDefinition = getViewDefinition(activeView);
@@ -54,6 +56,10 @@ export function PanelLayout() {
   const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {
+    if (selectedCommitRange.length === 2) {
+      return <CommitRangeDiffWrapper />;
+    }
+
     if (selectedCommitHash && selectedCommitFilePath) {
       return <CommitDiffWrapper />;
     }
@@ -100,7 +106,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
 
   const showDetailPane = Boolean(activeViewDefinition.detailPane);
 
@@ -203,6 +209,102 @@ function CommitDiffWrapper() {
           mode={diffMode}
           focusedFilePath={selectedCommitFilePath ?? undefined}
         />
+      </div>
+    </div>
+  );
+}
+
+function CommitRangeDiffWrapper() {
+  const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const [baseHash, targetHash] = useAppStore((s) => s.selectedCommitRange);
+  const setSelectedCommitRange = useAppStore((s) => s.setSelectedCommitRange);
+  const diffMode = useAppStore((s) => s.diffMode);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const {
+    data: changedFiles,
+    isLoading: isFilesLoading,
+    error: filesError,
+  } = useQuery(
+    gitQueries.commitRangeFiles(activeRepoPath, baseHash ?? null, targetHash ?? null),
+  );
+  const { data: commitDiff, isLoading, error } = useQuery(
+    gitQueries.commitRangeDiff(
+      activeRepoPath,
+      baseHash ?? null,
+      targetHash ?? null,
+      selectedFilePath,
+    ),
+  );
+  const rangeLabel = `${baseHash?.slice(0, 8) ?? "base"} → ${targetHash?.slice(0, 8) ?? "target"}`;
+
+  useEffect(() => {
+    setSelectedFilePath((current) =>
+      current && changedFiles?.includes(current) ? current : changedFiles?.[0] ?? null,
+    );
+  }, [baseHash, changedFiles, targetHash]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setSelectedCommitRange(targetHash ? [targetHash] : [])}
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Target commit
+        </button>
+        <span className="min-w-0 truncate text-[var(--color-text-muted)]">
+          Comparing <span className="font-mono text-[var(--color-text-secondary)]">{rangeLabel}</span>
+        </span>
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-52 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]/45">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border-muted)] px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+              Changed files
+            </span>
+            <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-text-muted)]">
+              {changedFiles?.length ?? 0}
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            {isFilesLoading ? (
+              <p className="px-1 py-2 text-[11px] text-[var(--color-text-muted)]">Loading files...</p>
+            ) : filesError ? (
+              <ErrorCallout message={`Failed to load changed files: ${String(filesError)}`} />
+            ) : changedFiles?.length ? (
+              <FileTree
+                items={changedFiles}
+                getPath={(file) => file}
+                selectedKey={selectedFilePath}
+                onSelect={setSelectedFilePath}
+                className="rounded-md"
+              />
+            ) : (
+              <p className="px-1 py-2 text-[11px] text-[var(--color-text-muted)]">No files changed</p>
+            )}
+          </div>
+        </aside>
+        <div className="min-w-0 flex-1">
+          {selectedFilePath ? (
+            <DiffViewer
+              diffText={commitDiff?.diffText ?? ""}
+              filePath={commitDiff?.filePath ?? selectedFilePath}
+              oldFilePath={commitDiff?.oldFilePath ?? undefined}
+              isBinary={commitDiff?.isBinary}
+              isLoading={isLoading}
+              error={error?.toString() ?? null}
+              mode={diffMode}
+            />
+          ) : (
+            <EmptyState
+              icon={<FolderOpen className="w-8 h-8" />}
+              title="No Changed Files"
+              description="The selected commits have no file differences"
+            />
+          )}
+        </div>
       </div>
     </div>
   );
