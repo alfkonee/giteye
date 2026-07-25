@@ -268,7 +268,10 @@ export function BranchList() {
       )}
 
       <div className="flex-1 overflow-y-auto py-1">
-        <div className="px-3 py-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Local</div>
+        <div className="flex items-center gap-2 px-3 py-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">
+          <span>Local</span>
+          <span className="tabular-nums normal-case">{localBranches.length}</span>
+        </div>
         {localBranches.map((branch) => (
           <div
             key={branch.name}
@@ -341,7 +344,10 @@ export function BranchList() {
 
         {remoteBranches.length > 0 && (
           <>
-            <div className="px-3 pt-3 pb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Remote</div>
+            <div className="flex items-center gap-2 px-3 pt-3 pb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">
+              <span>Remote</span>
+              <span className="tabular-nums normal-case">{remoteBranches.length}</span>
+            </div>
             {remoteBranches.map((branch) => {
               const trackedBy = trackedByLocal(branch);
               return (
