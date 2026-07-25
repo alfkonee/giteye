@@ -20,4 +20,5 @@ pub mod state_graph;
 pub mod status_service;
 pub mod submodule_service;
 pub mod tag_service;
+pub mod toolchain_service;
 pub mod worktree_service;

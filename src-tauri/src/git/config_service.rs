@@ -2,7 +2,6 @@ use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::{GitCredentialConfig, GitIdentity};
 use std::path::Path;
-use std::process::Command;
 
 pub fn get_git_identity(repo_path: &Path) -> Result<GitIdentity, AppError> {
     GitCli::run(repo_path, &["rev-parse", "--is-inside-work-tree"])?;
@@ -54,11 +53,7 @@ pub fn set_git_credential_helper(
 }
 
 fn list_config(repo_path: &Path, args: &[&str]) -> Vec<String> {
-    let output = match Command::new("git")
-        .args(args)
-        .current_dir(repo_path)
-        .output()
-    {
+    let output = match GitCli::command().args(args).current_dir(repo_path).output() {
         Ok(output) if output.status.success() => output,
         _ => return Vec::new(),
     };
@@ -72,7 +67,7 @@ fn list_config(repo_path: &Path, args: &[&str]) -> Vec<String> {
 }
 
 fn optional_config(repo_path: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    let output = GitCli::command()
         .args(args)
         .current_dir(repo_path)
         .output()
@@ -94,7 +89,7 @@ fn set_local_config(repo_path: &Path, key: &str, value: Option<&str>) -> Result<
             GitCli::run(repo_path, &["config", "--local", key, value])?;
         }
         _ => {
-            let _ = Command::new("git")
+            let _ = GitCli::command()
                 .args(["config", "--local", "--unset", key])
                 .current_dir(repo_path)
                 .output();
@@ -105,7 +100,7 @@ fn set_local_config(repo_path: &Path, key: &str, value: Option<&str>) -> Result<
 
 fn set_local_credential_helper(repo_path: &Path, helper: Option<&str>) -> Result<(), AppError> {
     let helper = helper.map(str::trim).filter(|value| !value.is_empty());
-    let _ = Command::new("git")
+    let _ = GitCli::command()
         .args(["config", "--local", "--unset-all", "credential.helper"])
         .current_dir(repo_path)
         .output();

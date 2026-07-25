@@ -1,5 +1,5 @@
 import { tracedInvoke as invoke } from "./invoke-trace";
-import type { AppSettings } from "../types/app";
+import type { AppSettings, ToolInstallResult, ToolchainStatus } from "../types/app";
 import type {
   RepositoryInfo,
   RepositorySnapshot,
@@ -156,6 +156,23 @@ export const gitApi = {
 
   saveAppSettings: (settings: AppSettings) =>
     invoke<AppSettings>("save_app_settings", { settings }),
+
+  getToolchainStatus: () => invoke<ToolchainStatus>("get_toolchain_status"),
+
+  installGitToolchain: (version?: string | null) =>
+    invoke<ToolInstallResult>("install_git_toolchain", {
+      request: { version: version ?? null },
+    }),
+
+  installAndEnableLfs: () =>
+    invoke<ToolInstallResult>("install_and_enable_lfs"),
+
+  cancelToolchainInstall: () => invoke<void>("cancel_toolchain_install"),
+
+  selectGitExecutable: (executablePath?: string | null) =>
+    invoke<ToolchainStatus>("select_git_executable", {
+      executablePath: executablePath ?? null,
+    }),
 
   openRepository: (path: string) =>
     invoke<RepositorySnapshot>("open_repository", { path }),

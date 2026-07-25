@@ -1,8 +1,14 @@
 use crate::errors::AppError;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 use tauri::Manager;
+
+static APP_SETTINGS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
@@ -285,26 +291,85 @@ pub fn set_repository_favorite(
 }
 
 pub fn load_app_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
+    with_app_settings_lock(app_handle, || load_app_settings_unlocked(app_handle))
+}
+
+fn load_app_settings_unlocked(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
     let path = app_settings_path(app_handle)?;
     if !path.exists() {
-        return Ok(AppSettings::default());
+        let backup = path.with_extension("json.backup");
+        if backup.exists() {
+            fs::rename(&backup, &path)
+                .map_err(|error| AppError::StorageError(error.to_string()))?;
+        } else {
+            return Ok(AppSettings::default());
+        }
     }
     let data = fs::read_to_string(&path).map_err(|e| AppError::StorageError(e.to_string()))?;
-    let raw_settings = serde_json::from_str::<AppSettings>(&data).ok();
+    let parsed_settings = serde_json::from_str::<AppSettings>(&data).ok();
+    let recovered_from_backup = parsed_settings.is_none();
+    let raw_settings = parsed_settings.or_else(|| {
+        fs::read_to_string(path.with_extension("json.backup"))
+            .ok()
+            .and_then(|backup| serde_json::from_str::<AppSettings>(&backup).ok())
+    });
     let settings = normalize_app_settings(raw_settings.clone().unwrap_or_default());
-    if raw_settings.as_ref() != Some(&settings) {
+    if recovered_from_backup || raw_settings.as_ref() != Some(&settings) {
         write_app_settings(app_handle, &settings)?;
     }
     Ok(settings)
 }
 
-pub fn save_app_settings(
+fn save_app_settings_unlocked(
     app_handle: &tauri::AppHandle,
     settings: AppSettings,
 ) -> Result<AppSettings, AppError> {
     let settings = normalize_app_settings(settings);
     write_app_settings(app_handle, &settings)?;
     Ok(settings)
+}
+
+pub fn update_git_executable_path(
+    app_handle: &tauri::AppHandle,
+    executable_path: Option<String>,
+) -> Result<AppSettings, AppError> {
+    with_app_settings_lock(app_handle, || {
+        let mut settings = load_app_settings_unlocked(app_handle)?;
+        settings.git_executable_path = executable_path;
+        save_app_settings_unlocked(app_handle, settings)
+    })
+}
+
+pub fn save_app_settings_preserving_git_path(
+    app_handle: &tauri::AppHandle,
+    mut settings: AppSettings,
+) -> Result<AppSettings, AppError> {
+    with_app_settings_lock(app_handle, || {
+        settings.git_executable_path = load_app_settings_unlocked(app_handle)?.git_executable_path;
+        save_app_settings_unlocked(app_handle, settings)
+    })
+}
+
+fn with_app_settings_lock<T>(
+    app_handle: &tauri::AppHandle,
+    operation: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let _guard = APP_SETTINGS_LOCK
+        .lock()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let lock_path = get_storage_dir(app_handle)?.join("app_settings.lock");
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    lock_file
+        .lock_exclusive()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let result = operation();
+    let _ = lock_file.unlock();
+    result
 }
 
 fn write_app_settings(
@@ -314,7 +379,23 @@ fn write_app_settings(
     let path = app_settings_path(app_handle)?;
     let data = serde_json::to_string_pretty(settings)
         .map_err(|e| AppError::SerializationError(e.to_string()))?;
-    fs::write(&path, data).map_err(|e| AppError::StorageError(e.to_string()))
+    let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    let backup = path.with_extension("json.backup");
+    let mut file =
+        fs::File::create(&temporary).map_err(|error| AppError::StorageError(error.to_string()))?;
+    file.write_all(data.as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    if path.exists() {
+        let _ = fs::remove_file(&backup);
+        fs::rename(&path, &backup).map_err(|error| AppError::StorageError(error.to_string()))?;
+    }
+    if let Err(error) = fs::rename(&temporary, &path) {
+        let _ = fs::rename(&backup, &path);
+        return Err(AppError::StorageError(error.to_string()));
+    }
+    let _ = fs::remove_file(backup);
+    Ok(())
 }
 
 #[cfg(test)]

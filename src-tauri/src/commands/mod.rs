@@ -20,4 +20,5 @@ pub mod stashes;
 pub mod status;
 pub mod submodules;
 pub mod tags;
+pub mod toolchain;
 pub mod worktrees;
