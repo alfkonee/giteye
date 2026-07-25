@@ -569,8 +569,10 @@ fn redact_url_userinfo(value: &str) -> String {
         value.to_string()
     };
     if let Some(secret_start) = redacted.find(['?', '#']) {
+        let delimiter = redacted.as_bytes()[secret_start] as char;
         redacted.truncate(secret_start);
-        redacted.push_str("?<redacted>");
+        redacted.push(delimiter);
+        redacted.push_str("<redacted>");
     }
     redacted
 }
@@ -594,6 +596,14 @@ mod tests {
         assert_eq!(
             redact_git_output("remote: https://user:secret@example.com/repo.git?token=secret"),
             "remote: https://example.com/repo.git?<redacted>"
+        );
+    }
+
+    #[test]
+    fn redact_git_job_args_preserves_url_fragment_delimiter() {
+        assert_eq!(
+            redact_git_arg("https://example.com/repo.git#access_token=secret"),
+            "https://example.com/repo.git#<redacted>"
         );
     }
 

@@ -173,6 +173,11 @@ pub fn build_transfer_args(
             LfsTransferOperation::Push => "push",
         }
     };
+    if request.all && (request.include.is_some() || request.exclude.is_some()) {
+        return Err(AppError::GitError(
+            "Git LFS fetch --all cannot be combined with include or exclude paths".to_string(),
+        ));
+    }
     let mut args = vec!["lfs".to_string(), command.to_string()];
     if preview {
         args.push("--dry-run".to_string());
@@ -184,11 +189,6 @@ pub fn build_transfer_args(
             ));
         }
         args.push("--all".to_string());
-    }
-    if request.all && (request.include.is_some() || request.exclude.is_some()) {
-        return Err(AppError::GitError(
-            "Git LFS fetch --all cannot be combined with include or exclude paths".to_string(),
-        ));
     }
     if let Some(include) = optional_value(request.include.as_deref(), "include paths")? {
         if request.operation == LfsTransferOperation::Push {
@@ -503,9 +503,9 @@ fn parse_lfs_locks(output: &str) -> Result<LfsLocks, AppError> {
     })?;
     let mut locks = LfsLocks::default();
     if let Some(items) = value.as_array() {
-        locks.ours = items
+        locks.theirs = items
             .iter()
-            .filter_map(|item| parse_lfs_lock(item, true))
+            .filter_map(|item| parse_lfs_lock(item, false))
             .collect();
         return Ok(locks);
     }
@@ -670,6 +670,16 @@ mod tests {
         assert_eq!(locks.ours[0].path, "art.psd");
         assert!(locks.ours[0].ours);
         assert_eq!(locks.theirs[0].owner.as_deref(), Some("Lin"));
+        assert!(!locks.theirs[0].ours);
+    }
+
+    #[test]
+    fn treats_unverified_lfs_locks_as_not_owned() {
+        let locks = parse_lfs_locks(r#"[{"id":"1","path":"art.psd","owner":{"name":"Ada"}}]"#)
+            .expect("parse locks");
+
+        assert!(locks.ours.is_empty());
+        assert_eq!(locks.theirs.len(), 1);
         assert!(!locks.theirs[0].ours);
     }
 

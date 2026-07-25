@@ -1769,7 +1769,7 @@ export const gitMutations = {
       onSuccess: (result, _request, context) =>
         finishGitActionNotice(
           context,
-          `${result.job.title} queued. Recovery branch: ${result.backupBranch}`,
+          `${result.job.title} queued. Recovery branch ${result.backupBranch} will be created when the job starts.`,
         ),
       onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
