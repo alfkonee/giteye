@@ -409,6 +409,7 @@ export function BranchList() {
         branch={contextBranch?.branch ?? null}
         x={contextBranch?.x ?? 0}
         y={contextBranch?.y ?? 0}
+        repoPath={activeRepoPath}
         onRename={renameBranch}
         onSetUpstream={setBranchUpstream}
         onPushBranch={(branch) => pushBranch(branch, false)}
