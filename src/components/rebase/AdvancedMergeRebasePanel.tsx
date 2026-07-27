@@ -63,7 +63,9 @@ export function AdvancedMergeRebasePanel() {
     if (!pendingAdvancedBranchName) return;
     setMergeSource(pendingAdvancedBranchName);
     setRebaseUpstream(pendingAdvancedBranchName);
-  }, [pendingAdvancedBranchName]);
+    setRebaseOnto("");
+    if (current) setRebaseBranch(current);
+  }, [current, pendingAdvancedBranchName]);
 
   useEffect(() => {
     if (!mergeSource && mergeSources[0]) setMergeSource(mergeSources[0]);

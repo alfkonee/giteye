@@ -34,6 +34,9 @@ export function Sidebar() {
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
+  const setPendingAdvancedBranchName = useAppStore(
+    (s) => s.setPendingAdvancedBranchName,
+  );
   const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
   const setSelectedSubmodulePath = useAppStore(
@@ -473,10 +476,14 @@ export function Sidebar() {
           branch={contextBranch?.branch ?? null}
           x={contextBranch?.x ?? 0}
           y={contextBranch?.y ?? 0}
+          repoPath={activeRepoPath}
           onCreateFromBranch={createBranchFrom}
           onFastForward={fastForwardBranch}
           onMerge={mergeBranch}
-          onAdvancedMergeRebase={() => navigate("rebase-conflicts")}
+          onAdvancedMergeRebase={(branch) => {
+            setPendingAdvancedBranchName(branch.shortName);
+            navigate("rebase-conflicts");
+          }}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
         />
@@ -591,7 +598,9 @@ function BranchTreeContents({
           style={{ paddingLeft: `${24 + depth * 14}px` }}
           className={cn(
             "giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pr-2 text-left text-[12px] transition-colors",
-            branch.isCurrent ? "giteye-nav-active font-semibold text-[var(--color-text-primary)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
+            branch.isCurrent
+              ? "giteye-nav-active text-[13px] !font-bold tracking-[0.01em] text-[var(--color-text-primary)]"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
           )}
         >
           {branch.isRemote ? <Globe className="h-3.5 w-3.5 shrink-0" /> : <GitBranch className="h-3.5 w-3.5 shrink-0" />}

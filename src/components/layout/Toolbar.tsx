@@ -66,6 +66,9 @@ function splitRemoteBranch(branch: Branch) {
 export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: ToolbarProps) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setPendingAdvancedBranchName = useAppStore(
+    (s) => s.setPendingAdvancedBranchName,
+  );
   const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const diffMode = useAppStore((s) => s.diffMode);
@@ -562,6 +565,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         branch={contextBranch?.branch ?? null}
         x={contextBranch?.x ?? 0}
         y={contextBranch?.y ?? 0}
+        repoPath={activeRepoPath}
         onRename={renameBranch}
         onSetUpstream={setBranchUpstream}
         onPushBranch={(branch) => pushBranch(branch, false)}
@@ -570,6 +574,10 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         onCreateFromBranch={createBranchFrom}
         onFastForward={fastForwardBranch}
         onMerge={mergeBranch}
+        onAdvancedMergeRebase={(branch) => {
+          setPendingAdvancedBranchName(branch.shortName);
+          setActiveView("rebase-conflicts");
+        }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
       />
