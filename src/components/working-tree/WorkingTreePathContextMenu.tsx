@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Archive,
@@ -89,7 +90,7 @@ export function WorkingTreePathContextMenu({
   const copyPath = (value: string) =>
     runPlatformAction(() => navigator.clipboard.writeText(value), "Copy path");
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[120]"
       role="presentation"
@@ -191,7 +192,8 @@ export function WorkingTreePathContextMenu({
           onClick={() => void copyPath(absolutePath)}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
