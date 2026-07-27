@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
@@ -49,6 +49,25 @@ export function WorkingTreePathContextMenu({
   onOpenSubmodule,
   onClose,
 }: WorkingTreePathContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: target?.x ?? 0, top: target?.y ?? 0 });
+
+  useLayoutEffect(() => {
+    if (!target || !menuRef.current) return;
+
+    const updatePosition = () => {
+      const { width, height } = menuRef.current!.getBoundingClientRect();
+      setPosition({
+        left: Math.max(8, Math.min(target.x, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(target.y, window.innerHeight - height - 8)),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    return () => window.removeEventListener("resize", updatePosition);
+  }, [target]);
+
   useEffect(() => {
     if (!target) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -75,8 +94,7 @@ export function WorkingTreePathContextMenu({
   const revealPath = targetExists
     ? absolutePath
     : joinRepoPath(repoPath, fallbackRelativePath);
-  const left = Math.max(8, Math.min(target.x, window.innerWidth - 288));
-  const top = Math.max(8, Math.min(target.y, window.innerHeight - 392));
+
 
   const runPlatformAction = async (action: () => Promise<void>, description: string) => {
     onClose();
@@ -101,10 +119,11 @@ export function WorkingTreePathContextMenu({
       }}
     >
       <div
+        ref={menuRef}
         role="menu"
         aria-label={`${target.kind === "directory" ? "Folder" : "File"} actions for ${target.path}`}
         className="fixed max-h-[calc(100vh-16px)] w-[280px] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]"
-        style={{ left, top }}
+        style={position}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="border-b border-[var(--color-border-muted)] px-3 py-2">
