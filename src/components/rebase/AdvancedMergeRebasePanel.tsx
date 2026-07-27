@@ -57,7 +57,6 @@ export function AdvancedMergeRebasePanel() {
   const [rebaseOnto, setRebaseOnto] = useState("");
   const [autostash, setAutostash] = useState(true);
 
-  useEffect(() => () => setPendingAdvancedBranchName(null), [setPendingAdvancedBranchName]);
 
   useEffect(() => {
     if (!pendingAdvancedBranchName) return;
@@ -65,7 +64,8 @@ export function AdvancedMergeRebasePanel() {
     setRebaseUpstream(pendingAdvancedBranchName);
     setRebaseOnto("");
     if (current) setRebaseBranch(current);
-  }, [current, pendingAdvancedBranchName]);
+    setPendingAdvancedBranchName(null);
+  }, [current, pendingAdvancedBranchName, setPendingAdvancedBranchName]);
 
   useEffect(() => {
     if (!mergeSource && mergeSources[0]) setMergeSource(mergeSources[0]);
