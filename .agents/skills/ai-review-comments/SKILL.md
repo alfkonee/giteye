@@ -1,9 +1,9 @@
 ---
 name: ai-review-comments
-description: Review GitHub PR comments from AI reviewers (Codex, Copilot, Claude, bots), verify whether each finding is valid, implement the necessary fixes, and update the branch cleanly. Use when a user asks to "check the Codex comments", "address AI review feedback", or "action bot PR comments".
+description: Review GitHub PR comments from AI reviewers (Codex, Copilot, Claude, bots), verify whether each finding is valid, implement necessary fixes, and close addressed review threads. Use when a user asks to "check the Codex comments", "address AI review feedback", or "action bot PR comments".
 metadata:
   author: Tech231
-  version: "1.0.0"
+  version: "1.1.0"
   argument-hint: <repo> <pr-number>
 ---
 
@@ -21,7 +21,8 @@ Use this skill when a PR has automated review comments from AI tools and the use
 3. Implement the valid fixes.
 4. Re-run targeted verification.
 5. Push the branch updates.
-6. Optionally summarize what was addressed vs declined.
+6. Resolve addressed review conversations with a concise outcome.
+7. Summarize what was addressed versus declined.
 
 ## Inputs
 
@@ -55,6 +56,11 @@ For each AI comment, inspect the referenced code and decide:
 
 Do not blindly implement every bot suggestion.
 
+For every triaged comment, record an outcome in the review conversation:
+- **Accepted**: reply with the fix and commit after verification.
+- **No-op**: reply with evidence that the branch already contains the fix.
+- **Rejected**: reply with the concrete reason; leave the conversation unresolved unless the maintainer explicitly directs otherwise.
+
 ### 3. Fix only accepted findings
 
 When fixing:
@@ -81,6 +87,12 @@ At minimum:
 - push the same PR branch
 - ensure parent pointers are updated if a submodule changed
 
+### 6. Close addressed review threads
+
+After accepted fixes are verified and pushed, resolve their GitHub review conversations. Resolve no-op conversations only after the evidence reply is posted. Do not resolve rejected conversations by default.
+
+Use the GitHub API’s `resolveReviewThread` mutation when the available GitHub tool does not expose thread resolution. Confirm each targeted thread reports `isResolved: true` afterward.
+
 ## Response format
 
 When reporting back, use a compact structure:
@@ -89,6 +101,7 @@ When reporting back, use a compact structure:
 - **Rejected**: list each rejected comment with one concrete reason
 - **Verification**: commands actually run and outcomes
 - **PR status**: whether the branch was pushed
+- **Review threads**: resolved thread URLs and any intentionally open threads.
 
 ## Notes
 
