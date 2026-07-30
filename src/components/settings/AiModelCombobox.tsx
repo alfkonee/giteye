@@ -1,7 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { AiModelView } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
+
+/** Gap between the combobox and its listbox. */
+const DROPDOWN_OFFSET = 4;
+/** Minimum distance the listbox keeps from the viewport edges. */
+const VIEWPORT_MARGIN = 8;
+
+interface DropdownAnchor {
+  left: number;
+  top: number;
+  bottom: number;
+  width: number;
+  viewportHeight: number;
+}
 
 interface AiModelComboboxProps {
   value: string;
@@ -29,6 +43,7 @@ export function AiModelCombobox({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [anchor, setAnchor] = useState<DropdownAnchor | null>(null);
   const selectedModel = models.find((model) => model.id === value);
   const selectedText = selectedModel?.label ?? value;
   const normalizedFilter = filter.trim().toLocaleLowerCase();
@@ -55,13 +70,43 @@ export function AiModelCombobox({
     if (!open) return;
 
     const closeOnOutsidePointer = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setFilter("");
-      }
+      const target = event.target as Node;
+      // The listbox is portalled out of the root, so it needs its own containment check.
+      if (rootRef.current?.contains(target) || parentRef.current?.contains(target)) return;
+      setOpen(false);
+      setFilter("");
     };
     document.addEventListener("mousedown", closeOnOutsidePointer);
     return () => document.removeEventListener("mousedown", closeOnOutsidePointer);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setAnchor(null);
+      return;
+    }
+
+    const syncAnchor = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const next: DropdownAnchor = {
+        left: rect.left,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        viewportHeight: window.innerHeight,
+      };
+      // Capture-phase scroll also fires while scrolling inside the listbox itself,
+      // so only re-render when the combobox actually moved.
+      setAnchor((current) => (current && sameAnchor(current, next) ? current : next));
+    };
+    syncAnchor();
+    window.addEventListener("scroll", syncAnchor, true);
+    window.addEventListener("resize", syncAnchor);
+    return () => {
+      window.removeEventListener("scroll", syncAnchor, true);
+      window.removeEventListener("resize", syncAnchor);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -79,6 +124,9 @@ export function AiModelCombobox({
     setActiveIndex(boundedIndex);
     virtualizer.scrollToIndex(boundedIndex, { align: "auto" });
   };
+
+  const listHeight = isLoading || filteredModels.length === 0 ? 56 : dropdownHeight;
+  const dropdownStyle = anchor ? dropdownPosition(anchor, listHeight) : null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -132,13 +180,13 @@ export function AiModelCombobox({
         </button>
       </div>
 
-      {open && (
+      {open && dropdownStyle && createPortal(
         <div
           ref={parentRef}
           id="ai-model-listbox"
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
-          style={{ height: isLoading || filteredModels.length === 0 ? 56 : dropdownHeight }}
+          className="fixed z-[110] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
+          style={dropdownStyle}
         >
           {isLoading ? (
             <div className="flex h-full items-center px-3 text-[12px] text-[var(--color-text-muted)]">Loading models…</div>
@@ -181,12 +229,40 @@ export function AiModelCombobox({
               })}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {warning && <p className="mt-1.5 text-[11px] text-[var(--color-warning)]">{warning}</p>}
     </div>
   );
+}
+
+function sameAnchor(a: DropdownAnchor, b: DropdownAnchor) {
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.bottom === b.bottom &&
+    a.width === b.width &&
+    a.viewportHeight === b.viewportHeight
+  );
+}
+
+/** Places the listbox below the combobox, flipping above it when there is more room there. */
+function dropdownPosition(anchor: DropdownAnchor, listHeight: number) {
+  const spaceBelow = anchor.viewportHeight - anchor.bottom - DROPDOWN_OFFSET - VIEWPORT_MARGIN;
+  const spaceAbove = anchor.top - DROPDOWN_OFFSET - VIEWPORT_MARGIN;
+  const flipUp = listHeight > spaceBelow && spaceAbove > spaceBelow;
+  const height = Math.min(listHeight, Math.max(56, flipUp ? spaceAbove : spaceBelow));
+
+  return {
+    left: anchor.left,
+    width: anchor.width,
+    height,
+    top: flipUp
+      ? Math.max(VIEWPORT_MARGIN, anchor.top - DROPDOWN_OFFSET - height)
+      : anchor.bottom + DROPDOWN_OFFSET,
+  };
 }
 
 function formatContextLength(contextLength: number) {
