@@ -290,7 +290,7 @@ export function CiStatusView() {
         </button>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] gap-3 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden">
         <aside className="flex min-h-0 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
           <div className="border-b border-[var(--color-border-muted)] p-4">
             <div className="flex items-center gap-2 text-sm font-semibold">

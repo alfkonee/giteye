@@ -4,8 +4,10 @@ import { cn } from "../../lib/cn";
 import {
   getWindowControlPlacement,
   runWindowChromeAction,
+  startWindowResize,
   type WindowChromeAction,
   type WindowControlPlacement,
+  type WindowResizeDirection,
 } from "../../lib/window-controls";
 
 interface AppChromeProps {
@@ -33,6 +35,8 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
   };
 
   return (
+    <>
+      <WindowResizeHandles />
     <div className={cn("giteye-shell flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]", className)}>
       <header
         className="giteye-window-chrome grid shrink-0 select-none grid-cols-[160px_minmax(0,1fr)_160px] items-center"
@@ -60,7 +64,8 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -125,5 +130,37 @@ function WindowControlButton({
     >
       {children}
     </button>
+  );
+}
+
+const resizeHandles: ReadonlyArray<{ direction: WindowResizeDirection; position: string }> = [
+  { direction: "North", position: "north" },
+  { direction: "NorthEast", position: "north-east" },
+  { direction: "East", position: "east" },
+  { direction: "SouthEast", position: "south-east" },
+  { direction: "South", position: "south" },
+  { direction: "SouthWest", position: "south-west" },
+  { direction: "West", position: "west" },
+  { direction: "NorthWest", position: "north-west" },
+];
+
+function WindowResizeHandles() {
+  return (
+    <div aria-hidden="true" className="giteye-resize-handles">
+      {resizeHandles.map(({ direction, position }) => (
+        <div
+          key={position}
+          className="giteye-resize-handle"
+          data-position={position}
+          onMouseDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            void startWindowResize(direction).catch((error) => {
+              console.warn(`Unable to resize window from ${position}`, error);
+            });
+          }}
+        />
+      ))}
+    </div>
   );
 }

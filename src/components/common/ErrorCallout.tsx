@@ -10,7 +10,7 @@ export function ErrorCallout({ message, className }: ErrorCalloutProps) {
   return (
     <div
       className={cn(
-        "flex items-start gap-2.5 rounded-[var(--radius-control)] border px-3 py-2.5 text-[12px] leading-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+        "giteye-banner flex items-start gap-2.5 rounded-[var(--radius-control)] border px-3 py-3 text-[13px] leading-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
         className,
       )}
       style={{

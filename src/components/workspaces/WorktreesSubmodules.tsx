@@ -623,7 +623,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 xl:grid-cols-[minmax(0,1fr)_340px] xl:overflow-hidden">
         <main className="min-h-0 overflow-hidden">
           {activeWorkspaceSection === "worktrees" ? (
             <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">

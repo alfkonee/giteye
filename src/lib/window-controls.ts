@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type WindowChromeAction = "close" | "minimize" | "toggleMaximize";
 export type WindowControlPlacement = "left" | "right";
+export type WindowResizeDirection = "East" | "North" | "NorthEast" | "NorthWest" | "South" | "SouthEast" | "SouthWest" | "West";
 
 export function getWindowControlPlacement(): WindowControlPlacement {
   if (typeof navigator === "undefined") {
@@ -25,4 +26,8 @@ export async function runWindowChromeAction(action: WindowChromeAction) {
       await appWindow.toggleMaximize();
       break;
   }
+}
+
+export async function startWindowResize(direction: WindowResizeDirection) {
+  await getCurrentWindow().startResizeDragging(direction);
 }

@@ -38,13 +38,13 @@ export function CommandLogDrawer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-[70] flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-xs font-semibold text-[var(--color-text-primary)] shadow-[var(--shadow-elevated)] transition-colors hover:border-[var(--color-accent)]/60 hover:bg-[var(--color-bg-hover)]"
+        className="giteye-command-log-trigger fixed bottom-4 right-4 z-[70] flex min-h-10 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-xs font-semibold text-[var(--color-text-primary)] shadow-[var(--shadow-elevated)] transition-colors hover:border-[var(--color-accent)]/60 hover:bg-[var(--color-bg-hover)]"
         aria-label="Open command log"
       >
-        <TerminalSquare className="h-4 w-4 text-[var(--color-accent)]" />
-        <span>Command log</span>
+        <TerminalSquare className="h-7 w-7 text-[var(--color-accent)]" />
+        <span className="giteye-command-log-label">Command log</span>
         {runningCount > 0 && (
-          <span className="rounded-full border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--color-accent)]">
+          <span className="giteye-command-log-count rounded-full border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--color-accent)]">
             {runningCount} running
           </span>
         )}
@@ -53,8 +53,17 @@ export function CommandLogDrawer() {
   }
 
   return (
-    <section className="fixed bottom-4 right-4 top-4 z-[90] flex w-[min(960px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)]">
-      <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)]">
+    <section className="giteye-command-log fixed bottom-4 right-4 top-4 z-[90] flex w-[min(960px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)]">
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="giteye-pane-close absolute right-3 top-3 z-10 text-[var(--color-text-muted)]"
+        aria-label="Close command log"
+        title="Close command log"
+      >
+        <XCircle className="h-4 w-4" />
+      </button>
+      <aside className="giteye-command-log-sidebar flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)]">
         <header className="border-b border-[var(--color-border-muted)] p-3">
           <div className="flex items-center gap-2">
             <TerminalSquare className="h-4 w-4 text-[var(--color-accent)]" />
@@ -62,14 +71,6 @@ export function CommandLogDrawer() {
               <h2 className="truncate text-sm font-semibold text-[var(--color-text-primary)]">Command log</h2>
               <p className="text-[11px] text-[var(--color-text-muted)]">GitEye-triggered background jobs and streamed output.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-              aria-label="Close command log"
-            >
-              <XCircle className="h-4 w-4" />
-            </button>
           </div>
           <div className="mt-3 flex gap-2">
             <select
@@ -150,7 +151,7 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
 
   return (
     <>
-      <header className="border-b border-[var(--color-border-muted)] p-4">
+      <header className="border-b border-[var(--color-border-muted)] p-4 pr-14">
         <div className="flex items-start gap-3">
           <JobStatusIcon status={job.status} large />
           <div className="min-w-0 flex-1">
