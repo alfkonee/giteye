@@ -86,7 +86,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const pushMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
   // The push menu needs the current branch's upstream to offer force-with-lease.
-  const { data: branches, isLoading: branchesLoading } = useQuery(
+  const { data: branches, isFetching: branchesFetching } = useQuery(
     gitQueries.branches(activeRepoPath, branchMenuOpen || pushMenuOpen),
   );
   const { data: recentRepos } = useQuery(gitQueries.recentRepositories());
@@ -110,10 +110,12 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
+  // The branch list can lag a checkout, so match the branch the toolbar is showing
+  // rather than a cached isCurrent flag that may still point at the previous branch.
   const checkedOutBranch =
-    localBranches.find((branch) => branch.isCurrent) ??
-    localBranches.find((branch) => branch.shortName === currentBranch) ??
-    null;
+    (currentBranch
+      ? localBranches.find((branch) => branch.shortName === currentBranch)
+      : localBranches.find((branch) => branch.isCurrent)) ?? null;
   const workingTreeState = isClean ? "Clean" : "Uncommitted changes";
   const remoteNames = remoteNamesFromBranches(branches ?? []);
   const isRemoteOperationPending =
@@ -171,7 +173,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
   const handleForcePushWithLease = () => {
     setPushMenuOpen(false);
-    if (!checkedOutBranch) return;
+    if (branchesFetching || !checkedOutBranch) return;
     void pushBranch(checkedOutBranch, true);
   };
 
@@ -524,14 +526,14 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
                 icon={<AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />}
                 label="Force push (with lease)"
                 detail={
-                  branchesLoading
+                  branchesFetching
                     ? "Loading branch details…"
                     : checkedOutBranch
                       ? `Overwrite ${checkedOutBranch.upstream ?? "the remote branch"} — refuses if it moved since your last fetch`
                       : "Unavailable on a detached HEAD"
                 }
                 tone="warning"
-                disabled={!checkedOutBranch}
+                disabled={branchesFetching || !checkedOutBranch}
                 onClick={handleForcePushWithLease}
               />
             </div>
