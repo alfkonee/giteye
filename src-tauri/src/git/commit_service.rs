@@ -75,20 +75,26 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         repo_path,
         &[
             "show",
-            "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%P",
+            "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%D%x00%P",
             "--name-only",
             "--no-renames",
             hash,
         ],
     )?;
 
-    let parts: Vec<&str> = output.splitn(9, '\0').collect();
+    let parts: Vec<&str> = output.splitn(10, '\0').collect();
 
-    if parts.len() < 9 {
+    if parts.len() < 10 {
         return Err(AppError::CommitNotFound(hash.to_string()));
     }
 
-    let (parents_str, changed_files_str) = parts[8].split_once("\n\n").unwrap_or((parts[8], ""));
+    let refs: Vec<String> = parts[8]
+        .split(',')
+        .map(str::trim)
+        .filter(|reference| !reference.is_empty())
+        .map(|reference| reference.to_string())
+        .collect();
+    let (parents_str, changed_files_str) = parts[9].split_once("\n\n").unwrap_or((parts[9], ""));
     let parents: Vec<String> = parents_str
         .split_whitespace()
         .map(|p| p.to_string())
@@ -115,6 +121,7 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         committer_name: parts[5].to_string(),
         committer_email: parts[6].to_string(),
         timestamp: parts[7].to_string(),
+        refs,
         parents,
         changed_files,
     })
@@ -225,6 +232,31 @@ mod tests {
         );
         assert_eq!(details.changed_files, vec!["README.md".to_string()]);
         assert_eq!(details.parents.len(), 0);
+    }
+
+    #[test]
+    fn commit_details_include_branch_and_tag_refs() {
+        let temp = TestDir::new("details-refs");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+        git(&temp.path, &["tag", "v1.0.0"]);
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
+
+        assert!(
+            details.refs.iter().any(|r| r == "HEAD -> main"),
+            "expected checked out branch in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "tag: v1.0.0"),
+            "expected tag in refs, got {:?}",
+            details.refs
+        );
+        assert_eq!(details.changed_files, vec!["README.md".to_string()]);
     }
 
     #[test]

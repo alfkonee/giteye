@@ -1,11 +1,14 @@
 import { useState, type MouseEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { CommitDetails as CommitDetailsType } from "../../types/git";
 import { truncateHash } from "../../lib/format";
 import { cn } from "../../lib/cn";
+import { gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { Calendar, User, ChevronRight, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
 import { FileTree } from "../common/FileTree";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
+import { buildDisplayRefs, RefPill } from "./commit-refs";
 import { SegmentedControl } from "../ui";
 
 interface CommitDetailsProps {
@@ -14,9 +17,12 @@ interface CommitDetailsProps {
 
 export function CommitDetails({ commit }: CommitDetailsProps) {
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
+  const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const { data: branches = [] } = useQuery(gitQueries.branches(activeRepoPath));
+  const displayRefs = buildDisplayRefs(commit.refs ?? [], branches);
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -57,6 +63,23 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
           <span className="text-[var(--color-text-muted)]">commit</span>
           <span className="truncate font-mono text-[var(--color-accent)]">{commit.hash}</span>
         </div>
+        {displayRefs.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[var(--color-text-muted)]">
+              {displayRefs.length > 1 ? "refs" : "ref"}
+            </span>
+            {displayRefs.map((ref) => (
+              <RefPill
+                key={`${ref.label}-${ref.isTag ? "tag" : ref.isRemote ? "remote" : "local"}`}
+                displayRef={ref}
+                className={cn(
+                  "max-w-[220px]",
+                  ref.isHead && "ring-1 ring-inset ring-[var(--color-accent)]/40",
+                )}
+              />
+            ))}
+          </div>
+        )}
         {commit.parents.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="text-[var(--color-text-muted)]">

@@ -2,10 +2,10 @@ import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { Branch, CommitSummary } from "../../types/git";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
-import { Cloud, GitBranch } from "lucide-react";
 import type { CommitGraphRow } from "./commit-graph";
 import { laneX } from "./commit-graph";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
+import { buildDisplayRefs, describeRef, RefPill, type DisplayRef } from "./commit-refs";
 
 interface CommitListItemProps {
   commit: CommitSummary;
@@ -13,13 +13,6 @@ interface CommitListItemProps {
   branches: Branch[];
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
-}
-
-interface DisplayRef {
-  label: string;
-  isHead: boolean;
-  isRemote: boolean;
-  hasTrackingRemote: boolean;
 }
 
 /**
@@ -84,31 +77,18 @@ export function CommitListItem({
         {displayRefs.length > 0 && (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
             {displayRefs.slice(0, 2).map((ref) => (
-              <span
-                key={`${ref.label}-${ref.isHead ? "head" : "ref"}`}
-                className={cn(
-                  "inline-flex max-w-[110px] items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
-                  isSelected
-                    ? ref.isRemote
-                      ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)]/80 text-[var(--color-text-secondary)]"
-                      : "border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
-                    : ref.isRemote
-                      ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
-                      : "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
-                )}
-              >
-                <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate">{ref.label}</span>
-                {ref.hasTrackingRemote && (
-                  <Cloud
-                    className="h-2.5 w-2.5 shrink-0"
-                    aria-label="Tracking branch on this commit"
-                  />
-                )}
-              </span>
+              <RefPill
+                key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
+                displayRef={ref}
+                onSelectedRow={isSelected}
+                className="max-w-[110px]"
+              />
             ))}
             {displayRefs.length > 2 && (
-              <span className="text-[10px] text-[var(--color-text-muted)]">
+              <span
+                className="text-[10px] text-[var(--color-text-muted)]"
+                title={displayRefs.slice(2).map(describeRef).join("\n")}
+              >
                 +{displayRefs.length - 2}
               </span>
             )}
@@ -140,80 +120,6 @@ export function CommitListItem({
       ) : null}
     </div>
   );
-}
-
-function buildDisplayRefs(refs: string[], branches: Branch[]): DisplayRef[] {
-  const localBranches = new Map(
-    branches
-      .filter((branch) => !branch.isRemote)
-      .map((branch) => [branch.shortName, branch]),
-  );
-  const remoteBranches = new Set(
-    branches
-      .filter((branch) => branch.isRemote)
-      .map((branch) => branch.shortName),
-  );
-  const labels = refs
-    .map(parseRefLabel)
-    .filter((ref): ref is { label: string; isHead: boolean } => Boolean(ref));
-  const labelsOnCommit = new Set(labels.map((ref) => ref.label));
-  const consumedRemotes = new Set<string>();
-  const displayRefs: DisplayRef[] = [];
-
-  for (const ref of labels) {
-    if (ref.label.endsWith("/HEAD")) continue;
-    const localBranch = localBranches.get(ref.label);
-    const trackingRemote =
-      localBranch?.upstream && labelsOnCommit.has(localBranch.upstream)
-        ? localBranch.upstream
-        : null;
-
-    if (trackingRemote) {
-      consumedRemotes.add(trackingRemote);
-    }
-
-    if (ref.label === "HEAD" || localBranch || !remoteBranches.has(ref.label)) {
-      displayRefs.push({
-        label: ref.label,
-        isHead: ref.isHead,
-        isRemote: false,
-        hasTrackingRemote: Boolean(trackingRemote),
-      });
-    }
-  }
-
-  for (const ref of labels) {
-    if (ref.label.endsWith("/HEAD") || consumedRemotes.has(ref.label)) continue;
-    if (remoteBranches.has(ref.label)) {
-      displayRefs.push({
-        label: ref.label,
-        isHead: ref.isHead,
-        isRemote: true,
-        hasTrackingRemote: false,
-      });
-    }
-  }
-
-  return uniqueDisplayRefs(displayRefs);
-}
-
-function parseRefLabel(ref: string) {
-  const trimmed = ref.trim();
-  if (!trimmed || trimmed.startsWith("tag: ")) return null;
-  if (trimmed.startsWith("HEAD -> ")) {
-    return { label: trimmed.slice("HEAD -> ".length).trim(), isHead: true };
-  }
-  return { label: trimmed, isHead: trimmed === "HEAD" };
-}
-
-function uniqueDisplayRefs(refs: DisplayRef[]) {
-  const seen = new Set<string>();
-  return refs.filter((ref) => {
-    const key = `${ref.label}:${ref.isHead}:${ref.isRemote}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function CommitGraph({
