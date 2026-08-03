@@ -10,7 +10,7 @@ import { buildDisplayRefs, describeRef, RefPill, type DisplayRef } from "./commi
 interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
-  branches: Branch[];
+  branches: Branch[] | undefined;
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
 }

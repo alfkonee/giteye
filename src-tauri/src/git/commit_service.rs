@@ -75,26 +75,21 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         repo_path,
         &[
             "show",
-            "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%D%x00%P",
+            "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%P",
             "--name-only",
             "--no-renames",
             hash,
         ],
     )?;
 
-    let parts: Vec<&str> = output.splitn(10, '\0').collect();
+    let parts: Vec<&str> = output.splitn(9, '\0').collect();
 
-    if parts.len() < 10 {
+    if parts.len() < 9 {
         return Err(AppError::CommitNotFound(hash.to_string()));
     }
 
-    let refs: Vec<String> = parts[8]
-        .split(',')
-        .map(str::trim)
-        .filter(|reference| !reference.is_empty())
-        .map(|reference| reference.to_string())
-        .collect();
-    let (parents_str, changed_files_str) = parts[9].split_once("\n\n").unwrap_or((parts[9], ""));
+    let refs = refs_pointing_to_commit(repo_path, hash, parts[0])?;
+    let (parents_str, changed_files_str) = parts[8].split_once("\n\n").unwrap_or((parts[8], ""));
     let parents: Vec<String> = parents_str
         .split_whitespace()
         .map(|p| p.to_string())
@@ -125,6 +120,57 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         parents,
         changed_files,
     })
+}
+
+fn refs_pointing_to_commit(
+    repo_path: &Path,
+    hash: &str,
+    commit_hash: &str,
+) -> Result<Vec<String>, AppError> {
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--format=%(refname)",
+            "--points-at",
+            hash,
+            "refs/heads",
+            "refs/remotes",
+            "refs/tags",
+        ],
+    )?;
+    let mut refs = output
+        .lines()
+        .filter_map(|reference| {
+            reference
+                .strip_prefix("refs/heads/")
+                .map(str::to_owned)
+                .or_else(|| reference.strip_prefix("refs/remotes/").map(str::to_owned))
+                .or_else(|| {
+                    reference
+                        .strip_prefix("refs/tags/")
+                        .map(|tag| format!("tag: {tag}"))
+                })
+        })
+        .collect::<Vec<_>>();
+
+    let head_branch = GitCli::run(repo_path, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .ok()
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    let head_points_at_commit = GitCli::run(repo_path, &["rev-parse", "HEAD"])
+        .ok()
+        .is_some_and(|head| head.trim() == commit_hash);
+
+    if let Some(branch) = head_branch.filter(|_| head_points_at_commit) {
+        if let Some(reference) = refs.iter_mut().find(|reference| *reference == &branch) {
+            *reference = format!("HEAD -> {branch}");
+        } else {
+            refs.push(format!("HEAD -> {branch}"));
+        }
+    }
+
+    Ok(refs)
 }
 
 #[cfg(test)]
@@ -242,6 +288,8 @@ mod tests {
         git(&temp.path, &["add", "README.md"]);
         git(&temp.path, &["commit", "-m", "Initial fixture"]);
         git(&temp.path, &["tag", "v1.0.0"]);
+        git(&temp.path, &["branch", "feature,comma"]);
+        git(&temp.path, &["tag", "v1,0"]);
 
         let history = get_commit_history(&temp.path, Some(10)).expect("history");
         let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
@@ -254,6 +302,16 @@ mod tests {
         assert!(
             details.refs.iter().any(|r| r == "tag: v1.0.0"),
             "expected tag in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "feature,comma"),
+            "expected comma-containing branch in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "tag: v1,0"),
+            "expected comma-containing tag in refs, got {:?}",
             details.refs
         );
         assert_eq!(details.changed_files, vec!["README.md".to_string()]);

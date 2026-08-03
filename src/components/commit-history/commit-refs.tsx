@@ -11,11 +11,12 @@ export interface DisplayRef {
 }
 
 /**
- * Classifies raw git decoration entries (`%D`) into the pills shown on commit
- * rows and in commit details. Local branches absorb an upstream sitting on the
- * same commit so the pair renders as one pill with a cloud marker.
+ * Classifies raw Git references into the pills shown on commit rows and in
+ * commit details. Local branches absorb an upstream sitting on the same commit
+ * so the pair renders as one pill with a cloud marker.
  */
-export function buildDisplayRefs(refs: string[], branches: Branch[]): DisplayRef[] {
+export function buildDisplayRefs(refs: string[], branches: Branch[] | undefined): DisplayRef[] {
+  if (!branches) return [];
   const localBranches = new Map(
     branches
       .filter((branch) => !branch.isRemote)
