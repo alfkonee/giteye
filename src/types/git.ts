@@ -72,6 +72,8 @@ export interface CommitDetails {
   committerName: string;
   committerEmail: string;
   timestamp: string;
+  /** Raw decorations on this commit; tags keep their `tag: ` prefix. */
+  refs: string[];
   parents: string[];
   changedFiles: string[];
 }

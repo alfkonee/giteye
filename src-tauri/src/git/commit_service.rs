@@ -88,6 +88,7 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         return Err(AppError::CommitNotFound(hash.to_string()));
     }
 
+    let refs = refs_pointing_to_commit(repo_path, hash, parts[0])?;
     let (parents_str, changed_files_str) = parts[8].split_once("\n\n").unwrap_or((parts[8], ""));
     let parents: Vec<String> = parents_str
         .split_whitespace()
@@ -115,9 +116,61 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
         committer_name: parts[5].to_string(),
         committer_email: parts[6].to_string(),
         timestamp: parts[7].to_string(),
+        refs,
         parents,
         changed_files,
     })
+}
+
+fn refs_pointing_to_commit(
+    repo_path: &Path,
+    hash: &str,
+    commit_hash: &str,
+) -> Result<Vec<String>, AppError> {
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--format=%(refname)",
+            "--points-at",
+            hash,
+            "refs/heads",
+            "refs/remotes",
+            "refs/tags",
+        ],
+    )?;
+    let mut refs = output
+        .lines()
+        .filter_map(|reference| {
+            reference
+                .strip_prefix("refs/heads/")
+                .map(str::to_owned)
+                .or_else(|| reference.strip_prefix("refs/remotes/").map(str::to_owned))
+                .or_else(|| {
+                    reference
+                        .strip_prefix("refs/tags/")
+                        .map(|tag| format!("tag: {tag}"))
+                })
+        })
+        .collect::<Vec<_>>();
+
+    let head_branch = GitCli::run(repo_path, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .ok()
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    let head_points_at_commit = GitCli::run(repo_path, &["rev-parse", "HEAD"])
+        .ok()
+        .is_some_and(|head| head.trim() == commit_hash);
+
+    if let Some(branch) = head_branch.filter(|_| head_points_at_commit) {
+        if let Some(reference) = refs.iter_mut().find(|reference| *reference == &branch) {
+            *reference = format!("HEAD -> {branch}");
+        } else {
+            refs.push(format!("HEAD -> {branch}"));
+        }
+    }
+
+    Ok(refs)
 }
 
 #[cfg(test)]
@@ -225,6 +278,43 @@ mod tests {
         );
         assert_eq!(details.changed_files, vec!["README.md".to_string()]);
         assert_eq!(details.parents.len(), 0);
+    }
+
+    #[test]
+    fn commit_details_include_branch_and_tag_refs() {
+        let temp = TestDir::new("details-refs");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial fixture"]);
+        git(&temp.path, &["tag", "v1.0.0"]);
+        git(&temp.path, &["branch", "feature,comma"]);
+        git(&temp.path, &["tag", "v1,0"]);
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
+
+        assert!(
+            details.refs.iter().any(|r| r == "HEAD -> main"),
+            "expected checked out branch in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "tag: v1.0.0"),
+            "expected tag in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "feature,comma"),
+            "expected comma-containing branch in refs, got {:?}",
+            details.refs
+        );
+        assert!(
+            details.refs.iter().any(|r| r == "tag: v1,0"),
+            "expected comma-containing tag in refs, got {:?}",
+            details.refs
+        );
+        assert_eq!(details.changed_files, vec!["README.md".to_string()]);
     }
 
     #[test]

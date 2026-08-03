@@ -24,6 +24,9 @@ pub struct CommitDetails {
     pub committer_name: String,
     pub committer_email: String,
     pub timestamp: String,
+    /// Raw decoration entries pointing at this commit. Unlike `CommitSummary::refs`
+    /// tags are kept, still carrying their `tag: ` prefix.
+    pub refs: Vec<String>,
     pub parents: Vec<String>,
     pub changed_files: Vec<String>,
 }

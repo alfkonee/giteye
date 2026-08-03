@@ -227,7 +227,7 @@ export function CommitHistory() {
                 <CommitListItem
                   commit={commit}
                   graph={graph}
-                  branches={branches ?? []}
+                  branches={branches}
                   isSelected={selectedCommitRange.includes(commit.hash)}
                   onSelect={(selectedCommit, event) => selectCommit(selectedCommit.hash, event)}
                 />
