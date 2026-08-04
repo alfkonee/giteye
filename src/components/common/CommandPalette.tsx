@@ -18,13 +18,14 @@ import {
   Upload,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { runBranchPushFlow } from "../../lib/branch-push";
 import { COMMAND_PALETTE_OPEN_EVENT } from "../../lib/command-palette";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import { viewDefinitions, viewGroups } from "../../lib/view-registry";
 import { useAppStore } from "../../stores/app-store";
 import { useJobStore } from "../../stores/job-store";
 import { useNoticeStore } from "../../stores/notice-store";
-import type { FavoriteRepo, RecentRepo } from "../../types/git";
+import type { Branch, FavoriteRepo, RecentRepo } from "../../types/git";
 
 type PaletteItemKind = "command" | "repository" | "view";
 
@@ -86,7 +87,48 @@ export function CommandPalette() {
   const fetchMutation = useMutation(gitMutations.fetch(queryClient, activeRepoPath));
   const pullMutation = useMutation(gitMutations.pull(queryClient, activeRepoPath));
   const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
+  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
+  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
   const remoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
+  const { data: branches, isFetching: branchesFetching } = useQuery({
+    ...gitQueries.branches(activeRepoPath),
+    enabled: open && Boolean(activeRepoPath),
+  });
+  const checkedOutBranch =
+    branches?.find((branch) => branch.isCurrent && !branch.isRemote) ?? null;
+  const remoteNames = Array.from(
+    new Set(
+      (branches ?? [])
+        .filter((branch) => branch.isRemote)
+        .map((branch) => branch.shortName.split("/", 1)[0])
+        .filter(Boolean),
+    ),
+  );
+  const runBranchPush = async (branch: Branch, forceWithLease: boolean) => {
+    await runBranchPushFlow({
+      branch,
+      remoteNames,
+      forceWithLease,
+      dryRunPreview: (request) => pushBranchDryRunMutation.mutateAsync(request),
+      submitPush: (request) => pushBranchMutation.mutate(request),
+    });
+  };
+  const runPush = async () => {
+    if (!activeRepoPath || remoteOperationPending) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream && !branchesFetching) {
+      await runBranchPush(checkedOutBranch, false);
+      return;
+    }
+    pushMutation.mutate({});
+  };
+  const runPull = async () => {
+    if (!activeRepoPath || remoteOperationPending) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream && !branchesFetching) {
+      await runBranchPush(checkedOutBranch, false);
+      return;
+    }
+    pullMutation.mutate({});
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -216,24 +258,24 @@ export function CommandPalette() {
         kind: "command",
         section: "Git Actions",
         label: "Pull Current Branch",
-        detail: "Fetch and integrate the current upstream branch",
-        keywords: "git pull remote download merge rebase",
+        detail: "Fetch and integrate the current upstream branch; publishes the branch first when it has none",
+        keywords: "git pull remote download merge rebase publish upstream",
         icon: Download,
         disabled: !activeRepoPath || remoteOperationPending,
         priority: 83,
-        run: () => pullMutation.mutate({}),
+        run: () => void runPull(),
       },
       {
         id: "command:push",
         kind: "command",
         section: "Git Actions",
         label: "Push Current Branch",
-        detail: "Push the current branch to its configured remote",
-        keywords: "git push remote upload publish",
+        detail: "Push the current branch to its configured remote, creating upstream if needed",
+        keywords: "git push remote upload publish upstream tracking",
         icon: Upload,
         disabled: !activeRepoPath || remoteOperationPending,
         priority: 82,
-        run: () => pushMutation.mutate({}),
+        run: () => void runPush(),
       },
       {
         id: "command:toggle-theme",
@@ -263,16 +305,24 @@ export function CommandPalette() {
     },
     [
       activeRepoPath,
+      branches,
+      branchesFetching,
+      checkedOutBranch,
       diffMode,
       favoriteRepos,
       fetchMutation,
       openRepoPaths,
       openRepository,
       pullMutation,
+      pushBranchDryRunMutation,
+      pushBranchMutation,
       pushMutation,
       queryClient,
       recentRepos,
+      remoteNames,
       remoteOperationPending,
+      runPull,
+      runPush,
       setActiveRepoPath,
       setActiveView,
       setCommandLogOpen,
