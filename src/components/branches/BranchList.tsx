@@ -1,7 +1,7 @@
 import { useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight } from "lucide-react";
@@ -175,13 +175,33 @@ export function BranchList() {
 
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
-    const remote = window.prompt("Push to remote", branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin")?.trim();
+    const needsUpstream = !branch.upstream;
+    const remote = window
+      .prompt(
+        needsUpstream
+          ? `Add upstream for "${branch.shortName}" — remote`
+          : "Push to remote",
+        branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin",
+      )
+      ?.trim();
     if (!remote) return;
-    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`) ? branch.upstream.slice(remote.length + 1) : branch.shortName;
-    const remoteBranch = window.prompt("Remote branch name", upstreamBranch)?.trim();
+    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`)
+      ? branch.upstream.slice(remote.length + 1)
+      : branch.shortName;
+    const remoteBranch = window
+      .prompt(
+        needsUpstream
+          ? `Add upstream for "${branch.shortName}" — remote branch`
+          : "Remote branch name",
+        upstreamBranch,
+      )
+      ?.trim();
     if (remoteBranch === undefined) return;
     const target = `${remote}/${remoteBranch || branch.shortName}`;
-    const setUpstream = !forceWithLease && window.confirm(`Set "${branch.shortName}" to track ${target} after push?`);
+    const setUpstream =
+      !forceWithLease &&
+      (needsUpstream ||
+        window.confirm(`Set "${branch.shortName}" to track ${target} after push?`));
     const request = {
       remote,
       localBranch: branch.shortName,
@@ -251,7 +271,9 @@ export function BranchList() {
 
       {(branchMutationPending || branchMutationError) && (
         <div className={cn("border-b border-[var(--color-border)] px-3 py-2 text-xs", branchMutationError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
-          {branchMutationError ? String(branchMutationError) : "Updating branches…"}
+          {branchMutationError
+            ? gitActionErrorMessage(branchMutationError)
+            : "Updating branches…"}
         </div>
       )}
       {showCreate && (
