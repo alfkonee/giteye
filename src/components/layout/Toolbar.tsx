@@ -88,9 +88,9 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const pushMenuRef = useRef<HTMLDivElement>(null);
   const repoMenuRef = useRef<HTMLDivElement>(null);
-  // The push menu needs the current branch's upstream to offer force-with-lease.
+  // The current branch's tracking state determines whether Push needs to create an upstream.
   const { data: branches, isFetching: branchesFetching } = useQuery(
-    gitQueries.branches(activeRepoPath, branchMenuOpen || pushMenuOpen),
+    gitQueries.branches(activeRepoPath),
   );
   const { data: recentRepos } = useQuery(gitQueries.recentRepositories());
   const { data: favoriteRepos } = useQuery(gitQueries.favoriteRepositories());
@@ -156,29 +156,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSync = () => {
-    if (!activeRepoPath || isRemoteOperationPending) return;
-
-    pullMutation.mutate(
-      {},
-      {
-        onSuccess: () => {
-          pushMutation.mutate({});
-        },
-      },
-    );
-  };
-
-  const handlePush = () => {
-    setPushMenuOpen(false);
-    pushMutation.mutate({});
-  };
-
-  const handleForcePushWithLease = () => {
-    setPushMenuOpen(false);
-    if (branchesFetching || !checkedOutBranch) return;
-    void pushBranch(checkedOutBranch, true);
-  };
 
   const openRepo = (path: string) => {
     openRepository.mutate(path, {
@@ -251,13 +228,33 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
-    const remote = window.prompt("Push to remote", branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin")?.trim();
+    const needsUpstream = !branch.upstream;
+    const remote = window
+      .prompt(
+        needsUpstream
+          ? `Add upstream for "${branch.shortName}" — remote`
+          : "Push to remote",
+        branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin",
+      )
+      ?.trim();
     if (!remote) return;
-    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`) ? branch.upstream.slice(remote.length + 1) : branch.shortName;
-    const remoteBranch = window.prompt("Remote branch name", upstreamBranch)?.trim();
+    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`)
+      ? branch.upstream.slice(remote.length + 1)
+      : branch.shortName;
+    const remoteBranch = window
+      .prompt(
+        needsUpstream
+          ? `Add upstream for "${branch.shortName}" — remote branch`
+          : "Remote branch name",
+        upstreamBranch,
+      )
+      ?.trim();
     if (remoteBranch === undefined) return;
     const target = `${remote}/${remoteBranch || branch.shortName}`;
-    const setUpstream = !forceWithLease && window.confirm(`Set "${branch.shortName}" to track ${target} after push?`);
+    const setUpstream =
+      !forceWithLease &&
+      (needsUpstream ||
+        window.confirm(`Set "${branch.shortName}" to track ${target} after push?`));
     const request = {
       remote,
       localBranch: branch.shortName,
@@ -280,6 +277,39 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
       : "";
     if (!window.confirm(`Push "${branch.shortName}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
     pushBranchMutation.mutate(request);
+  };
+
+  const handlePush = () => {
+    setPushMenuOpen(false);
+    if (branchesFetching) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream) {
+      void pushBranch(checkedOutBranch, false);
+      return;
+    }
+    pushMutation.mutate({});
+  };
+
+  const handleForcePushWithLease = () => {
+    setPushMenuOpen(false);
+    if (branchesFetching || !checkedOutBranch) return;
+    void pushBranch(checkedOutBranch, true);
+  };
+
+  const handleSync = () => {
+    if (!activeRepoPath || isRemoteOperationPending || branchesFetching) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream) {
+      void pushBranch(checkedOutBranch, false);
+      return;
+    }
+
+    pullMutation.mutate(
+      {},
+      {
+        onSuccess: () => {
+          pushMutation.mutate({});
+        },
+      },
+    );
   };
 
   const deleteRemoteBranch = async (branch: Branch) => {
@@ -497,14 +527,14 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
             label="Push"
             title="Push to remote"
             tone="secondary"
-            disabled={!activeRepoPath || isRemoteOperationPending}
+            disabled={!activeRepoPath || isRemoteOperationPending || branchesFetching}
             onClick={handlePush}
             className="rounded-r-none"
           />
           <button
             type="button"
             onClick={() => setPushMenuOpen((open) => !open)}
-            disabled={!activeRepoPath || isRemoteOperationPending}
+            disabled={!activeRepoPath || isRemoteOperationPending || branchesFetching}
             aria-haspopup="menu"
             aria-expanded={pushMenuOpen}
             aria-label="More push options"
@@ -547,7 +577,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
           label="Sync"
           title="Pull then push"
           tone="success"
-          disabled={!activeRepoPath || isRemoteOperationPending}
+          disabled={!activeRepoPath || isRemoteOperationPending || branchesFetching}
           onClick={handleSync}
         />
       </div>
