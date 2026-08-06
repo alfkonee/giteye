@@ -89,7 +89,12 @@ export function CommandPalette() {
   const pushMutation = useMutation(gitMutations.push(queryClient, activeRepoPath));
   const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
   const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
-  const remoteOperationPending = fetchMutation.isPending || pullMutation.isPending || pushMutation.isPending;
+  const remoteOperationPending =
+    fetchMutation.isPending ||
+    pullMutation.isPending ||
+    pushMutation.isPending ||
+    pushBranchDryRunMutation.isPending ||
+    pushBranchMutation.isPending;
   const { data: branches, isFetching: branchesFetching } = useQuery({
     ...gitQueries.branches(activeRepoPath),
     enabled: open && Boolean(activeRepoPath),
@@ -115,7 +120,11 @@ export function CommandPalette() {
   };
   const runPush = async () => {
     if (!activeRepoPath || remoteOperationPending) return;
-    if (checkedOutBranch && !checkedOutBranch.upstream && !branchesFetching) {
+    // Never fall through to a generic push while branch metadata is loading/refetching:
+    // for a no-upstream branch that would queue a failing plain push instead of the
+    // upstream-setup flow. Mirror the Toolbar's guard and bail for a retrigger.
+    if (branchesFetching) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream) {
       await runBranchPush(checkedOutBranch, false);
       return;
     }
@@ -123,7 +132,8 @@ export function CommandPalette() {
   };
   const runPull = async () => {
     if (!activeRepoPath || remoteOperationPending) return;
-    if (checkedOutBranch && !checkedOutBranch.upstream && !branchesFetching) {
+    if (branchesFetching) return;
+    if (checkedOutBranch && !checkedOutBranch.upstream) {
       await runBranchPush(checkedOutBranch, false);
       return;
     }
