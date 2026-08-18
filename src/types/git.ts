@@ -743,6 +743,7 @@ export interface GitSignatureSummary {
 export type GitJobStatus =
   | "queued"
   | "running"
+  | "interrupted"
   | "succeeded"
   | "failed"
   | "canceled"
@@ -780,6 +781,12 @@ export interface GitJobSummary extends Omit<GitJobEvent, "stream"> {
 export interface GitJobRecord extends GitJobSummary {
   logs?: GitJobStreamLine[];
   output?: GitJobStreamLine[];
+}
+
+export interface GitRecoveryState {
+  repoPath: string;
+  operation: string | null;
+  lockPaths: string[];
 }
 
 export type GlobalViewType = "repo-hub" | "settings";
