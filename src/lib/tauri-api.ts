@@ -62,6 +62,7 @@ import type {
   GitSignatureSummary,
   GitJobRecord,
   GitJobSummary,
+  GitRecoveryState,
 } from "../types/git";
 
 export type CheckoutBranchStrategy = "move" | "stash";
@@ -230,6 +231,15 @@ export const gitApi = {
 
   clearGitJobLog: (repoPath?: string | null, jobId?: string | null) =>
     invoke<GitJobSummary[]>("clear_git_job_log", { repoPath: repoPath ?? null, jobId: jobId ?? null }),
+
+  getGitRecoveryState: (repoPath: string) =>
+    invoke<GitRecoveryState>("get_git_recovery_state", { repoPath }),
+
+  recoverGitOperation: (repoPath: string, action: "continue" | "abort") =>
+    invoke<GitJobSummary>("recover_git_operation", { repoPath, action }),
+
+  dismissInterruptedGitJob: (jobId: string) =>
+    invoke<void>("dismiss_interrupted_git_job", { jobId }),
 
   // Status
   getStatus: (repoPath: string) =>

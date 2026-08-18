@@ -5,6 +5,7 @@ import { CommandLogDrawer } from "../components/common/CommandLogDrawer";
 import { CommandPalette } from "../components/common/CommandPalette";
 import { RustCallTracePanel } from "../components/common/RustCallTracePanel";
 import { FrontendTraceCollector } from "../components/common/FrontendTraceCollector";
+import { InterruptedJobRecovery } from "../components/common/InterruptedJobRecovery";
 import { AppSettingsSync } from "../lib/app-settings-sync";
 import { GitJobEventListener, GitStateWatcher } from "../lib/git-watch";
 
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <AppSettingsSync />
       <GitStateWatcher />
       <GitJobEventListener />
+      <InterruptedJobRecovery />
       <CommandPalette />
       <CommandLogDrawer />
       <FrontendTraceCollector />

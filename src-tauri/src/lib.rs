@@ -5,6 +5,8 @@ mod models;
 mod storage;
 mod watcher;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     configure_linux_webkit_environment();
@@ -27,6 +29,12 @@ pub fn run() {
             }
             if !git::cli::GitCli::is_git_available() {
                 eprintln!("Warning: Git is not installed or not in PATH");
+            }
+            if let Err(error) = _app
+                .state::<git::job_runner::GitJobRunnerState>()
+                .recover_interrupted_jobs(_app.handle())
+            {
+                eprintln!("Warning: could not recover interrupted Git jobs: {error}");
             }
             configure_linux_webview(_app);
             Ok(())
@@ -55,6 +63,9 @@ pub fn run() {
             commands::jobs::get_git_job,
             commands::jobs::cancel_git_job,
             commands::jobs::clear_git_job_log,
+            commands::jobs::get_git_recovery_state,
+            commands::jobs::recover_git_operation,
+            commands::jobs::dismiss_interrupted_git_job,
             watcher::start_repository_watch,
             watcher::stop_repository_watch,
             commands::status::get_status,

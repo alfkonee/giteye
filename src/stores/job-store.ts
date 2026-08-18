@@ -183,5 +183,5 @@ function canonicalStatus(status: GitJobStatus): GitJobStatus {
 }
 
 export function isTerminalStatus(status: GitJobStatus) {
-  return status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
+  return status === "interrupted" || status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
 }

@@ -1,8 +1,9 @@
 use crate::errors::AppError;
-use crate::git::{cli::GitCli, repository_service, state_graph::RepoStateReason};
+use crate::git::{cli::GitCli, rebase_service, repository_service, state_graph::RepoStateReason};
 use crate::models::job::{
-    GitJobLogChannel, GitJobLogLine, GitJobRecord, GitJobStatus, GitJobSummary,
+    GitJobLogChannel, GitJobLogLine, GitJobRecord, GitJobStatus, GitJobSummary, GitRecoveryState,
 };
+use crate::storage;
 use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -132,6 +133,8 @@ impl GitJobRunnerState {
             cancellations.insert(job_id.clone(), Arc::clone(&cancel_flag));
         }
         emit_job_event(&app, &record, None);
+        persist_recovery_snapshot(&app, &self.jobs);
+        
 
         let jobs = Arc::clone(&self.jobs);
         let cancellations = Arc::clone(&self.cancellations);
@@ -297,6 +300,50 @@ impl GitJobRunnerState {
             .ok_or_else(|| AppError::GitError(format!("Git job {job_id} was not recorded")))
     }
 
+    /// Reconciles jobs persisted by the prior process into terminal recovery records.
+    pub fn recover_interrupted_jobs(&self, app: &AppHandle) -> Result<(), AppError> {
+        let recovered = storage::load_interrupted_git_jobs(app)?;
+        if recovered.is_empty() {
+            return Ok(());
+        }
+
+        let now = Utc::now();
+        let mut jobs = self.jobs.lock().map_err(lock_error)?;
+        for mut job in recovered {
+            mark_job_interrupted(&mut job, now);
+            if matches!(job.status, GitJobStatus::Interrupted) {
+                jobs.insert(job.job_id.clone(), job);
+            }
+        }
+        drop(jobs);
+        persist_recovery_snapshot(app, &self.jobs);
+        Ok(())
+    }
+
+    /// Inspects real repository state instead of guessing whether an interrupted command can resume.
+    pub fn get_recovery_state(&self, repo_path: &str) -> Result<GitRecoveryState, AppError> {
+        let repo_path = Path::new(repo_path);
+        let operation = rebase_service::get_operation_summary(repo_path)?.operation;
+        let lock_path = GitCli::run(repo_path, &["rev-parse", "--git-path", "index.lock"])?;
+        let lock_path = lock_path.trim();
+        let lock_path = PathBuf::from(lock_path);
+        let lock_path = if lock_path.is_absolute() {
+            lock_path
+        } else {
+            repo_path.join(lock_path)
+        };
+        let lock_paths = lock_path
+            .exists()
+            .then(|| vec![lock_path.display().to_string()])
+            .unwrap_or_default();
+
+        Ok(GitRecoveryState {
+            repo_path: repo_path.display().to_string(),
+            operation,
+            lock_paths,
+        })
+    }
+
     pub fn list_jobs(&self, repo_path: Option<&str>) -> Result<Vec<GitJobSummary>, AppError> {
         let jobs = self.jobs.lock().map_err(lock_error)?;
         let mut summaries: Vec<_> = jobs
@@ -342,6 +389,34 @@ impl GitJobRunnerState {
         let summary = job.summary();
         emit_job_event(app, job, None);
         Ok(summary)
+    }
+
+    /// Acknowledges an inspected recovery record once the user has handled its repository state.
+    pub fn dismiss_interrupted_job(&self, app: &AppHandle, job_id: &str) -> Result<(), AppError> {
+        let mut jobs = self.jobs.lock().map_err(lock_error)?;
+        let job = jobs
+            .get(job_id)
+            .ok_or_else(|| AppError::GitError(format!("Git job {job_id} was not found")))?;
+        if !matches!(job.status, GitJobStatus::Interrupted) {
+            return Err(AppError::GitError(
+                "Only interrupted Git jobs can be dismissed from recovery".to_string(),
+            ));
+        }
+        jobs.remove(job_id);
+        drop(jobs);
+        persist_recovery_snapshot(app, &self.jobs);
+        Ok(())
+    }
+
+    /// Clears interrupted recovery records for a repository after its operation resolved.
+    pub fn dismiss_interrupted_for_repo(&self, app: &AppHandle, repo_path: &str) -> Result<(), AppError> {
+        let mut jobs = self.jobs.lock().map_err(lock_error)?;
+        jobs.retain(|_, job| {
+            !(job.repo_path == repo_path && matches!(job.status, GitJobStatus::Interrupted))
+        });
+        drop(jobs);
+        persist_recovery_snapshot(app, &self.jobs);
+        Ok(())
     }
 
     pub fn clear_job_logs(
@@ -433,18 +508,46 @@ fn update_job<F>(
 ) where
     F: FnOnce(&mut GitJobRecord),
 {
-    let Ok(mut jobs) = jobs.lock() else {
-        return;
+    let persist_recovery = stream.is_none();
+    let record = {
+        let Ok(mut jobs) = jobs.lock() else {
+            return;
+        };
+        let Some(job) = jobs.get_mut(job_id) else {
+            return;
+        };
+        update(job);
+        job.clone()
     };
-    let Some(job) = jobs.get_mut(job_id) else {
-        return;
-    };
-    update(job);
-    emit_job_event(app, job, stream);
+    emit_job_event(app, &record, stream);
+    if persist_recovery {
+        persist_recovery_snapshot(app, jobs);
+    }
+
 }
 
 fn emit_job_event(app: &AppHandle, job: &GitJobRecord, stream: Option<GitJobLogLine>) {
     let _ = app.emit(GIT_JOB_EVENT, job.event(stream));
+}
+
+fn persist_recovery_snapshot(app: &AppHandle, jobs: &Arc<Mutex<HashMap<String, GitJobRecord>>>) {
+    let Ok(jobs) = jobs.lock() else {
+        return;
+    };
+    let recoverable: Vec<_> = jobs
+        .values()
+        .filter(|job| {
+            matches!(
+                job.status,
+                GitJobStatus::Queued | GitJobStatus::Running | GitJobStatus::Interrupted
+            )
+        })
+        .cloned()
+        .collect();
+    drop(jobs);
+    if let Err(error) = storage::save_interrupted_git_jobs(app, &recoverable) {
+        eprintln!("Warning: could not persist Git job recovery state: {error}");
+    }
 }
 
 fn get_job_from(
@@ -484,6 +587,17 @@ fn is_terminal_status(status: &GitJobStatus) -> bool {
         status,
         GitJobStatus::Succeeded | GitJobStatus::Failed | GitJobStatus::Canceled
     )
+}
+
+fn mark_job_interrupted(job: &mut GitJobRecord, now: chrono::DateTime<Utc>) {
+    if matches!(job.status, GitJobStatus::Queued | GitJobStatus::Running) {
+        job.status = GitJobStatus::Interrupted;
+        job.finished_at = Some(now);
+        job.error = Some(
+            "GitEye closed before this job finished. Inspect the repository before continuing or aborting the Git operation."
+                .to_string(),
+        );
+    }
 }
 
 fn repo_state_reason(reason: &str) -> Option<RepoStateReason> {
@@ -664,6 +778,25 @@ mod tests {
         assert!(jobs.contains_key("done-3"));
         assert!(jobs.contains_key("running"));
         assert!(jobs.contains_key("other"));
+    }
+
+    #[test]
+    fn reconciliation_marks_only_pending_jobs_interrupted() {
+        let now = Utc::now();
+        let mut queued = test_job("queued", "/repo", GitJobStatus::Queued, now);
+        let mut running = test_job("running", "/repo", GitJobStatus::Running, now);
+        let mut succeeded = test_job("succeeded", "/repo", GitJobStatus::Succeeded, now);
+
+        mark_job_interrupted(&mut queued, now);
+        mark_job_interrupted(&mut running, now);
+        mark_job_interrupted(&mut succeeded, now);
+
+        assert!(matches!(queued.status, GitJobStatus::Interrupted));
+        assert!(matches!(running.status, GitJobStatus::Interrupted));
+        assert_eq!(queued.finished_at, Some(now));
+        assert!(queued.error.as_deref().is_some_and(|message| message.contains("Inspect")));
+        assert!(matches!(succeeded.status, GitJobStatus::Succeeded));
+        assert_eq!(succeeded.finished_at, None);
     }
 
     #[test]
