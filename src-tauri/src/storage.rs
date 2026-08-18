@@ -10,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 use tauri::Manager;
 
 static APP_SETTINGS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static RECOVERY_JOBS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
@@ -123,6 +124,9 @@ pub fn save_interrupted_git_jobs(
     app_handle: &tauri::AppHandle,
     jobs: &[GitJobRecord],
 ) -> Result<(), AppError> {
+    let _guard = RECOVERY_JOBS_LOCK
+        .lock()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
     let path = interrupted_git_jobs_path(app_handle)?;
     if jobs.is_empty() {
         if path.exists() {

@@ -408,6 +408,17 @@ impl GitJobRunnerState {
         Ok(())
     }
 
+    /// Clears interrupted recovery records for a repository after its operation resolved.
+    pub fn dismiss_interrupted_for_repo(&self, app: &AppHandle, repo_path: &str) -> Result<(), AppError> {
+        let mut jobs = self.jobs.lock().map_err(lock_error)?;
+        jobs.retain(|_, job| {
+            !(job.repo_path == repo_path && matches!(job.status, GitJobStatus::Interrupted))
+        });
+        drop(jobs);
+        persist_recovery_snapshot(app, &self.jobs);
+        Ok(())
+    }
+
     pub fn clear_job_logs(
         &self,
         repo_path: Option<&str>,

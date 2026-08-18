@@ -1,7 +1,7 @@
 use crate::errors::AppError;
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::models::job::{GitJobRecord, GitJobSummary, GitRecoveryState};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// Lists GitEye-triggered background Git jobs, optionally scoped to one repository path.
 #[tauri::command]
@@ -69,13 +69,19 @@ pub fn recover_git_operation(
         _ => return Err(AppError::GitError("Recovery action must be continue or abort".to_string())),
     };
     let title = format!("{} {}", if action == "continue" { "Continue" } else { "Abort" }, command);
+    let repo_hook = repo_path.clone();
+    let app_hook = app.clone();
     let request = GitJobRequest::new(
         repo_path,
         format!("recovery.{operation}.{action}"),
         title,
         vec![command.to_string(), option.to_string()],
     )
-    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"]);
+    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"])
+    .on_success(Box::new(move || {
+        let state = app_hook.state::<GitJobRunnerState>();
+        let _ = state.dismiss_interrupted_for_repo(&app_hook, &repo_hook);
+    }));
     state.start_job(app, request)
 }
 

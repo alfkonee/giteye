@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, RotateCcw, XCircle } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
-import { useJobStore } from "../../stores/job-store";
+import { isTerminalStatus, useJobStore } from "../../stores/job-store";
 import { gitApi } from "../../lib/tauri-api";
 
 export function InterruptedJobRecovery() {
@@ -15,9 +15,13 @@ export function InterruptedJobRecovery() {
     queryFn: () => gitApi.listGitJobs(activeRepoPath),
     refetchInterval: 5_000,
   });
-  const interruptedJobs = (jobsQuery.data ?? []).filter((job) => job.status === "interrupted");
+  const allJobs = jobsQuery.data ?? [];
+  const interruptedJobs = allJobs.filter((job) => job.status === "interrupted");
   const job = interruptedJobs[0];
   const recoveryRepoPath = activeRepoPath ?? job?.repoPath ?? null;
+  const recoveryInProgress = allJobs.some(
+    (entry) => entry.kind.startsWith("recovery.") && !isTerminalStatus(entry.status),
+  );
   const [abortArmed, setAbortArmed] = useState(false);
   const recoveryQuery = useQuery({
     queryKey: ["git-recovery-state", recoveryRepoPath],
@@ -26,10 +30,8 @@ export function InterruptedJobRecovery() {
   });
   const recoverMutation = useMutation({
     mutationFn: (action: "continue" | "abort") => gitApi.recoverGitOperation(recoveryRepoPath!, action),
-    onSuccess: async () => {
-      if (job) {
-        await gitApi.dismissInterruptedGitJob(job.jobId);
-      }
+    onSuccess: () => {
+      setAbortArmed(false);
       void queryClient.invalidateQueries({ queryKey: ["interrupted-git-jobs", activeRepoPath ?? "all"] });
       void queryClient.invalidateQueries({ queryKey: ["git-recovery-state", recoveryRepoPath] });
     },
@@ -44,7 +46,7 @@ export function InterruptedJobRecovery() {
   if (!job) return null;
 
   const recovery = recoveryQuery.data;
-  const canRecover = Boolean(recovery?.operation) && (recovery?.lockPaths.length ?? 0) === 0 && !recoverMutation.isPending;
+  const canRecover = Boolean(recovery?.operation) && (recovery?.lockPaths.length ?? 0) === 0 && !recoverMutation.isPending && !recoveryInProgress;
 
   return (
     <aside className="fixed bottom-4 left-1/2 z-[85] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-amber-500/50 bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-elevated)]" aria-live="assertive">
@@ -71,6 +73,9 @@ export function InterruptedJobRecovery() {
           )}
           {recoverMutation.error ? (
             <p className="mt-2 text-sm text-red-400">{String(recoverMutation.error)}</p>
+          ) : null}
+          {recoveryInProgress ? (
+            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Recovery in progress…</p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
