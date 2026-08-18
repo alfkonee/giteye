@@ -13,12 +13,13 @@ pub fn store(account: &str, secret: &str) -> Result<(), AppError> {
         .map_err(|error| AppError::StorageError(error.to_string()))
 }
 
-pub fn load(account: &str) -> Result<Option<String>, AppError> {
-    match entry(account)?.get_password() {
-        Ok(password) => Ok(Some(password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(AppError::StorageError(error.to_string())),
-    }
+pub fn load(account: &str) -> Option<String> {
+    // An absent or unavailable keychain is indistinguishable from "no key configured":
+    // reading must never fail configuration loading or block an environment-key override.
+    let Ok(entry) = entry(account) else {
+        return None;
+    };
+    entry.get_password().ok()
 }
 
 pub fn delete(account: &str) -> Result<(), AppError> {

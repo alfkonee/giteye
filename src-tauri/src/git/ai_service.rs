@@ -343,7 +343,7 @@ fn resolve_effective_config(app_handle: &tauri::AppHandle) -> Result<AiConfig, A
     let file = load_config_file(app_handle)?;
     let env = AiEnv::from_process();
     let provider = resolve_provider(file.as_ref(), &env)?;
-    let keychain_key = keychain::load(provider.keychain_id())?;
+    let keychain_key = keychain::load(provider.keychain_id());
     resolve_effective_config_from(file, env, keychain_key)
 }
 
@@ -482,7 +482,6 @@ pub fn save_ai_config(
     load_config_file(app_handle)?;
     let model = trimmed_option(Some(&request.model))
         .unwrap_or_else(|| request.provider.default_model().to_string());
-    apply_api_key_change(request.provider, request.api_key)?;
     let prompts = validate_prompts(request.prompts)?;
 
     let file = AiConfigFile {
@@ -498,6 +497,9 @@ pub fn save_ai_config(
         .map_err(|e| AppError::SerializationError(e.to_string()))?;
     fs::write(path, json).map_err(|e| AppError::StorageError(e.to_string()))?;
 
+    // Mutate the credential last so a failed validation or file write never changes the key.
+    apply_api_key_change(request.provider, request.api_key)?;
+
     get_ai_config(app_handle)
 }
 
@@ -506,7 +508,7 @@ pub fn list_ai_models(
     request: ListAiModelsRequest,
 ) -> Result<AiModelListView, AppError> {
     let existing = load_config_file(app_handle)?;
-    let keychain_key = keychain::load(request.provider.keychain_id())?;
+    let keychain_key = keychain::load(request.provider.keychain_id());
     list_ai_models_from(request, existing, AiEnv::from_process(), keychain_key)
 }
 
