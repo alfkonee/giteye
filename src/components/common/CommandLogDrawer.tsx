@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Ban, CheckCircle2, CircleDashed, Clock3, Loader2, TerminalSquare, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, CircleDashed, Clock3, Loader2, TerminalSquare, Trash2, XCircle } from "lucide-react";
 import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import { isTerminalStatus, useJobStore, type GitJobLogEntry } from "../../stores/job-store";
@@ -241,6 +241,10 @@ function JobStatusIcon({ status, large = false }: { status: GitJobStatus; large?
     return <Loader2 className={cn(className, "animate-spin")} />;
   }
 
+  if (status === "interrupted") {
+    return <AlertTriangle className={className} />;
+  }
+
   if (status === "succeeded") {
     return <CheckCircle2 className={className} />;
   }
@@ -259,6 +263,7 @@ function JobStatusIcon({ status, large = false }: { status: GitJobStatus; large?
 function statusIconClass(status: GitJobStatus) {
   if (status === "succeeded") return "text-[var(--color-success)]";
   if (status === "failed") return "text-[var(--color-danger)]";
+  if (status === "interrupted") return "text-amber-400";
   if (status === "canceled" || status === "cancelled") return "text-[var(--color-text-muted)]";
   return "text-[var(--color-accent)]";
 }
@@ -266,6 +271,7 @@ function statusIconClass(status: GitJobStatus) {
 function statusPillClass(status: GitJobStatus) {
   if (status === "succeeded") return "border-[var(--color-success)]/35 bg-[var(--color-success)]/10 text-[var(--color-success)]";
   if (status === "failed") return "border-[var(--color-danger)]/35 bg-[var(--color-danger)]/10 text-[var(--color-danger)]";
+  if (status === "interrupted") return "border-amber-500/35 bg-amber-500/10 text-amber-300";
   if (status === "canceled" || status === "cancelled") return "border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]";
   return "border-[var(--color-accent)]/35 bg-[var(--color-accent)]/10 text-[var(--color-accent)]";
 }

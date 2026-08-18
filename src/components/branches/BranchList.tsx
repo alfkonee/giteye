@@ -3,6 +3,7 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
+import { runBranchPushFlow } from "../../lib/branch-push";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
@@ -175,55 +176,13 @@ export function BranchList() {
 
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
-    const needsUpstream = !branch.upstream;
-    const remote = window
-      .prompt(
-        needsUpstream
-          ? `Add upstream for "${branch.shortName}" — remote`
-          : "Push to remote",
-        branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin",
-      )
-      ?.trim();
-    if (!remote) return;
-    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`)
-      ? branch.upstream.slice(remote.length + 1)
-      : branch.shortName;
-    const remoteBranch = window
-      .prompt(
-        needsUpstream
-          ? `Add upstream for "${branch.shortName}" — remote branch`
-          : "Remote branch name",
-        upstreamBranch,
-      )
-      ?.trim();
-    if (remoteBranch === undefined) return;
-    const target = `${remote}/${remoteBranch || branch.shortName}`;
-    const setUpstream =
-      !forceWithLease &&
-      (needsUpstream ||
-        window.confirm(`Set "${branch.shortName}" to track ${target} after push?`));
-    const request = {
-      remote,
-      localBranch: branch.shortName,
-      remoteBranch: remoteBranch || null,
-      setUpstream,
+    await runBranchPushFlow({
+      branch,
+      remoteNames,
       forceWithLease,
-    };
-    let previewText: string;
-    try {
-      previewText = formatDryRunPreview(
-        await pushBranchDryRunMutation.mutateAsync(request),
-        "Git did not report any ref updates for this push dry run.",
-      );
-    } catch (error) {
-      window.alert(`Unable to preview push to ${target}: ${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    const forceWarning = forceWithLease
-      ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
-      : "";
-    if (!window.confirm(`Push "${branch.shortName}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
-    pushBranchMutation.mutate(request);
+      dryRunPreview: (request) => pushBranchDryRunMutation.mutateAsync(request),
+      submitPush: (request) => pushBranchMutation.mutate(request),
+    });
   };
 
   const deleteRemoteBranch = async (branch: Branch) => {

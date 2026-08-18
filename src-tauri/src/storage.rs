@@ -1,4 +1,5 @@
 use crate::errors::AppError;
+use crate::models::job::GitJobRecord;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -9,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 use tauri::Manager;
 
 static APP_SETTINGS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static RECOVERY_JOBS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
@@ -101,6 +103,47 @@ fn favorite_repos_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppErro
 
 fn app_settings_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
     Ok(get_storage_dir(app_handle)?.join("app_settings.json"))
+}
+
+fn interrupted_git_jobs_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, AppError> {
+    Ok(get_storage_dir(app_handle)?.join("interrupted_git_jobs.json"))
+}
+
+/// Loads jobs that had not reached a terminal state when GitEye last exited.
+pub fn load_interrupted_git_jobs(app_handle: &tauri::AppHandle) -> Result<Vec<GitJobRecord>, AppError> {
+    let path = interrupted_git_jobs_path(app_handle)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let data = fs::read_to_string(path).map_err(|error| AppError::StorageError(error.to_string()))?;
+    serde_json::from_str(&data).map_err(|error| AppError::SerializationError(error.to_string()))
+}
+
+/// Atomically persists jobs that need recovery. Terminal history remains in memory only.
+pub fn save_interrupted_git_jobs(
+    app_handle: &tauri::AppHandle,
+    jobs: &[GitJobRecord],
+) -> Result<(), AppError> {
+    let _guard = RECOVERY_JOBS_LOCK
+        .lock()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let path = interrupted_git_jobs_path(app_handle)?;
+    if jobs.is_empty() {
+        if path.exists() {
+            fs::remove_file(path).map_err(|error| AppError::StorageError(error.to_string()))?;
+        }
+        return Ok(());
+    }
+
+    let data = serde_json::to_vec_pretty(jobs)
+        .map_err(|error| AppError::SerializationError(error.to_string()))?;
+    let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    let mut file =
+        fs::File::create(&temporary).map_err(|error| AppError::StorageError(error.to_string()))?;
+    file.write_all(&data)
+        .and_then(|_| file.sync_all())
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    fs::rename(&temporary, path).map_err(|error| AppError::StorageError(error.to_string()))
 }
 
 fn clean_optional_string(value: Option<String>) -> Option<String> {
