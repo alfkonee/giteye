@@ -1,6 +1,7 @@
 mod commands;
 mod errors;
 mod git;
+mod keychain;
 mod models;
 mod storage;
 mod watcher;

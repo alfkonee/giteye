@@ -98,7 +98,7 @@ export interface BisectStartRequest {
 }
 
 export type AiProvider = "openai" | "claude" | "deepseek" | "openrouter";
-export type AiApiKeySource = "environment" | "stored" | "missing";
+export type AiApiKeySource = "environment" | "keychain" | "missing";
 
 export interface AiProviderView {
   id: AiProvider;

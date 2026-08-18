@@ -320,8 +320,8 @@ export function SettingsPlaceholder() {
                   placeholder={
                     aiConfig?.apiKeySource === "environment"
                       ? "Configured via environment"
-                      : aiConfig?.apiKeySource === "stored"
-                      ? "Configured — leave blank to keep current key"
+                      : aiConfig?.apiKeySource === "keychain"
+                      ? "Stored in OS keychain — leave blank to keep current key"
                       : "Paste provider API key"
                   }
                   className="giteye-input w-full text-[12px]"
@@ -335,7 +335,7 @@ export function SettingsPlaceholder() {
               </div>
               {aiErrorText ? <p className="text-[var(--color-danger)]">{String(aiErrorText)}</p> : null}
               <div className="flex justify-end gap-2">
-                <button disabled={aiPending || aiConfig?.apiKeySource !== "stored"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
+                <button disabled={aiPending || aiConfig?.apiKeySource !== "keychain"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
                 <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</button>
               </div>
             </div>

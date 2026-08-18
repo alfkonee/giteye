@@ -1,7 +1,8 @@
 use crate::errors::AppError;
+use crate::keychain;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 const OPENAI_DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1";
@@ -56,6 +57,16 @@ impl AiProvider {
         }
     }
 
+    fn keychain_id(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Claude => "claude",
+            Self::DeepSeek => "deepseek",
+            Self::OpenRouter => "openrouter",
+        }
+    }
+
+
     fn models(self) -> &'static [&'static str] {
         match self {
             Self::OpenAi => &["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"],
@@ -78,8 +89,8 @@ impl AiProvider {
 pub enum AiApiKeySource {
     #[serde(rename = "environment")]
     Environment,
-    #[serde(rename = "stored")]
-    Stored,
+    #[serde(rename = "keychain")]
+    Keychain,
     #[serde(rename = "missing")]
     Missing,
 }
@@ -256,7 +267,7 @@ struct AiConfig {
 struct AiConfigFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     provider: Option<AiProvider>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     api_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model: Option<String>,
@@ -307,35 +318,55 @@ fn load_config_file(app_handle: &tauri::AppHandle) -> Result<Option<AiConfigFile
     }
 
     let data = fs::read_to_string(&path).map_err(|e| AppError::StorageError(e.to_string()))?;
-    serde_json::from_str(&data)
-        .map(Some)
-        .map_err(|e| AppError::SerializationError(e.to_string()))
+    let mut file: AiConfigFile =
+        serde_json::from_str(&data).map_err(|e| AppError::SerializationError(e.to_string()))?;
+    migrate_legacy_key(&path, &mut file)?;
+    Ok(Some(file))
 }
 
-fn resolve_effective_config(file: Option<AiConfigFile>) -> Result<AiConfig, AppError> {
-    resolve_effective_config_from(file, AiEnv::from_process())
+/// Moves a plaintext API key left by an older GitEye release into the OS keychain, then strips
+/// it from the on-disk config. Runs on every load; a no-op once the key has been migrated.
+fn migrate_legacy_key(path: &Path, file: &mut AiConfigFile) -> Result<(), AppError> {
+    let Some(key) = file.api_key.as_ref().and_then(|value| trimmed_option(Some(value.as_str())))
+    else {
+        return Ok(());
+    };
+    let provider = file.provider.unwrap_or(AiProvider::OpenAi);
+    keychain::store(provider.keychain_id(), &key)?;
+    file.api_key = None;
+    let json = serde_json::to_string_pretty(file)
+        .map_err(|e| AppError::SerializationError(e.to_string()))?;
+    fs::write(path, json).map_err(|e| AppError::StorageError(e.to_string()))
+}
+
+fn resolve_effective_config(app_handle: &tauri::AppHandle) -> Result<AiConfig, AppError> {
+    let file = load_config_file(app_handle)?;
+    let env = AiEnv::from_process();
+    let provider = resolve_provider(file.as_ref(), &env)?;
+    let keychain_key = keychain::load(provider.keychain_id())?;
+    resolve_effective_config_from(file, env, keychain_key)
+}
+
+fn resolve_provider(file: Option<&AiConfigFile>, env: &AiEnv) -> Result<AiProvider, AppError> {
+    match trimmed_option(env.giteye_provider.as_deref()).as_deref() {
+        Some("openai") => Ok(AiProvider::OpenAi),
+        Some("claude" | "anthropic") => Ok(AiProvider::Claude),
+        Some("deepseek") => Ok(AiProvider::DeepSeek),
+        Some("openrouter") => Ok(AiProvider::OpenRouter),
+        Some(value) => Err(AppError::GitError(format!(
+            "Unsupported AI provider '{}'. Expected openai, claude, deepseek, or openrouter.",
+            value
+        ))),
+        None => Ok(file.and_then(|config| config.provider).unwrap_or(AiProvider::OpenAi)),
+    }
 }
 
 fn resolve_effective_config_from(
     file: Option<AiConfigFile>,
     env: AiEnv,
+    keychain_key: Option<String>,
 ) -> Result<AiConfig, AppError> {
-    let provider = match trimmed_option(env.giteye_provider.as_deref()).as_deref() {
-        Some("openai") => AiProvider::OpenAi,
-        Some("claude" | "anthropic") => AiProvider::Claude,
-        Some("deepseek") => AiProvider::DeepSeek,
-        Some("openrouter") => AiProvider::OpenRouter,
-        Some(value) => {
-            return Err(AppError::GitError(format!(
-                "Unsupported AI provider '{}'. Expected openai, claude, deepseek, or openrouter.",
-                value
-            )))
-        }
-        None => file
-            .as_ref()
-            .and_then(|config| config.provider)
-            .unwrap_or(AiProvider::OpenAi),
-    };
+    let provider = resolve_provider(file.as_ref(), &env)?;
 
     let endpoint = provider.default_endpoint().to_string();
 
@@ -356,11 +387,8 @@ fn resolve_effective_config_from(
         AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
     } {
         (key, AiApiKeySource::Environment)
-    } else if let Some(key) = file
-        .as_ref()
-        .and_then(|config| trimmed_option(config.api_key.as_deref()))
-    {
-        (key, AiApiKeySource::Stored)
+    } else if let Some(key) = keychain_key.and_then(|key| trimmed_option(Some(&key))) {
+        (key, AiApiKeySource::Keychain)
     } else {
         (String::new(), AiApiKeySource::Missing)
     };
@@ -383,17 +411,27 @@ fn trimmed_option(value: Option<&str>) -> Option<String> {
     }
 }
 
-fn saved_api_key(
-    existing: &AiConfigFile,
-    provider: AiProvider,
-    requested_api_key: Option<String>,
-) -> String {
+enum ApiKeyAction {
+    Store(String),
+    Clear,
+    Noop,
+}
+
+fn api_key_action(requested_api_key: Option<String>) -> ApiKeyAction {
     match requested_api_key {
-        Some(api_key) => trimmed_option(Some(&api_key)).unwrap_or_default(),
-        None if existing.provider == Some(provider) => {
-            trimmed_option(existing.api_key.as_deref()).unwrap_or_default()
-        }
-        None => String::new(),
+        Some(api_key) => match trimmed_option(Some(&api_key)) {
+            Some(api_key) => ApiKeyAction::Store(api_key),
+            None => ApiKeyAction::Clear,
+        },
+        None => ApiKeyAction::Noop,
+    }
+}
+
+fn apply_api_key_change(provider: AiProvider, requested: Option<String>) -> Result<(), AppError> {
+    match api_key_action(requested) {
+        ApiKeyAction::Store(key) => keychain::store(provider.keychain_id(), &key),
+        ApiKeyAction::Clear => keychain::delete(provider.keychain_id()),
+        ApiKeyAction::Noop => Ok(()),
     }
 }
 
@@ -432,7 +470,7 @@ fn validate_prompts(prompts: AiPrompts) -> Result<AiPrompts, AppError> {
 
 pub fn get_ai_config(app_handle: &tauri::AppHandle) -> Result<AiConfigView, AppError> {
     let file = load_config_file(app_handle)?;
-    let config = resolve_effective_config(file.clone())?;
+    let config = resolve_effective_config(app_handle)?;
     Ok(config.to_view(prompts_from_file(file.as_ref())))
 }
 
@@ -440,15 +478,16 @@ pub fn save_ai_config(
     app_handle: &tauri::AppHandle,
     request: SaveAiConfigRequest,
 ) -> Result<AiConfigView, AppError> {
-    let existing = load_config_file(app_handle)?.unwrap_or_default();
+    // Migrate any legacy plaintext key before applying the requested change.
+    load_config_file(app_handle)?;
     let model = trimmed_option(Some(&request.model))
         .unwrap_or_else(|| request.provider.default_model().to_string());
-    let stored_api_key = saved_api_key(&existing, request.provider, request.api_key);
+    apply_api_key_change(request.provider, request.api_key)?;
     let prompts = validate_prompts(request.prompts)?;
 
     let file = AiConfigFile {
         provider: Some(request.provider),
-        api_key: Some(stored_api_key),
+        api_key: None,
         model: Some(model),
         commit_message_prompt: Some(prompts.commit_message),
         conflict_resolution_prompt: Some(prompts.conflict_resolution),
@@ -466,22 +505,22 @@ pub fn list_ai_models(
     app_handle: &tauri::AppHandle,
     request: ListAiModelsRequest,
 ) -> Result<AiModelListView, AppError> {
-    list_ai_models_from(
-        request,
-        load_config_file(app_handle)?,
-        AiEnv::from_process(),
-    )
+    let existing = load_config_file(app_handle)?;
+    let keychain_key = keychain::load(request.provider.keychain_id())?;
+    list_ai_models_from(request, existing, AiEnv::from_process(), keychain_key)
 }
 
 fn list_ai_models_from(
     request: ListAiModelsRequest,
     existing: Option<AiConfigFile>,
     env: AiEnv,
+    keychain_key: Option<String>,
 ) -> Result<AiModelListView, AppError> {
     let provider = request.provider;
     let endpoint = provider.default_endpoint();
 
-    let effective_provider = resolve_effective_config_from(existing.clone(), env.clone())?.provider;
+    let effective_provider =
+        resolve_effective_config_from(existing.clone(), env.clone(), None)?.provider;
     let configured_model = (effective_provider == provider)
         .then(|| {
             trimmed_option(env.giteye_model.as_deref()).or_else(|| {
@@ -499,13 +538,7 @@ fn list_ai_models_from(
             AiProvider::DeepSeek => trimmed_option(env.deepseek_api_key.as_deref()),
             AiProvider::OpenRouter => trimmed_option(env.openrouter_api_key.as_deref()),
         })
-        .or_else(|| {
-            existing.as_ref().and_then(|config| {
-                (config.provider == Some(provider))
-                    .then(|| trimmed_option(config.api_key.as_deref()))
-                    .flatten()
-            })
-        });
+        .or_else(|| keychain_key.and_then(|key| trimmed_option(Some(&key))));
     let api_key = inline_api_key.or(implicit_api_key);
 
     if provider != AiProvider::OpenRouter && api_key.is_none() {
@@ -819,7 +852,7 @@ pub fn resolve_merge_conflict(
     theirs: &str,
 ) -> Result<String, AppError> {
     let file = load_config_file(app_handle)?;
-    let config = resolve_effective_config(file.clone())?;
+    let config = resolve_effective_config(app_handle)?;
     let prompts = prompts_from_file(file.as_ref());
 
     let user = format!(
@@ -835,7 +868,7 @@ pub fn suggest_commit_message(
     diffs: &[CommitMessageDiff],
 ) -> Result<String, AppError> {
     let file = load_config_file(app_handle)?;
-    let config = resolve_effective_config(file.clone())?;
+    let config = resolve_effective_config(app_handle)?;
     let prompts = prompts_from_file(file.as_ref());
 
     if diffs.is_empty() {
@@ -905,18 +938,16 @@ mod tests {
     }
 
     #[test]
-    fn switching_provider_does_not_reuse_another_providers_key() {
-        let existing = AiConfigFile {
-            provider: Some(AiProvider::OpenRouter),
-            api_key: Some("router-key".to_string()),
-            ..AiConfigFile::default()
-        };
-
-        assert_eq!(
-            saved_api_key(&existing, AiProvider::OpenRouter, None),
-            "router-key"
-        );
-        assert!(saved_api_key(&existing, AiProvider::Claude, None).is_empty());
+    fn api_key_action_maps_store_clear_and_keep() {
+        assert!(matches!(
+            api_key_action(Some("  secret  ".to_string())),
+            ApiKeyAction::Store(key) if key == "secret"
+        ));
+        assert!(matches!(
+            api_key_action(Some("   ".to_string())),
+            ApiKeyAction::Clear
+        ));
+        assert!(matches!(api_key_action(None), ApiKeyAction::Noop));
     }
 
     fn serve_once(
@@ -1102,6 +1133,7 @@ mod tests {
             },
             None,
             AiEnv::default(),
+            None,
         )
         .expect("fallback model list");
 
@@ -1131,7 +1163,7 @@ mod tests {
 
     #[test]
     fn defaults_to_openai_without_file_or_env() {
-        let config = resolve_effective_config_from(None, AiEnv::default()).expect("config");
+        let config = resolve_effective_config_from(None, AiEnv::default(), None).expect("config");
 
         assert_eq!(config.provider, AiProvider::OpenAi);
         assert_eq!(config.endpoint, OPENAI_DEFAULT_ENDPOINT);
@@ -1148,7 +1180,7 @@ mod tests {
             ..AiConfigFile::default()
         };
 
-        let config = resolve_effective_config_from(Some(file), AiEnv::default()).expect("config");
+        let config = resolve_effective_config_from(Some(file), AiEnv::default(), None).expect("config");
 
         assert_eq!(config.provider, AiProvider::OpenRouter);
         assert_eq!(config.endpoint, OPENROUTER_DEFAULT_ENDPOINT);
@@ -1156,18 +1188,15 @@ mod tests {
     }
 
     #[test]
-    fn giteye_api_key_overrides_provider_env_and_stored_key() {
-        let file = AiConfigFile {
-            api_key: Some("stored-key".to_string()),
-            ..AiConfigFile::default()
-        };
+    fn giteye_api_key_overrides_provider_env_and_keychain_key() {
         let env = AiEnv {
             giteye_api_key: Some(" giteye-key ".to_string()),
             openai_api_key: Some("openai-key".to_string()),
             ..AiEnv::default()
         };
 
-        let config = resolve_effective_config_from(Some(file), env).expect("config");
+        let config =
+            resolve_effective_config_from(None, env, Some("keychain-key".to_string())).expect("config");
 
         assert_eq!(config.api_key, "giteye-key");
         assert_eq!(config.api_key_source, AiApiKeySource::Environment);
@@ -1177,7 +1206,6 @@ mod tests {
     fn openrouter_uses_provider_env_when_giteye_key_is_empty() {
         let file = AiConfigFile {
             provider: Some(AiProvider::OpenRouter),
-            api_key: Some("stored-key".to_string()),
             ..AiConfigFile::default()
         };
         let env = AiEnv {
@@ -1186,11 +1214,31 @@ mod tests {
             ..AiEnv::default()
         };
 
-        let config = resolve_effective_config_from(Some(file), env).expect("config");
+        let config =
+            resolve_effective_config_from(Some(file), env, Some("keychain-key".to_string())).expect("config");
 
         assert_eq!(config.provider, AiProvider::OpenRouter);
         assert_eq!(config.api_key, "router-key");
         assert_eq!(config.api_key_source, AiApiKeySource::Environment);
+    }
+
+    #[test]
+    fn keychain_key_is_used_when_no_environment_key_is_present() {
+        let file = AiConfigFile {
+            provider: Some(AiProvider::DeepSeek),
+            ..AiConfigFile::default()
+        };
+
+        let config = resolve_effective_config_from(
+            Some(file),
+            AiEnv::default(),
+            Some(" keychain-secret ".to_string()),
+        )
+        .expect("config");
+
+        assert_eq!(config.provider, AiProvider::DeepSeek);
+        assert_eq!(config.api_key, "keychain-secret");
+        assert_eq!(config.api_key_source, AiApiKeySource::Keychain);
     }
 
     #[test]
@@ -1200,7 +1248,7 @@ mod tests {
         )
         .expect("config file");
 
-        let config = resolve_effective_config_from(Some(file), AiEnv::default()).expect("config");
+        let config = resolve_effective_config_from(Some(file), AiEnv::default(), None).expect("config");
 
         assert_eq!(config.endpoint, OPENAI_DEFAULT_ENDPOINT);
     }
@@ -1212,7 +1260,7 @@ mod tests {
             ..AiEnv::default()
         };
 
-        let error = resolve_effective_config_from(None, env).expect_err("invalid provider");
+        let error = resolve_effective_config_from(None, env, None).expect_err("invalid provider");
 
         assert_eq!(
             git_error_message(error),
@@ -1228,7 +1276,7 @@ mod tests {
             ..AiEnv::default()
         };
 
-        let config = resolve_effective_config_from(None, env).expect("config");
+        let config = resolve_effective_config_from(None, env, None).expect("config");
 
         assert_eq!(config.provider, AiProvider::Claude);
         assert_eq!(config.endpoint, CLAUDE_DEFAULT_ENDPOINT);
@@ -1276,7 +1324,7 @@ mod tests {
             endpoint,
             api_key: "secret".to_string(),
             model: "gpt-4o-mini".to_string(),
-            api_key_source: AiApiKeySource::Stored,
+            api_key_source: AiApiKeySource::Keychain,
         };
 
         let result = call_ai(&config, "system", "user").expect("ai response");
@@ -1302,7 +1350,7 @@ mod tests {
             endpoint,
             api_key: "router-secret".to_string(),
             model: "openai/gpt-4o-mini".to_string(),
-            api_key_source: AiApiKeySource::Stored,
+            api_key_source: AiApiKeySource::Keychain,
         };
 
         let result = call_ai(&config, "system", "user").expect("ai response");
@@ -1334,7 +1382,7 @@ mod tests {
             endpoint,
             api_key: "claude-secret".to_string(),
             model: CLAUDE_DEFAULT_MODEL.to_string(),
-            api_key_source: AiApiKeySource::Stored,
+            api_key_source: AiApiKeySource::Keychain,
         };
 
         let result = call_ai(&config, "system", "user").expect("ai response");
@@ -1358,7 +1406,7 @@ mod tests {
             endpoint,
             api_key: "bad".to_string(),
             model: "openai/gpt-4o-mini".to_string(),
-            api_key_source: AiApiKeySource::Stored,
+            api_key_source: AiApiKeySource::Keychain,
         };
 
         let error = call_ai(&config, "system", "user").expect_err("provider error");

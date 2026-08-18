@@ -13,8 +13,8 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 
 ## Progress
 
-- **Total:** 46  **Done:** 1  **Pending:** 45
-- P0 (release blockers): 1/10
+- **Total:** 46  **Done:** 2  **Pending:** 44
+- P0 (release blockers): 2/10
 - P1 (high value): 0/17
 - P2 (differentiators): 0/14
 - P3 (expansion): 0/5
@@ -33,7 +33,7 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 - [ ] **A06** `bug` [#62](https://github.com/alfkonee/giteye/issues/62) Bound and stream diff payloads; detect oversized text and binary files before loading
 - [ ] **A07** `bug` [#63](https://github.com/alfkonee/giteye/issues/63) Replace the fixed 3s gh timeout with cancellable, per-operation timeouts and retries
 - [ ] **A08** `bug` [#64](https://github.com/alfkonee/giteye/issues/64) Add frontend unit/component tests and live Tauri workflow tests to CI
-- [ ] **A09** `bug` [#65](https://github.com/alfkonee/giteye/issues/65) Add graceful shutdown and interrupted-job recovery on startup
+- [x] **A09** `bug` [#65](https://github.com/alfkonee/giteye/issues/65) Add graceful shutdown and interrupted-job recovery on startup — closed by PR [#104](https://github.com/alfkonee/giteye/pull/104)
 - [x] **A10** `bug` [#66](https://github.com/alfkonee/giteye/issues/66) Use the upstream-setup workflow from every Push/Pull entry point — closed by PR
 
 ## P1 — Daily usability & polish
