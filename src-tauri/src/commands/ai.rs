@@ -15,27 +15,36 @@ pub fn save_ai_config(
 }
 
 #[tauri::command]
-pub fn list_ai_models(
+pub async fn list_ai_models(
     app_handle: tauri::AppHandle,
     request: ai_service::ListAiModelsRequest,
 ) -> Result<ai_service::AiModelListView, AppError> {
-    ai_service::list_ai_models(&app_handle, request)
+    tauri::async_runtime::spawn_blocking(move || ai_service::list_ai_models(&app_handle, request))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn resolve_conflict_with_ai(
+pub async fn resolve_conflict_with_ai(
     app_handle: tauri::AppHandle,
     base: String,
     ours: String,
     theirs: String,
 ) -> Result<String, AppError> {
-    ai_service::resolve_merge_conflict(&app_handle, &base, &ours, &theirs)
+    tauri::async_runtime::spawn_blocking(move || {
+        ai_service::resolve_merge_conflict(&app_handle, &base, &ours, &theirs)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn suggest_commit_message(
+pub async fn suggest_commit_message(
     app_handle: tauri::AppHandle,
     diffs: Vec<ai_service::CommitMessageDiff>,
 ) -> Result<String, AppError> {
-    ai_service::suggest_commit_message(&app_handle, &diffs)
+    tauri::async_runtime::spawn_blocking(move || ai_service::suggest_commit_message(&app_handle, &diffs))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
+

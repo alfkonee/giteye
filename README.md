@@ -65,10 +65,10 @@ src/                          src-tauri/src/
 ### Git Operations
 - **Repository workspace**: Open multiple local repos, switch between top-level repo tabs, preserve per-repo view/selection state, repo info (branch, clean/dirty, HEAD), recent repos
 - **Status**: Full status via `git status --porcelain=v2`, staged/unstaged file lists
-- **Working Tree**: Stage/unstage individual files, stage all, unstage all
+- **Workspace**: One pane combining staging (stage/unstage individual files, stage all, unstage all), the commit graph, and the merge/rebase/conflict drawer, so the commit → integrate → resolve loop needs no view switch
 - **Commit**: Commit with message (Ctrl+Enter), amend HEAD, sign off commits, bypass hooks when explicitly requested, and create empty marker commits
-- **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation)
-- **Commits**: History with virtualization, commit details, changed file list
+- **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation); double-clicking a remote branch checks out a tracking local branch when none exists and fast-forwards the tracking branch when one does
+- **Commits**: History with virtualization, commit details, changed file list, and ref-aware merge/rebase actions on any commit carrying a branch or tag
 - **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view; long-running network operations run as background jobs with streamed logs
 - **Stashes**: Create, apply, pop, and drop local stashes, including untracked files
 - **Tags**: List local tags, create lightweight/annotated tags, delete local tags
@@ -90,8 +90,8 @@ src/                          src-tauri/src/
 - Toolbar showing repo name, branch, clean/dirty status, remote status shortcut, and diff mode toggle
 - Toolbar command search executes local navigation, refresh, remote sync, and diff-mode actions
 - Global command palette (Ctrl/⌘K) searches repository sessions, recent/favorite repositories, views, and core app commands from any screen
-- In-app command log drawer for GitEye-triggered background job metadata, stdout/stderr, final status, and output clearing
-- Commit history with TanStack Virtual for large lists
+- Quake-style command log console (backquote toggles, `Esc` closes, drag-resizable, height persisted) for GitEye-triggered background job metadata, stdout/stderr, final status, and output clearing; reachable from the status bar
+- Commit history with TanStack Virtual for large lists, pinned by an uncommitted-changes row above HEAD that opens the commit UI in the detail pane
 - Diff viewer with syntax-colored unified diff fallback
 - File status badges (M/A/D/R/C/!/??/!!/T)
 - Settings wire theme, diff mode, per-repository Git author identity, credential helper config, and local SSH key management; Git path remains informational
@@ -174,8 +174,8 @@ cd src-tauri && cargo check && cargo fmt --check
 2. On the Welcome screen, either:
    - Type/paste a repository path and click **Open**
    - Click the folder icon to browse with the native file dialog
-3. The repository loads and displays the Working Tree view
-4. Switch between Working Tree, History, and Settings via the sidebar
+3. The repository loads and displays the Workspace view (changes, history, integrate drawer)
+4. Switch between Workspace, Branches, and the remaining views via the sidebar
 
 
 ---
