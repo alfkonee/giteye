@@ -24,7 +24,6 @@ import {
   type ViewDefinition,
 } from "../../lib/view-registry";
 import type { Branch, ViewType } from "../../types/git";
-import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
 import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";

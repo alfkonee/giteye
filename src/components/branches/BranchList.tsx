@@ -61,7 +61,6 @@ export function BranchList() {
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
