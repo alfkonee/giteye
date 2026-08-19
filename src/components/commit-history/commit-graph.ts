@@ -1,8 +1,10 @@
 import type { CommitSummary } from "../../types/git";
 
-const LANE_SPACING = 14;
-const HORIZONTAL_PADDING = 12;
-const MIN_WIDTH = 96;
+/** Row geometry shared by the commit list, its graph SVG, and the virtualizer. */
+export const COMMIT_ROW_HEIGHT = 28;
+const LANE_SPACING = 12;
+const HORIZONTAL_PADDING = 10;
+const MIN_WIDTH = 76;
 const MAX_VISIBLE_LANES = 10;
 
 const LANE_COLORS = [

@@ -8,11 +8,13 @@ interface BranchSwitchDialogProps {
   branch: Branch | null;
   isClean: boolean;
   isPending: boolean;
+  /** Extra action GitEye performs right after the checkout succeeds. */
+  followUpNote?: string | null;
   onCancel: () => void;
   onConfirm: (strategy: CheckoutBranchStrategy) => void;
 }
 
-export function BranchSwitchDialog({ branch, isClean, isPending, onCancel, onConfirm }: BranchSwitchDialogProps) {
+export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, onCancel, onConfirm }: BranchSwitchDialogProps) {
   if (!branch) return null;
 
   const branchKind = branch.isRemote ? "remote" : "local";
@@ -70,6 +72,12 @@ export function BranchSwitchDialog({ branch, isClean, isPending, onCancel, onCon
             </div>
           </div>
         )}
+
+        {followUpNote ? (
+          <p className="mt-3 rounded-lg border border-[color:rgba(31,111,235,0.3)] bg-[color:rgba(31,111,235,0.1)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+            {followUpNote}
+          </p>
+        ) : null}
 
         <div className="mt-5 grid gap-2 min-[480px]:grid-cols-[auto_auto_1fr]">
           <Button

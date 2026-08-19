@@ -5,6 +5,7 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
 import { Sparkles, GitCommitHorizontal } from "lucide-react";
 import { Button, Textarea } from "../ui";
+import { cn } from "../../lib/cn";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -88,123 +89,126 @@ export function CommitBox() {
     }
   };
 
+  const statusMessage = commitMutation.isPending
+    ? "Committing…"
+    : amendMutation.isPending
+      ? "Amending HEAD…"
+      : aiSuggestionError
+        ? `AI error: ${aiSuggestionError}`
+        : commitMutation.isError
+          ? `Error: ${commitMutation.error}`
+          : amendMutation.isError
+            ? `Error: ${amendMutation.error}`
+            : commitMutation.isSuccess
+              ? "Committed."
+              : amendMutation.isSuccess
+                ? "HEAD amended."
+                : stagedCount === 0 && !allowEmpty
+                  ? "Stage files first, or enable Allow empty for marker commits."
+                  : "Write a concise summary; add details on following lines.";
+  const hasError = commitMutation.isError || amendMutation.isError || Boolean(aiSuggestionError);
+
   return (
-    <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] p-2.5 shadow-lg shadow-black/10">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
-              <GitCommitHorizontal className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-[var(--color-text-primary)]">
-                Commit staged changes
-              </div>
-              <div className="truncate text-[11px] text-[var(--color-text-muted)]">
-                Target branch: <span className="text-[var(--color-text-secondary)]">{branchName}</span>
-              </div>
-            </div>
-          </div>
-          <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--color-text-muted)]">
-            {subjectLength}/72
-          </span>
-        </div>
+    <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5">
+        <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+        <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">Commit staged changes</span>
+        <span className="min-w-0 truncate text-[11px] text-[var(--color-text-muted)]">
+          → <span className="text-[var(--color-text-secondary)]">{branchName}</span>
+        </span>
+        <span className="giteye-chip ml-auto shrink-0 tabular-nums" data-tone={stagedCount > 0 ? "accent" : undefined}>
+          {stagedCount} staged
+        </span>
+        <span className="giteye-chip shrink-0 tabular-nums" data-tone={subjectLength > 72 ? "warning" : undefined}>
+          {subjectLength}/72
+        </span>
+      </header>
+
+      <div className="min-h-0 flex-1 p-2">
         <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Summary (required) — Ctrl+Enter commits to ${branchName}`}
-          rows={3}
-          className="w-full text-[13px]"
+          className="h-full min-h-[96px] w-full resize-none text-[12.5px] leading-5"
         />
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[var(--color-text-muted)]">
+      </div>
+
+      <div className="shrink-0 border-t border-[var(--color-border-muted)] px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--color-text-muted)]">
           <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={signOff}
               onChange={(event) => setSignOff(event.target.checked)}
-              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+              className="h-3 w-3 accent-[var(--color-accent)]"
             />
-            <span>
-              Sign-off <span className="text-[var(--color-text-subtle)]">(-s)</span>
-            </span>
+            <span>Sign-off <span className="text-[var(--color-text-subtle)]">(-s)</span></span>
           </label>
           <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={noVerify}
               onChange={(event) => setNoVerify(event.target.checked)}
-              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+              className="h-3 w-3 accent-[var(--color-accent)]"
             />
-            <span>
-              Skip hooks <span className="text-[var(--color-text-subtle)]">(--no-verify)</span>
-            </span>
+            <span>Skip hooks <span className="text-[var(--color-text-subtle)]">(--no-verify)</span></span>
           </label>
           <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={allowEmpty}
               onChange={(event) => setAllowEmpty(event.target.checked)}
-              className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+              className="h-3 w-3 accent-[var(--color-accent)]"
             />
-            <span>
-              Allow empty <span className="text-[var(--color-text-subtle)]">(--allow-empty)</span>
-            </span>
+            <span>Allow empty <span className="text-[var(--color-text-subtle)]">(--allow-empty)</span></span>
           </label>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-[12px] text-[var(--color-text-muted)]">
-            {commitMutation.isPending
-              ? "Committing..."
-              : amendMutation.isPending
-              ? "Amending HEAD..."
-              : aiSuggestionError
-              ? `AI error: ${aiSuggestionError}`
-              : commitMutation.isError
-              ? `Error: ${commitMutation.error}`
-              : amendMutation.isError
-              ? `Error: ${amendMutation.error}`
-              : commitMutation.isSuccess
-              ? "Committed!"
-              : amendMutation.isSuccess
-              ? "HEAD amended!"
-              : stagedCount === 0 && !allowEmpty
-              ? "Stage files first, or enable Allow empty for marker commits."
-              : "Write a concise summary; add details on following lines."}
+          <span className="ml-auto truncate text-[10.5px]" title={aiStatus}>
+            {aiStatus}
           </span>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-[11px] text-[var(--color-text-muted)]">{aiStatus}</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Sparkles className="h-3.5 w-3.5" />}
-              onClick={() => aiSuggestionMutation.mutate()}
-              disabled={stagedCount === 0 || aiSuggestionMutation.isPending || commitMutation.isPending || amendMutation.isPending}
-              title={stagedCount === 0 ? "Stage files first to generate a suggestion" : `Generate a commit message using ${aiProviderLabel}${aiConfig?.apiKeyConfigured ? "" : " (API key missing)"}`}
-            >
-              {aiSuggestionMutation.isPending ? "Thinking…" : "Suggest"}
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleAmend}
-              disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
-              title={`Amend HEAD with ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}. Leave the message blank to reuse the current HEAD message.`}
-            >
-              Amend HEAD
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Sparkles className="h-3.5 w-3.5" />}
-              onClick={handleCommit}
-              disabled={commitBlocked || commitMutation.isPending || amendMutation.isPending}
-            >
-              Commit
-            </Button>
-          </div>
+        </div>
+
+        <p
+          className={cn(
+            "mt-1 truncate text-[11px]",
+            hasError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]",
+          )}
+          title={statusMessage}
+        >
+          {statusMessage}
+        </p>
+
+        <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Sparkles className="h-3.5 w-3.5" />}
+            onClick={() => aiSuggestionMutation.mutate()}
+            disabled={stagedCount === 0 || aiSuggestionMutation.isPending || commitMutation.isPending || amendMutation.isPending}
+            title={stagedCount === 0 ? "Stage files first to generate a suggestion" : `Generate a commit message using ${aiProviderLabel}${aiConfig?.apiKeyConfigured ? "" : " (API key missing)"}`}
+          >
+            {aiSuggestionMutation.isPending ? "Thinking…" : "Suggest"}
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleAmend}
+            disabled={!repoInfo?.headCommit || commitMutation.isPending || amendMutation.isPending}
+            title={`Amend HEAD with ${stagedCount} staged file${stagedCount === 1 ? "" : "s"}. Leave the message blank to reuse the current HEAD message.`}
+          >
+            Amend HEAD
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<GitCommitHorizontal className="h-3.5 w-3.5" />}
+            onClick={handleCommit}
+            disabled={commitBlocked || commitMutation.isPending || amendMutation.isPending}
+          >
+            Commit
+          </Button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

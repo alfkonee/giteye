@@ -792,8 +792,7 @@ export interface GitRecoveryState {
 export type GlobalViewType = "repo-hub" | "settings";
 
 export type RepositoryViewType =
-  | "working-tree"
-  | "history"
+  | "workspace"
   | "branches"
   | "remotes"
   | "stashes"
@@ -805,7 +804,6 @@ export type RepositoryViewType =
   | "review-studio"
   | "worktrees"
   | "submodules"
-  | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
   | "custom-command";

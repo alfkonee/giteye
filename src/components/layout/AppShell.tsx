@@ -4,12 +4,14 @@ import { PanelLayout } from "./PanelLayout";
 import { AppChrome } from "./AppChrome";
 import { RepositoryTabs } from "./RepositoryTabs";
 import { useAppStore } from "../../stores/app-store";
+import { useJobStore, isTerminalStatus } from "../../stores/job-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
-import { Circle, GitBranch } from "lucide-react";
+import { Circle, GitBranch, TerminalSquare } from "lucide-react";
 import type { RepositoryParent, ViewType } from "../../types/git";
 import { getViewDefinition } from "../../lib/view-registry";
+import { cn } from "../../lib/cn";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -105,8 +107,38 @@ function StatusBar({
           Rebase active
         </span>
       )}
+      <CommandLogStatusButton />
       <span className="giteye-status-optional ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">{getViewDefinition(activeView).label}</span>
     </div>
+  );
+}
+
+/**
+ * Status-bar entry point for the Quake console. Replaces the old floating
+ * launcher pill; shows running-job pressure without covering the workspace.
+ */
+function CommandLogStatusButton() {
+  const jobsById = useJobStore((state) => state.jobsById);
+  const open = useJobStore((state) => state.commandLogOpen);
+  const toggleCommandLog = useJobStore((state) => state.toggleCommandLog);
+  const runningCount = Object.values(jobsById).filter((job) => !isTerminalStatus(job.status)).length;
+
+  return (
+    <button
+      type="button"
+      onClick={toggleCommandLog}
+      aria-pressed={open}
+      title="Command log console (`)"
+      className={cn(
+        "giteye-chip px-1.5 text-[10.5px] transition-colors hover:text-[var(--color-text-primary)]",
+        open && "text-[var(--color-text-primary)]",
+      )}
+      data-tone={runningCount > 0 ? "accent" : undefined}
+    >
+      <TerminalSquare className="h-3 w-3 shrink-0" />
+      <span>{runningCount > 0 ? `${runningCount} running` : "Command log"}</span>
+      <kbd className="giteye-kbd ml-0.5">`</kbd>
+    </button>
   );
 }
 

@@ -11,6 +11,8 @@ import { EmptyState } from "../common/EmptyState";
 import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
+import { CommitBox } from "../working-tree/CommitBox";
+import { isWorkingTreeSelection } from "../../lib/working-tree-node";
 
 export function PanelLayout() {
   const activeView = useAppStore((s) => s.activeView);
@@ -30,7 +32,7 @@ export function PanelLayout() {
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
   );
   const { data: submodules } = useQuery(
-    gitQueries.submodules(activeRepoPath, activeView === "working-tree" && Boolean(activeRepoPath))
+    gitQueries.submodules(activeRepoPath, activeView === "workspace" && Boolean(activeRepoPath))
   );
   const selectedSubmodule = submodules?.find((submodule) => submodule.path === selectedFilePath) ?? null;
   const openSubmodule = useMutation(gitMutations.openSubmodule(activeRepoPath));
@@ -64,6 +66,10 @@ export function PanelLayout() {
   const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {
+    if (isWorkingTreeSelection(selectedCommitHash)) {
+      return <CommitBox />;
+    }
+
     if (selectedCommitRange.length === 2) {
       return <CommitRangeDiffWrapper />;
     }

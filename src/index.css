@@ -120,10 +120,10 @@
   /* Typography */
   --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, Consolas, monospace;
-  --font-size-ui: 14px;
-  --font-size-caption: 12px;
-  --font-size-title: 18px;
-  --line-height-ui: 1.5;
+  --font-size-ui: 13px;
+  --font-size-caption: 11px;
+  --font-size-title: 16px;
+  --line-height-ui: 1.4;
   --letter-spacing-label: 0.08em;
 
   /* Density and sizing */
@@ -133,14 +133,14 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --size-toolbar: 48px;
-  --size-window-chrome: 40px;
-  --size-statusbar: 28px;
-  --size-row-compact: 34px;
-  --size-row: 38px;
-  --size-control: 34px;
-  --size-sidebar: 248px;
-  --size-panel-min: 280px;
+  --size-toolbar: 40px;
+  --size-window-chrome: 34px;
+  --size-statusbar: 24px;
+  --size-row-compact: 26px;
+  --size-row: 30px;
+  --size-control: 28px;
+  --size-sidebar: 228px;
+  --size-panel-min: 260px;
 
   /* Radius */
   --radius-window: 8px;
@@ -625,12 +625,12 @@ a {
 .giteye-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  min-height: 22px;
+  gap: 0.25rem;
+  min-height: 18px;
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-badge);
   background: var(--color-bg-tertiary);
-  padding: 0 0.5rem;
+  padding: 0 0.35rem;
   color: var(--color-text-muted);
   font-size: var(--font-size-caption);
   font-weight: 550;
@@ -665,12 +665,12 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   min-height: var(--size-control);
   border: 1px solid transparent;
   border-radius: var(--radius-control);
-  padding: 0 0.7rem;
-  font-size: 12.5px;
+  padding: 0 0.55rem;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
   transition:
@@ -749,21 +749,21 @@ a {
 }
 
 .giteye-btn-sm {
-  min-height: 32px;
-  padding: 0 0.65rem;
-  font-size: 12.5px;
+  min-height: 24px;
+  padding: 0 0.45rem;
+  font-size: 11.5px;
 }
 
 .giteye-btn-sm.giteye-btn-icon {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
 }
 
 .giteye-btn-sm.giteye-btn-icon > svg,
 .giteye-btn-sm.giteye-btn-icon > span > svg {
-  width: 20px;
-  height: 20px;
+  width: 15px;
+  height: 15px;
 }
 
 .giteye-btn svg {
@@ -776,7 +776,7 @@ a {
   border: 1px solid var(--color-border-muted);
   border-radius: var(--radius-control);
   background: var(--color-bg-inset);
-  padding: 0 0.7rem;
+  padding: 0 0.5rem;
   color: var(--color-text-primary);
   outline: none;
   transition:
@@ -910,9 +910,73 @@ a {
 
 
 .giteye-menu-item {
-  min-height: 36px;
-  font-size: 13px;
-  line-height: 1.35;
+  min-height: 26px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Shared density for right-click menus (branch, commit, working-tree path). */
+.giteye-context-menu {
+  padding-block: 3px;
+}
+
+.giteye-context-header {
+  padding: 4px 9px 5px;
+  line-height: 1.3;
+}
+
+.giteye-context-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 3px 9px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.giteye-context-item:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.giteye-context-item:disabled {
+  cursor: not-allowed;
+  opacity: var(--state-disabled-opacity);
+}
+
+.giteye-context-item svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* Primary label plus a muted, single-line explanation on the same row. */
+.giteye-context-item > .giteye-context-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.giteye-context-item > .giteye-context-detail {
+  max-width: 45%;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.giteye-context-separator {
+  margin: 3px 0;
+  border-top: 1px solid var(--color-border-muted);
 }
 
 .giteye-pane-close {
@@ -943,7 +1007,29 @@ a {
 [role="menu"] button,
 [role="menuitem"],
 [role="option"] {
-  min-height: 36px;
+  min-height: 24px;
+}
+
+
+/* Quake-style drop-down console: slides out of the top edge of the window. */
+.giteye-quake-console {
+  transition: transform var(--duration-normal, 180ms) var(--ease-standard, ease);
+  will-change: transform;
+}
+
+.giteye-quake-console[data-state="closed"] {
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+
+.giteye-quake-console[data-state="open"] {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .giteye-quake-console {
+    transition: none;
+  }
 }
 .giteye-banner {
   font-size: 13px;
@@ -1033,48 +1119,12 @@ a {
     display: none !important;
   }
 
-  .giteye-command-log-trigger {
-    bottom: 40px !important;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    justify-content: center;
-    padding: 0 !important;
+  .giteye-quake-console {
+    height: min(70vh, 420px) !important;
   }
 
-  .giteye-command-log-label {
-    display: none;
-  }
-
-  .giteye-command-log-count {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    display: flex;
-    min-width: 18px;
-    min-height: 18px;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    padding: 0 4px;
-    font-size: 0;
-  }
-
-  .giteye-command-log-count::after {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--color-accent);
-  }
-
-  .giteye-command-log {
-    inset: 8px !important;
-    width: auto !important;
-  }
-
-  .giteye-command-log-sidebar {
-    width: min(280px, 44vw) !important;
+  .giteye-quake-console aside {
+    width: min(200px, 40vw) !important;
   }
 }
 

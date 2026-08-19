@@ -8,8 +8,10 @@ import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { History } from "lucide-react";
-import { layoutCommitGraph } from "./commit-graph";
+import { COMMIT_ROW_HEIGHT, colorForLane, layoutCommitGraph } from "./commit-graph";
 import { ReflogRecoveryPanel } from "./HistorySurgeryActions";
+import { WorkingTreeRow } from "./WorkingTreeRow";
+import { WORKING_TREE_COMMIT_HASH } from "../../lib/working-tree-node";
 
 const INITIAL_COMMIT_LIMIT = 100;
 const COMMIT_LIMIT_INCREMENT = 100;
@@ -34,10 +36,15 @@ export function CommitHistory() {
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const parentRef = useRef<HTMLDivElement>(null);
   const rangeSelectionAnchor = useRef<string | null>(null);
+  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
   const hasMoreCommits =
     isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
   const graphRows = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
   const graphWidth = graphRows.values().next().value?.width ?? 96;
+  const headRow = commits?.[0] ? graphRows.get(commits[0].hash) : undefined;
+  const stagedCount = snapshot?.summary.stagedCount ?? 0;
+  const unstagedCount = snapshot?.summary.unstagedCount ?? 0;
+  const hasWorkingTreeChanges = stagedCount + unstagedCount > 0;
 
   const selectCommit = useCallback((hash: string, event: MouseEvent<HTMLDivElement>) => {
     const extendSelection = event.ctrlKey || event.metaKey || event.shiftKey;
@@ -80,7 +87,7 @@ export function CommitHistory() {
   const virtualizer = useVirtualizer({
     count: (commits?.length ?? 0) + (hasMoreCommits ? 1 : 0),
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 42,
+    estimateSize: () => COMMIT_ROW_HEIGHT,
     overscan: 10,
   });
   const virtualItems = virtualizer.getVirtualItems();
@@ -131,48 +138,54 @@ export function CommitHistory() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg-primary)]" onContextMenu={(event) => event.preventDefault()}>
-      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/25">
-            <History className="h-3.5 w-3.5" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-[14px] font-semibold text-[var(--color-text-primary)]">
-              History
-            </h2>
-            <p className="text-[11px] text-[var(--color-text-muted)]">
-              {selectedCommitRange.length === 2
-                ? `Comparing ${selectedCommitRange[0].slice(0, 8)} → ${selectedCommitRange[1].slice(0, 8)}`
-                : `${commits.length} commits across all branches · Ctrl/⌘ or Shift-select another commit to compare`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowReflog((value) => !value)}
-            className="ml-auto rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-          >
-            {showReflog ? "Hide reflog" : "Reflog recovery"}
-          </button>
-        </div>
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 py-1.5">
+        <History className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+        <h2 className="text-[13px] font-semibold text-[var(--color-text-primary)]">History</h2>
+        <p className="min-w-0 flex-1 truncate text-[10.5px] text-[var(--color-text-muted)]">
+          {selectedCommitRange.length === 2
+            ? `Comparing ${selectedCommitRange[0].slice(0, 8)} → ${selectedCommitRange[1].slice(0, 8)}`
+            : `${commits.length} commits · Ctrl/⌘ or Shift-select to compare`}
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowReflog((value) => !value)}
+          className="giteye-btn giteye-btn-secondary giteye-btn-sm shrink-0"
+        >
+          {showReflog ? "Hide reflog" : "Reflog"}
+        </button>
       </div>
 
       <ReflogRecoveryPanel open={showReflog} />
 
       <div
-        className="sticky top-0 z-10 grid items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] backdrop-blur"
+        className="sticky top-0 z-10 grid items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)] backdrop-blur"
         style={{
-          gridTemplateColumns: `${graphWidth}px 64px minmax(0,1fr) 120px 74px 40px`,
+          gridTemplateColumns: `${graphWidth}px 58px minmax(0,1fr) 104px 62px 26px`,
         }}
       >
-        <span className="pl-2">Graph</span>
+        <span className="pl-1.5">Graph</span>
         <span>Hash</span>
         <span>Message</span>
         <span className="text-right">Author</span>
         <span className="text-right">Date</span>
-        <span className="text-right pr-1">Menu</span>
+        <span />
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-auto px-1.5 py-1.5">
+      {hasWorkingTreeChanges ? (
+        <div className="shrink-0 border-b border-[var(--color-border-muted)] px-1 pt-1">
+          <WorkingTreeRow
+            graphWidth={graphWidth}
+            headLane={headRow?.commitLane ?? 0}
+            headColor={headRow?.color ?? colorForLane(0)}
+            stagedCount={stagedCount}
+            unstagedCount={unstagedCount}
+            isSelected={selectedCommitRange.includes(WORKING_TREE_COMMIT_HASH)}
+            onSelect={() => setSelectedCommitRange([WORKING_TREE_COMMIT_HASH])}
+          />
+        </div>
+      ) : null}
+
+      <div ref={parentRef} className="flex-1 overflow-auto px-1 py-1">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

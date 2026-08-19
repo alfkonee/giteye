@@ -70,7 +70,7 @@ export function CommandPalette() {
   const setTheme = useAppStore((state) => state.setTheme);
   const diffMode = useAppStore((state) => state.diffMode);
   const setDiffMode = useAppStore((state) => state.setDiffMode);
-  const setCommandLogOpen = useJobStore((state) => state.setCommandLogOpen);
+  const toggleCommandLog = useJobStore((state) => state.toggleCommandLog);
   const setTranscriptOpen = useNoticeStore((state) => state.setTranscriptOpen);
   const queryClient = useQueryClient();
   const { data: recentRepos } = useQuery({
@@ -233,12 +233,12 @@ export function CommandPalette() {
         id: "command:command-log",
         kind: "command",
         section: "Commands",
-        label: "Open Command Log",
-        detail: "Inspect background Git jobs, streamed output, and failures",
-        keywords: "terminal output jobs transcript background logs stderr stdout",
+        label: "Toggle Command Log Console",
+        detail: "Drop-down job console with streamed output (backquote key)",
+        keywords: "terminal quake console output jobs background logs stderr stdout",
         icon: TerminalSquare,
         priority: 90,
-        run: () => setCommandLogOpen(true),
+        run: toggleCommandLog,
       },
       {
         id: "command:operation-transcript",
@@ -335,7 +335,7 @@ export function CommandPalette() {
       runPush,
       setActiveRepoPath,
       setActiveView,
-      setCommandLogOpen,
+      toggleCommandLog,
       setDiffMode,
       setGlobalView,
       setTheme,

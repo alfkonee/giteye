@@ -292,16 +292,16 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
 
   return (
-    <div className="giteye-toolbar flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2.5">
+    <div className="giteye-toolbar flex shrink-0 select-none items-center gap-1 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2">
       <div className="giteye-toolbar-repo flex min-w-0 shrink-0 items-center gap-1.5">
         <button
           type="button"
           onClick={() => setActiveRepoPath(null)}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
           title="Repo Hub"
           aria-label="Open Repo Hub"
         >
-          <Home className="h-4 w-4" />
+          <Home className="h-3.5 w-3.5" />
         </button>
 
         <div className="relative" ref={repoMenuRef}>
@@ -309,14 +309,14 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
             type="button"
             onClick={() => setRepoMenuOpen((open) => !open)}
             aria-expanded={repoMenuOpen}
-            className="giteye-btn giteye-btn-secondary giteye-btn-sm max-w-[min(560px,45vw)] gap-1.5 px-2 text-[13px] font-semibold text-[var(--color-text-primary)]"
+            className="giteye-btn giteye-btn-secondary giteye-btn-sm max-w-[min(560px,45vw)] gap-1.5 px-2 text-[12px] font-semibold text-[var(--color-text-primary)]"
             title={
               submoduleParent
                 ? `${repoName ?? "Repository"} is submodule ${submoduleParent.submodulePath} of parent repository ${submoduleParent.name} (${submoduleParent.path})`
                 : "Switch repository"
             }
           >
-            <FolderGit2 className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+            <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
             <span className="max-w-[180px] shrink-0 truncate">{repoName ?? "GitEye"}</span>
             {submoduleParent ? (
               <span
@@ -391,10 +391,10 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
             <button
               onClick={() => setBranchMenuOpen((open) => !open)}
               aria-expanded={branchMenuOpen}
-              className="giteye-btn giteye-btn-secondary giteye-btn-sm max-w-[min(200px,28vw)] gap-1.5 px-2 text-[13px] font-medium text-[var(--color-text-secondary)]"
+              className="giteye-btn giteye-btn-secondary giteye-btn-sm max-w-[min(200px,28vw)] gap-1.5 px-2 text-[12px] font-medium text-[var(--color-text-secondary)]"
               title="Checkout branch; right-click branch rows for rename, tracking, push, and delete actions"
             >
-              <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+              <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
               <span className="truncate">{currentBranch}</span>
               <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", branchMenuOpen && "rotate-180")} />
             </button>
@@ -498,7 +498,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
             aria-expanded={pushMenuOpen}
             aria-label="More push options"
             title="More push options"
-            className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7 w-5 min-w-5 rounded-l-none border-l-0 px-0 disabled:cursor-not-allowed"
+            className="giteye-btn giteye-btn-secondary giteye-btn-sm w-4 min-w-4 rounded-l-none border-l-0 px-0 disabled:cursor-not-allowed"
           >
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", pushMenuOpen && "rotate-180")} />
           </button>
@@ -545,10 +545,10 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         <button
           type="button"
           onClick={openCommandPalette}
-          className="giteye-input relative flex h-7 w-full max-w-xl items-center py-0 pl-8 pr-2.5 text-left text-[13px] text-[var(--color-text-muted)] shadow-none hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="giteye-input relative flex h-6 w-full max-w-xl items-center py-0 pl-8 pr-2.5 text-left text-[12px] text-[var(--color-text-muted)] shadow-none hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
           style={{ paddingLeft: "2rem", paddingRight: "0.625rem" }}
         >
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" />
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
           <span className="truncate">Search files, branches, commands...</span>
           <kbd className="giteye-kbd ml-auto">⌘K</kbd>
         </button>
@@ -575,7 +575,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
 
       <div className="giteye-toolbar-actions flex shrink-0 items-center gap-0.5">
         {isClean !== undefined && currentBranch && (
-          <div className={cn("hidden h-7 items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-2 text-[12px] xl:flex", isClean ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
+          <div className={cn("hidden h-6 items-center gap-1.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] px-1.5 text-[11px] xl:flex", isClean ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
             <Circle className="h-2.5 w-2.5 fill-current" />
             <span>{workingTreeState}</span>
           </div>
@@ -636,7 +636,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         onMerge={mergeBranch}
         onAdvancedMergeRebase={(branch) => {
           setPendingAdvancedBranchName(branch.shortName);
-          setActiveView("rebase-conflicts");
+          setActiveView("workspace");
         }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
@@ -744,7 +744,7 @@ function ToolbarButton({
       aria-label={title ?? label}
       disabled={disabled}
       className={cn(
-        "giteye-btn giteye-btn-sm gap-1.5 text-[12.5px] disabled:cursor-not-allowed",
+        "giteye-btn giteye-btn-sm gap-1 text-[11.5px] disabled:cursor-not-allowed",
         label ? "px-2" : "giteye-btn-icon",
         tone === "success"
           ? "giteye-btn-success"

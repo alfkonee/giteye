@@ -111,6 +111,12 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
   const isBulkMutating = staged ? unstageAllMutation.isPending : stageAllMutation.isPending;
+  const rowActionsPending =
+    stageMutation.isPending ||
+    unstageMutation.isPending ||
+    stashPathMutation.isPending ||
+    discardFileMutation.isPending ||
+    discardFilesMutation.isPending;
 
   const handleFileClick = (file: GitStatusFile) => {
     setSelectedFile(file.path, staged);
@@ -261,18 +267,18 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
 
   return (
     <div className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
-      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-3 py-1.5 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/95 px-2 py-1 backdrop-blur">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
-        <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
           {title}
         </span>
-        <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-text-muted)]">
+        <span className="rounded-full border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-1 text-[10px] tabular-nums text-[var(--color-text-muted)]">
           {files.length}
         </span>
         <div className="flex-1" />
@@ -298,7 +304,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
       </div>
 
       {!collapsed && (
-        <div className="px-2 py-1.5">
+        <div className="px-1.5 py-1">
           {isLoading ? (
             <div className="flex justify-center py-6">
               <LoadingSpinner size="md" />
@@ -315,9 +321,9 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
               />
             </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {groups.map((group) => (
-                <div key={group.key} className="overflow-hidden rounded-lg bg-[var(--color-bg-secondary)]/35 ring-1 ring-inset ring-[var(--color-border-muted)]/70">
+                <div key={group.key} className="overflow-hidden rounded-md bg-[var(--color-bg-secondary)]/35 ring-1 ring-inset ring-[var(--color-border-muted)]/70">
                   <div className="flex items-center gap-1.5 border-b border-[var(--color-border-muted)]/60 bg-[var(--color-bg-tertiary)]/30 px-2 py-1">
                     <span className={cn("h-2 w-2 rounded-full", group.accentClass)} />
                     <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
@@ -337,7 +343,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                       onFileContextMenu={openFileContextMenu}
                       onDirectoryContextMenu={openDirectoryContextMenu}
                       renderIcon={(file) => (
-                        <StatusBadge status={parseFileStatus(file.status)} className="h-4 w-4 text-[9px]" />
+                        <StatusBadge status={parseFileStatus(file.status)} className="h-3.5 w-3.5 text-[8.5px]" />
                       )}
                       renderSubtext={(file) =>
                         file.oldPath ? (
@@ -346,70 +352,35 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                           </span>
                         ) : null
                       }
-                      renderTrailing={(file, isSelected) => {
-                        const status = parseFileStatus(file.status);
-                        const isMutating =
-                          (staged && unstageMutation.isPending) ||
-                          (!staged && stageMutation.isPending) ||
-                          stashPathMutation.isPending ||
-                          discardFileMutation.isPending;
-
-                        return (
-                          <div className="ml-auto flex items-center gap-0.5">
-                            {!staged && (
-                              <button
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleStashFile(file);
-                                }}
-                                disabled={isMutating}
-                                className={cn(
-                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                  isSelected
-                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                                )}
-                                title="Stash selected file"
-                              >
-                                <Archive className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleDiscardFile(file);
-                              }}
-                              disabled={isMutating}
-                              className={cn(
-                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                isSelected
-                                  ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
-                              )}
-                              title="Discard file changes"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleStageToggle(file);
-                              }}
-                              disabled={isMutating}
-                              className={cn(
-                                "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                isSelected
-                                  ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-                                  : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                                statusTone(status),
-                              )}
-                              title={staged ? "Unstage" : "Stage"}
-                            >
-                              {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        );
-                      }}
+                      renderTrailing={(file, isSelected) => (
+                        <PathActions
+                          staged={staged}
+                          kind="file"
+                          isSelected={isSelected}
+                          pending={rowActionsPending}
+                          statusClass={statusTone(parseFileStatus(file.status))}
+                          onStash={() => handleStashFile(file)}
+                          onDiscard={() => handleDiscardFile(file)}
+                          onStageToggle={() => handleStageToggle(file)}
+                        />
+                      )}
+                      renderDirectoryTrailing={(path, directoryFiles) => (
+                        <PathActions
+                          staged={staged}
+                          kind="folder"
+                          isSelected={false}
+                          pending={rowActionsPending}
+                          onStash={() =>
+                            handleStashTarget({ kind: "directory", path, files: directoryFiles, x: 0, y: 0 })
+                          }
+                          onDiscard={() =>
+                            handleDiscardTarget({ kind: "directory", path, files: directoryFiles, x: 0, y: 0 })
+                          }
+                          onStageToggle={() =>
+                            staged ? unstageMutation.mutate(path) : stageMutation.mutate(path)
+                          }
+                        />
+                      )}
                     />
                   ) : (
                     <div className="divide-y divide-[var(--color-border-muted)]/70">
@@ -417,11 +388,6 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                         const status = parseFileStatus(file.status);
                         const isSelected =
                           selectedFilePath === file.path && selectedFileStaged === staged;
-                        const isMutating =
-                          (staged && unstageMutation.isPending) ||
-                          (!staged && stageMutation.isPending) ||
-                          stashPathMutation.isPending ||
-                          discardFileMutation.isPending;
                         const slash = file.path.lastIndexOf("/");
                         const directory = slash === -1 ? "" : file.path.slice(0, slash + 1);
                         const name = slash === -1 ? file.path : file.path.slice(slash + 1);
@@ -430,7 +396,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                           <div
                             key={file.path}
                             className={cn(
-                              "group grid min-h-[30px] cursor-pointer grid-cols-[18px_minmax(0,1fr)_76px] items-center gap-1.5 px-2 py-0.5 transition-colors",
+                              "group grid min-h-[24px] cursor-pointer grid-cols-[16px_minmax(0,1fr)_64px] items-center gap-1.5 px-1.5 transition-colors",
                               isSelected
                                 ? "giteye-selected-row"
                                 : "hover:bg-[var(--color-bg-hover)]",
@@ -438,11 +404,11 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                             onClick={() => handleFileClick(file)}
                             onContextMenu={(event) => openFileContextMenu(event, file)}
                           >
-                            <StatusBadge status={status} className="h-4 w-4 text-[9px]" />
+                            <StatusBadge status={status} className="h-3.5 w-3.5 text-[8.5px]" />
                             <div className="min-w-0">
                               <div
                                 className={cn(
-                                  "truncate text-[12px] font-medium leading-4",
+                                  "truncate text-[11.5px] font-medium leading-4",
                                   isSelected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
                                 )}
                               >
@@ -459,59 +425,16 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                                 </div>
                               )}
                             </div>
-                            <div className="ml-auto flex items-center gap-0.5">
-                              {!staged && (
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleStashFile(file);
-                                  }}
-                                  disabled={isMutating}
-                                  className={cn(
-                                    "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                    isSelected
-                                      ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-                                      : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                                  )}
-                                  title="Stash selected file"
-                                >
-                                  <Archive className="h-4 w-4" />
-                                </button>
-                              )}
-                              <button
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleDiscardFile(file);
-                                }}
-                                disabled={isMutating}
-                                className={cn(
-                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                  isSelected
-                                    ? "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)] group-hover:opacity-100",
-                                )}
-                                title="Discard file changes"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleStageToggle(file);
-                                }}
-                                disabled={isMutating}
-                                className={cn(
-                                  "inline-flex h-6 w-6 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50",
-                                  isSelected
-                                    ? "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-                                    : "text-[var(--color-text-muted)] opacity-0 hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] group-hover:opacity-100",
-                                  statusTone(status),
-                                )}
-                                title={staged ? "Unstage" : "Stage"}
-                              >
-                                {staged ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                              </button>
-                            </div>
+                            <PathActions
+                              staged={staged}
+                              kind="file"
+                              isSelected={isSelected}
+                              pending={rowActionsPending}
+                              statusClass={statusTone(status)}
+                              onStash={() => handleStashFile(file)}
+                              onDiscard={() => handleDiscardFile(file)}
+                              onStageToggle={() => handleStageToggle(file)}
+                            />
                           </div>
                         );
                       })}
@@ -536,6 +459,93 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         onOpenSubmodule={handleOpenSubmodule}
         onClose={() => setContextTarget(null)}
       />
+    </div>
+  );
+}
+
+/**
+ * Hover actions shared by file rows and folder rows: stash (unstaged only),
+ * discard, and stage/unstage. Folder rows pass the directory path so Git
+ * applies the action to everything beneath it.
+ */
+function PathActions({
+  staged,
+  kind,
+  isSelected,
+  pending,
+  statusClass,
+  onStash,
+  onDiscard,
+  onStageToggle,
+}: {
+  staged: boolean;
+  kind: "file" | "folder";
+  isSelected: boolean;
+  pending: boolean;
+  statusClass?: string;
+  onStash: () => void;
+  onDiscard: () => void;
+  onStageToggle: () => void;
+}) {
+  const base =
+    "inline-flex h-5 w-5 items-center justify-center rounded transition-all disabled:cursor-not-allowed disabled:opacity-50";
+  const idle = isSelected
+    ? ""
+    : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
+
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      {!staged && (
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onStash();
+          }}
+          disabled={pending}
+          className={cn(
+            base,
+            idle,
+            "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+            isSelected && "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10",
+          )}
+          title={`Stash ${kind} changes`}
+        >
+          <Archive className="h-3.5 w-3.5" />
+        </button>
+      )}
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          onDiscard();
+        }}
+        disabled={pending}
+        className={cn(
+          base,
+          idle,
+          "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]",
+          isSelected && "text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10",
+        )}
+        title={`Discard ${kind} changes`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          onStageToggle();
+        }}
+        disabled={pending}
+        className={cn(
+          base,
+          idle,
+          "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
+          isSelected && "text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10",
+          statusClass,
+        )}
+        title={`${staged ? "Unstage" : "Stage"} ${kind}`}
+      >
+        {staged ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+      </button>
     </div>
   );
 }

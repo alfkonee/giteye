@@ -27,6 +27,7 @@ import type { Branch, ViewType } from "../../types/git";
 import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
+import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -44,7 +45,6 @@ export function Sidebar() {
   );
 
   const queryClient = useQueryClient();
-  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{
     branch: Branch;
     x: number;
@@ -102,9 +102,6 @@ export function Sidebar() {
   const branchesQuery = useQuery(
     gitQueries.branches(activeRepoPath, shouldLoadBranches),
   );
-  const checkoutBranch = useMutation(
-    gitMutations.checkoutBranch(queryClient, activeRepoPath),
-  );
   const createBranch = useMutation(
     gitMutations.createBranch(queryClient, activeRepoPath),
   );
@@ -142,6 +139,14 @@ export function Sidebar() {
   const rebaseQuery = useQuery(
     gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
   );
+  const branchActivation = useBranchActivation({
+    repoPath: activeRepoPath,
+    branches: branchesQuery.data ?? [],
+    onAdvancedIntegrate: (ref) => {
+      setPendingAdvancedBranchName(ref);
+      navigate("workspace");
+    },
+  });
 
   const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
@@ -167,8 +172,7 @@ export function Sidebar() {
   const showCollaborationViews =
     hasCollaborationData || isCollaborationView(activeView);
   const viewCounts: Partial<Record<ViewType, number | undefined>> = {
-    "working-tree": statusFileCount,
-    "rebase-conflicts": hasConflicts ? conflictCount : undefined,
+    workspace: hasConflicts ? conflictCount : statusFileCount,
     worktrees: workspaceSummary?.worktreeCount,
     submodules: workspaceSummary?.submoduleCount,
     remotes: remotesQuery.data?.length,
@@ -210,24 +214,13 @@ export function Sidebar() {
     setNarrowSidebarOpen(false);
   };
 
-  const requestBranchSwitch = (branch: Branch) => {
-    if (!branch.isCurrent) {
-      setBranchToSwitch(branch);
-    }
-  };
-
-  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
-    if (!branchToSwitch) return;
-    checkoutBranch.mutate(
-      { branchName: branchToSwitch.shortName, strategy },
-      { onSuccess: () => setBranchToSwitch(null) },
-    );
-  };
-
   const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
     event.preventDefault();
     setContextBranch({ branch, x: event.clientX, y: event.clientY });
   };
+
+  const describeActivation = (branch: Branch) =>
+    describeBranchActivation(branch, branchesQuery.data ?? []);
 
   const createBranchFrom = (branch: Branch) => {
     const name = window.prompt(`New branch name from ${branch.shortName}`);
@@ -287,8 +280,7 @@ export function Sidebar() {
         countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
         tone={
-          definition.id === "rebase-conflicts" &&
-          (hasConflicts || hasActiveRebase)
+          definition.id === "workspace" && (hasConflicts || hasActiveRebase)
             ? "warning"
             : "default"
         }
@@ -371,8 +363,9 @@ export function Sidebar() {
           <>
             <BranchTree
               branches={visibleBranches(localBranches, showAllLocalBranches)}
-              onSwitch={requestBranchSwitch}
+              onSwitch={branchActivation.activateBranch}
               onContextMenu={openBranchContextMenu}
+              describeActivation={describeActivation}
             />
             {localBranches.length > 8 ? (
               <ShowMoreButton
@@ -396,8 +389,9 @@ export function Sidebar() {
               <>
                 <BranchTree
                   branches={visibleBranches(remoteBranches, showAllRemoteBranches)}
-                  onSwitch={requestBranchSwitch}
+                  onSwitch={branchActivation.activateBranch}
                   onContextMenu={openBranchContextMenu}
+                  describeActivation={describeActivation}
                 />
                 {remoteBranches.length > 8 ? (
                   <ShowMoreButton
@@ -503,11 +497,12 @@ export function Sidebar() {
           <span className="ml-auto">Command Menu</span>
         </div>
         <BranchSwitchDialog
-          branch={branchToSwitch}
+          branch={branchActivation.switchBranch}
           isClean={isClean}
-          isPending={checkoutBranch.isPending}
-          onCancel={() => setBranchToSwitch(null)}
-          onConfirm={confirmBranchSwitch}
+          isPending={branchActivation.switchPending}
+          followUpNote={branchActivation.switchFollowUp}
+          onCancel={branchActivation.cancelSwitch}
+          onConfirm={branchActivation.confirmSwitch}
         />
         <BranchContextMenu
           branch={contextBranch?.branch ?? null}
@@ -519,7 +514,7 @@ export function Sidebar() {
           onMerge={mergeBranch}
           onAdvancedMergeRebase={(branch) => {
             setPendingAdvancedBranchName(branch.shortName);
-            navigate("rebase-conflicts");
+            navigate("workspace");
           }}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
@@ -596,15 +591,23 @@ function BranchTree({
   branches,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   branches: Branch[];
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   const tree = buildBranchTree(branches);
   return (
     <div className="pb-1">
-      <BranchTreeContents node={tree} depth={0} onSwitch={onSwitch} onContextMenu={onContextMenu} />
+      <BranchTreeContents
+        node={tree}
+        depth={0}
+        onSwitch={onSwitch}
+        onContextMenu={onContextMenu}
+        describeActivation={describeActivation}
+      />
     </div>
   );
 }
@@ -614,16 +617,26 @@ function BranchTreeContents({
   depth,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   node: BranchTreeNode;
   depth: number;
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   return (
     <>
       {[...node.folders.entries()].map(([name, folder]) => (
-        <BranchFolder key={name} name={name} node={folder} depth={depth} onSwitch={onSwitch} onContextMenu={onContextMenu} />
+        <BranchFolder
+          key={name}
+          name={name}
+          node={folder}
+          depth={depth}
+          onSwitch={onSwitch}
+          onContextMenu={onContextMenu}
+          describeActivation={describeActivation}
+        />
       ))}
       {node.branches.map(({ branch, label }) => (
         <button
@@ -631,7 +644,7 @@ function BranchTreeContents({
           type="button"
           onDoubleClick={() => onSwitch(branch)}
           onContextMenu={(event) => onContextMenu(event, branch)}
-          title={branch.isCurrent ? "Current branch" : "Double-click to switch branch"}
+          title={describeActivation(branch)}
           style={{ paddingLeft: `${24 + depth * 14}px` }}
           className={cn(
             "giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pr-2 text-left text-[12px] transition-colors",
@@ -657,12 +670,14 @@ function BranchFolder({
   depth,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   name: string;
   node: BranchTreeNode;
   depth: number;
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const count = node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
@@ -680,7 +695,15 @@ function BranchFolder({
         <span className="min-w-0 flex-1 truncate">{name}</span>
         <span className="text-[9px] tabular-nums">{count}</span>
       </button>
-      {expanded ? <BranchTreeContents node={node} depth={depth + 1} onSwitch={onSwitch} onContextMenu={onContextMenu} /> : null}
+      {expanded ? (
+        <BranchTreeContents
+          node={node}
+          depth={depth + 1}
+          onSwitch={onSwitch}
+          onContextMenu={onContextMenu}
+          describeActivation={describeActivation}
+        />
+      ) : null}
     </>
   );
 }

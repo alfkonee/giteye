@@ -1,17 +1,15 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  AlertTriangle,
   Archive,
   Box,
   Database,
-  FolderOpen,
   GitBranch,
   GitFork,
   GitPullRequest,
   HardDrive,
-  History,
   Layers,
+  LayoutPanelLeft,
   PlugZap,
   Search,
   ShieldCheck,
@@ -22,16 +20,14 @@ import {
 import type { ViewType } from "../types/git";
 import { BranchList } from "../components/branches/BranchList";
 import { CiStatusView } from "../components/ci/CiStatusView";
-import { CommitHistory } from "../components/commit-history/CommitHistory";
 import { CollaborationConnect } from "../components/collaboration/CollaborationConnect";
-import { AdvancedMergeRebasePanel } from "../components/rebase/AdvancedMergeRebasePanel";
+import { GitWorkspace } from "../components/git-workspace/GitWorkspace";
 import { ArchaeologyView } from "../components/repository/ArchaeologyView";
 import { DiagnosticsView } from "../components/repository/DiagnosticsView";
 import { LfsView, RemotesView, StashesView, TagsView } from "../components/repository/LocalGitViews";
 import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
-import { WorkingTree } from "../components/working-tree/WorkingTree";
 import { CustomCommandView } from "../components/repository/CustomCommandView";
 
 export type ViewGroupId = "core" | "repository" | "collaboration";
@@ -61,21 +57,12 @@ export const viewGroups: ViewGroupDefinition[] = [
 
 export const viewDefinitions: ViewDefinition[] = [
   {
-    id: "working-tree",
-    label: "Working Tree",
-    description: "Stage, unstage, discard, and commit local changes",
+    id: "workspace",
+    label: "Workspace",
+    description: "Stage, commit, browse history, merge, rebase, and resolve conflicts in one pane",
     group: "core",
-    icon: FolderOpen,
-    render: () => <WorkingTree />,
-    detailPane: true,
-  },
-  {
-    id: "history",
-    label: "History",
-    description: "Inspect commits, diffs, reflog, and recovery paths",
-    group: "core",
-    icon: History,
-    render: () => <CommitHistory />,
+    icon: LayoutPanelLeft,
+    render: () => <GitWorkspace />,
     detailPane: true,
   },
   {
@@ -85,14 +72,6 @@ export const viewDefinitions: ViewDefinition[] = [
     group: "core",
     icon: GitBranch,
     render: () => <BranchList />,
-  },
-  {
-    id: "rebase-conflicts",
-    label: "Merge & Rebase",
-    description: "Resolve conflicts and continue in-progress operations",
-    group: "core",
-    icon: AlertTriangle,
-    render: () => <AdvancedMergeRebasePanel />,
   },
   {
     id: "worktrees",

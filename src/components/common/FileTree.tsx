@@ -13,6 +13,8 @@ interface FileTreeProps<T> {
   renderIcon?: (item: T, selected: boolean) => ReactNode;
   renderSubtext?: (item: T, selected: boolean) => ReactNode;
   renderTrailing?: (item: T, selected: boolean) => ReactNode;
+  /** Hover actions for a folder row, mirroring the per-file trailing actions. */
+  renderDirectoryTrailing?: (path: string, items: T[]) => ReactNode;
   className?: string;
 }
 
@@ -45,6 +47,7 @@ export function FileTree<T>({
   renderIcon,
   renderSubtext,
   renderTrailing,
+  renderDirectoryTrailing,
   className,
 }: FileTreeProps<T>) {
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
@@ -63,7 +66,7 @@ export function FileTree<T>({
   };
 
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45", className)}>
+    <div className={cn("overflow-hidden rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/45", className)}>
       <TreeEntries
         entries={sortedEntries(root)}
         depth={0}
@@ -76,6 +79,7 @@ export function FileTree<T>({
         renderIcon={renderIcon}
         renderSubtext={renderSubtext}
         renderTrailing={renderTrailing}
+        renderDirectoryTrailing={renderDirectoryTrailing}
       />
     </div>
   );
@@ -93,6 +97,7 @@ function TreeEntries<T>({
   renderIcon,
   renderSubtext,
   renderTrailing,
+  renderDirectoryTrailing,
 }: {
   entries: TreeEntry<T>[];
   depth: number;
@@ -105,27 +110,33 @@ function TreeEntries<T>({
   renderIcon?: (item: T, selected: boolean) => ReactNode;
   renderSubtext?: (item: T, selected: boolean) => ReactNode;
   renderTrailing?: (item: T, selected: boolean) => ReactNode;
+  renderDirectoryTrailing?: (path: string, items: T[]) => ReactNode;
 }) {
   return (
     <div className="divide-y divide-[var(--color-border-muted)]/70">
       {entries.map((entry) => {
         if (entry.type === "directory") {
           const collapsed = collapsedDirectories.has(entry.path);
+          const items = directoryItems(entry);
           return (
             <div key={entry.path}>
-              <button
-                type="button"
-                onClick={() => onToggleDirectory(entry.path)}
-                onContextMenu={(event) =>
-                  onDirectoryContextMenu?.(event, entry.path, directoryItems(entry))
-                }
-                className="flex min-h-[28px] w-full items-center gap-1.5 px-2 py-0.5 text-left text-[12px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)]"
-                style={{ paddingLeft: depth * 12 + 8 }}
+              <div
+                className="group flex min-h-[22px] w-full items-center gap-1 pr-1 transition-colors hover:bg-[var(--color-bg-hover)]"
+                onContextMenu={(event) => onDirectoryContextMenu?.(event, entry.path, items)}
               >
-                {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-[var(--color-text-muted)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />}
-                <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                <span className="truncate font-medium">{entry.name}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleDirectory(entry.path)}
+                  className="flex min-w-0 flex-1 items-center gap-1 px-1.5 text-left text-[11.5px] text-[var(--color-text-secondary)]"
+                  style={{ paddingLeft: depth * 10 + 6 }}
+                >
+                  {collapsed ? <ChevronRight className="h-3 w-3 text-[var(--color-text-muted)]" /> : <ChevronDown className="h-3 w-3 text-[var(--color-text-muted)]" />}
+                  <Folder className="h-3 w-3 shrink-0 text-[var(--color-accent)]" />
+                  <span className="truncate font-medium">{entry.name}</span>
+                  <span className="shrink-0 text-[9.5px] tabular-nums text-[var(--color-text-muted)]">{items.length}</span>
+                </button>
+                {renderDirectoryTrailing?.(entry.path, items)}
+              </div>
               {!collapsed && (
                 <TreeEntries
                   entries={sortedEntries(entry)}
@@ -139,6 +150,7 @@ function TreeEntries<T>({
                   renderIcon={renderIcon}
                   renderSubtext={renderSubtext}
                   renderTrailing={renderTrailing}
+                  renderDirectoryTrailing={renderDirectoryTrailing}
                 />
               )}
             </div>
@@ -160,7 +172,7 @@ function TreeEntries<T>({
               }
             }}
             className={cn(
-              "group grid min-h-[30px] w-full cursor-pointer grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 py-0.5 text-left transition-colors",
+              "group grid min-h-[24px] w-full cursor-pointer grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 px-1.5 text-left transition-colors",
               selected
                 ? "giteye-selected-row"
                 : "hover:bg-[var(--color-bg-hover)]",
@@ -172,7 +184,7 @@ function TreeEntries<T>({
             ) : (
               <File
                 className={cn(
-                  "h-3.5 w-3.5",
+                  "h-3 w-3",
                   selected ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
                 )}
               />
@@ -180,7 +192,7 @@ function TreeEntries<T>({
             <span className="min-w-0">
               <span
                 className={cn(
-                  "block truncate text-[12px] font-medium leading-4",
+                  "block truncate text-[11.5px] font-medium leading-4",
                   selected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
                 )}
               >

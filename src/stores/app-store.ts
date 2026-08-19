@@ -8,7 +8,7 @@ import type {
   ViewType,
 } from "../types/git";
 
-const DEFAULT_REPOSITORY_VIEW: ViewType = "working-tree";
+const DEFAULT_REPOSITORY_VIEW: ViewType = "workspace";
 
 function createSelectedState(repoPath: string | null): SelectedEntityState {
   return {

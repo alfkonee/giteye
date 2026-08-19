@@ -3,7 +3,7 @@ import type { Branch, CommitSummary } from "../../types/git";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
 import type { CommitGraphRow } from "./commit-graph";
-import { laneX } from "./commit-graph";
+import { COMMIT_ROW_HEIGHT, laneX } from "./commit-graph";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 import { buildDisplayRefs, describeRef, RefPill, type DisplayRef } from "./commit-refs";
 
@@ -39,7 +39,8 @@ export function CommitListItem({
   };
 
   const style: CSSProperties = {
-    gridTemplateColumns: `${graph.width}px 64px minmax(0,1fr) 120px 74px 40px`,
+    gridTemplateColumns: `${graph.width}px 58px minmax(0,1fr) 104px 62px 26px`,
+    height: `${COMMIT_ROW_HEIGHT}px`,
   };
 
   return (
@@ -49,7 +50,7 @@ export function CommitListItem({
       role="row"
       aria-selected={isSelected}
       className={cn(
-        "grid h-[42px] items-center gap-2 rounded-lg px-2.5 transition-colors select-none",
+        "grid items-center gap-1.5 rounded-md px-2 transition-colors select-none",
         isHead && "font-semibold",
         isSelected
           ? "giteye-selected-row"
@@ -61,14 +62,14 @@ export function CommitListItem({
     >
       <CommitGraph graph={graph} selected={isSelected} refs={displayRefs} />
 
-      <span className="truncate font-mono text-[11px] text-[var(--color-accent)]">
+      <span className="truncate font-mono text-[10.5px] text-[var(--color-accent)]">
         {truncateHash(commit.shortHash)}
       </span>
 
       <span className="flex min-w-0 items-center gap-2">
         <span
           className={cn(
-            "truncate text-[12px] text-[var(--color-text-primary)]",
+            "truncate text-[11.5px] text-[var(--color-text-primary)]",
             isHead ? "font-bold" : "font-medium",
           )}
         >
@@ -108,11 +109,12 @@ export function CommitListItem({
         {formatRelativeTime(commit.timestamp)}
       </span>
 
-      <CommitActionStrip target={commit} isHeadCommit={isHead} compact />
+      <CommitActionStrip target={commit} isHeadCommit={isHead} refs={displayRefs} compact />
       {contextMenu ? (
         <CommitActionContextMenu
           target={commit}
           isHeadCommit={isHead}
+          refs={displayRefs}
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
@@ -131,17 +133,18 @@ function CommitGraph({
   selected: boolean;
   refs: DisplayRef[];
 }) {
-  const centerY = 21;
-  const strokeWidth = 1.75;
-  const nodeRadius = refs.length > 0 ? 4.25 : 3.5;
+  const rowHeight = COMMIT_ROW_HEIGHT;
+  const centerY = rowHeight / 2;
+  const strokeWidth = 1.6;
+  const nodeRadius = refs.length > 0 ? 4 : 3.25;
 
   return (
     <span className="relative h-full overflow-hidden" aria-hidden="true">
       <svg
         className="h-full"
         width={graph.width}
-        height="42"
-        viewBox={`0 0 ${graph.width} 42`}
+        height={rowHeight}
+        viewBox={`0 0 ${graph.width} ${rowHeight}`}
       >
         {graph.passthroughConnections.map((connection) => {
           const fromX = laneX(connection.fromLane);
@@ -155,7 +158,7 @@ function CommitGraph({
                 x1={fromX}
                 y1="0"
                 x2={toX}
-                y2="42"
+                y2={rowHeight}
                 stroke={connection.color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
@@ -167,7 +170,7 @@ function CommitGraph({
           return (
             <path
               key={key}
-              d={`M ${fromX} 0 C ${fromX} 18, ${toX} 24, ${toX} 42`}
+              d={`M ${fromX} 0 C ${fromX} ${centerY * 0.85}, ${toX} ${centerY * 1.15}, ${toX} ${rowHeight}`}
               fill="none"
               stroke={connection.color}
               strokeWidth={strokeWidth}
@@ -189,7 +192,7 @@ function CommitGraph({
                 x1={fromX}
                 y1={centerY}
                 x2={toX}
-                y2="42"
+                y2={rowHeight}
                 stroke={connection.color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
@@ -197,11 +200,11 @@ function CommitGraph({
             );
           }
 
-          const controlY = centerY + 9;
+          const controlY = centerY + rowHeight * 0.22;
           return (
             <path
               key={key}
-              d={`M ${fromX} ${centerY} C ${fromX} ${controlY}, ${toX} ${controlY}, ${toX} 42`}
+              d={`M ${fromX} ${centerY} C ${fromX} ${controlY}, ${toX} ${controlY}, ${toX} ${rowHeight}`}
               fill="none"
               stroke={connection.color}
               strokeWidth={strokeWidth}
