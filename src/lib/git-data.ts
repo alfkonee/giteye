@@ -21,6 +21,7 @@ import type {
   FileHistoryRequest,
   GitGrepRequest,
   GitMaintenanceMode,
+  IgnoreScope,
   PickaxeSearchRequest,
   MergeWithOptionsRequest,
   StartRebaseRequest,
@@ -142,6 +143,12 @@ export interface DiscardFileRequest {
 export interface DiscardFilesRequest {
   path: string;
   files: DiscardFileRequest[];
+}
+
+export interface AddIgnoreRulesRequest {
+  path: string;
+  patterns: string[];
+  scope: IgnoreScope;
 }
 export interface RequestPullRequestReviewRequest {
   number: number;
@@ -1255,6 +1262,30 @@ export const gitMutations = {
           context,
           "Folder changes discarded and repository views refreshed.",
         );
+      },
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  addIgnoreRules: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (request: AddIgnoreRulesRequest) =>
+        gitApi.addIgnoreRules(repoPath!, request.patterns, request.scope),
+      onMutate: (request) =>
+        startGitActionNotice(
+          "Adding ignore rules",
+          `${request.path} · ${request.patterns.join(", ")}`,
+          repoPath,
+        ),
+      onSuccess: async (result, _request, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context);
+        const added = result.added.length
+          ? `Added ${result.added.join(", ")} to ${result.file}.`
+          : `No new rules: ${result.file} already covered them.`;
+        const skipped = result.added.length && result.skipped.length
+          ? ` Already present: ${result.skipped.join(", ")}.`
+          : "";
+        finishGitActionNotice(context, `${added}${skipped}`);
       },
       onError: (error, _request, context) =>
         failGitActionNotice(context, error),

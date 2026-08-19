@@ -5,6 +5,7 @@ import {
   Archive,
   Copy,
   ExternalLink,
+  EyeOff,
   FolderOpen,
   GitBranch,
   Minus,
@@ -32,6 +33,7 @@ interface WorkingTreePathContextMenuProps {
   onUnstage: (path: string) => void;
   onStash: (target: WorkingTreePathTarget) => void;
   onDiscard: (target: WorkingTreePathTarget) => void;
+  onIgnore: (target: WorkingTreePathTarget) => void;
   onOpenSubmodule: (path: string) => void;
   onClose: () => void;
 }
@@ -46,6 +48,7 @@ export function WorkingTreePathContextMenu({
   onUnstage,
   onStash,
   onDiscard,
+  onIgnore,
   onOpenSubmodule,
   onClose,
 }: WorkingTreePathContextMenuProps) {
@@ -86,6 +89,10 @@ export function WorkingTreePathContextMenu({
   const label = target.kind === "directory" ? "folder" : "file";
   const targetExists = target.files.some(
     (file) => parseFileStatus(file.status) !== "deleted",
+  );
+  // Git only skips untracked paths; a path already in the index keeps reporting changes.
+  const ignorable = target.files.some(
+    (file) => parseFileStatus(file.status) === "untracked",
   );
   const absolutePath = joinRepoPath(repoPath, target.path);
   const fallbackRelativePath = target.path.includes("/")
@@ -183,6 +190,22 @@ export function WorkingTreePathContextMenu({
 
         <div className="my-1 border-t border-[var(--color-border-muted)]" />
         <MenuItem
+          icon={<EyeOff />}
+          label={`Ignore ${label}…`}
+          disabled={pending || !ignorable}
+          title={
+            ignorable
+              ? `Add a gitignore rule for this ${label}`
+              : `Only untracked paths can be ignored; this ${label} is already tracked by Git`
+          }
+          onClick={() => {
+            onIgnore(target);
+            onClose();
+          }}
+        />
+
+        <div className="my-1 border-t border-[var(--color-border-muted)]" />
+        <MenuItem
           icon={<ExternalLink />}
           label={`Open ${label}`}
           disabled={!targetExists}
@@ -221,15 +244,17 @@ function MenuItem({
   label,
   disabled = false,
   tone = "default",
+  title,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   disabled?: boolean;
   tone?: "default" | "danger";
+  title?: string;
   onClick: () => void;
 }) {
-  return (
+  const button = (
     <button
       type="button"
       role="menuitem"
@@ -242,6 +267,15 @@ function MenuItem({
       <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       <span>{label}</span>
     </button>
+  );
+
+  // Disabled buttons swallow pointer events, so the tooltip has to live on a wrapper.
+  return title ? (
+    <span className="block" title={title}>
+      {button}
+    </span>
+  ) : (
+    button
   );
 }
 

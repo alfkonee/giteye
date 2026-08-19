@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod diff;
 pub mod github;
 pub mod history;
+pub mod ignore;
 pub mod job;
 pub mod lfs;
 pub mod patch;
@@ -28,6 +29,7 @@ pub use commit::{CommitDetails, CommitSummary};
 pub use config::{GitCredentialConfig, GitIdentity};
 pub use diff::DiffResult;
 pub use history::{AmendPreview, ReflogEntry, ResetMode, ResetPreview, ResetPreviewFile};
+pub use ignore::{IgnoreRuleRequest, IgnoreRuleResult, IgnoreScope};
 pub use job::GitJobSummary;
 pub use lfs::{
     LfsCommandPreview, LfsFile, LfsLock, LfsLocks, LfsMigrationMode, LfsMigrationRequest,
