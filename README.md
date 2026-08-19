@@ -58,6 +58,7 @@ src/                          src-tauri/src/
                               └── main.rs
 ```
 
+All Tauri commands that run blocking work (git/gh subprocesses, HTTP, filesystem, keychain) are `async fn` offloading to `tauri::async_runtime::spawn_blocking`, so slow operations (GitHub overviews, PR diffs, AI suggestions, archaeology/diagnostics searches) never freeze the UI. Only background-job enqueuers and flag setters stay synchronous.
 ---
 
 ## Implemented Features (Phase 1)

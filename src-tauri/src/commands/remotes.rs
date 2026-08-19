@@ -7,8 +7,10 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn list_remotes(repo_path: String) -> Result<Vec<Remote>, AppError> {
-    remote_service::list_remotes(Path::new(&repo_path))
+pub async fn list_remotes(repo_path: String) -> Result<Vec<Remote>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || remote_service::list_remotes(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -79,42 +81,62 @@ fn optional_git_arg(value: Option<String>, label: &str) -> Result<Option<String>
 }
 
 #[tauri::command]
-pub fn add_remote(repo_path: String, name: String, url: String) -> Result<(), AppError> {
-    remote_service::add_remote(Path::new(&repo_path), &name, &url)
+pub async fn add_remote(repo_path: String, name: String, url: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::add_remote(Path::new(&repo_path), &name, &url)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn update_remote(
+pub async fn update_remote(
     repo_path: String,
     name: String,
     fetch_url: String,
     push_url: Option<String>,
 ) -> Result<(), AppError> {
-    remote_service::update_remote(
-        Path::new(&repo_path),
-        &name,
-        &fetch_url,
-        push_url.as_deref(),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::update_remote(
+            Path::new(&repo_path),
+            &name,
+            &fetch_url,
+            push_url.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn delete_remote(repo_path: String, name: String) -> Result<(), AppError> {
-    remote_service::delete_remote(Path::new(&repo_path), &name)
+pub async fn delete_remote(repo_path: String, name: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::delete_remote(Path::new(&repo_path), &name)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn prune_remote(repo_path: String, name: String) -> Result<(), AppError> {
-    remote_service::prune_remote(Path::new(&repo_path), &name)
+pub async fn prune_remote(repo_path: String, name: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::prune_remote(Path::new(&repo_path), &name)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn prune_remote_dry_run(repo_path: String, name: String) -> Result<Vec<String>, AppError> {
-    remote_service::prune_remote_dry_run(Path::new(&repo_path), &name)
+pub async fn prune_remote_dry_run(repo_path: String, name: String) -> Result<Vec<String>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::prune_remote_dry_run(Path::new(&repo_path), &name)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn push_branch(
+pub async fn push_branch(
     repo_path: String,
     remote: String,
     local_branch: String,
@@ -122,18 +144,22 @@ pub fn push_branch(
     set_upstream: bool,
     force_with_lease: bool,
 ) -> Result<(), AppError> {
-    remote_service::push_branch(
-        Path::new(&repo_path),
-        &remote,
-        &local_branch,
-        remote_branch.as_deref(),
-        set_upstream,
-        force_with_lease,
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::push_branch(
+            Path::new(&repo_path),
+            &remote,
+            &local_branch,
+            remote_branch.as_deref(),
+            set_upstream,
+            force_with_lease,
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn push_branch_dry_run(
+pub async fn push_branch_dry_run(
     repo_path: String,
     remote: String,
     local_branch: String,
@@ -141,30 +167,42 @@ pub fn push_branch_dry_run(
     set_upstream: bool,
     force_with_lease: bool,
 ) -> Result<Vec<String>, AppError> {
-    remote_service::push_branch_dry_run(
-        Path::new(&repo_path),
-        &remote,
-        &local_branch,
-        remote_branch.as_deref(),
-        set_upstream,
-        force_with_lease,
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::push_branch_dry_run(
+            Path::new(&repo_path),
+            &remote,
+            &local_branch,
+            remote_branch.as_deref(),
+            set_upstream,
+            force_with_lease,
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn delete_remote_branch(
+pub async fn delete_remote_branch(
     repo_path: String,
     remote: String,
     branch: String,
 ) -> Result<(), AppError> {
-    remote_service::delete_remote_branch(Path::new(&repo_path), &remote, &branch)
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::delete_remote_branch(Path::new(&repo_path), &remote, &branch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn delete_remote_branch_dry_run(
+pub async fn delete_remote_branch_dry_run(
     repo_path: String,
     remote: String,
     branch: String,
 ) -> Result<Vec<String>, AppError> {
-    remote_service::delete_remote_branch_dry_run(Path::new(&repo_path), &remote, &branch)
+    tauri::async_runtime::spawn_blocking(move || {
+        remote_service::delete_remote_branch_dry_run(Path::new(&repo_path), &remote, &branch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
