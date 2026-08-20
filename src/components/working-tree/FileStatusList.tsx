@@ -181,13 +181,28 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
    * Section-wide counterpart to "Stage all" / "Unstage all": throws away every
    * change this list is showing. Untracked entries are deleted rather than
    * checked out, which `discard_files` handles per file.
+   *
+   * Discarding a staged file runs `git restore --staged --worktree`, so a file
+   * carrying both staged and unstaged edits loses both. The confirmation has to
+   * say so, matching the per-file and per-directory discard wording.
    */
   const handleDiscardAll = () => {
     if (files.length === 0) return;
-    const scope = staged ? "staged changes" : "unstaged changes";
+    const includesPartialChanges = staged && files.some((file) => file.unstaged);
+    const scope = includesPartialChanges
+      ? "staged and unstaged changes"
+      : staged
+        ? "staged changes"
+        : "unstaged changes";
+    const partialCount = includesPartialChanges
+      ? files.filter((file) => file.unstaged).length
+      : 0;
+    const partialNote = partialCount
+      ? `\n\n${partialCount} of them ${partialCount === 1 ? "also has" : "also have"} unstaged edits, which will be discarded too.`
+      : "";
     if (
       !confirm(
-        `Discard ${scope} in all ${files.length} ${files.length === 1 ? "file" : "files"}?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
+        `Discard ${scope} in all ${files.length} ${files.length === 1 ? "file" : "files"}?${partialNote}\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
       )
     ) {
       return;

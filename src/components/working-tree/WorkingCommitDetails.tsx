@@ -2,6 +2,7 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { History } from "lucide-react";
+import { parseFileStatus } from "../../types/git";
 import { FileStatusList } from "./FileStatusList";
 import { CommitBox } from "./CommitBox";
 import { Button } from "../ui";
@@ -25,7 +26,14 @@ export function WorkingCommitDetails() {
   const stagedCount = summary?.stagedCount ?? stagedFiles.length;
   const unstagedCount = summary?.unstagedCount ?? unstagedFiles.length;
   const headCommit = snapshot?.repositoryInfo?.headCommit;
-  const hasChanges = stagedCount > 0 || unstagedCount > 0;
+  // A hard reset only touches tracked files, so untracked entries must not make
+  // the button look actionable — otherwise it reports success having changed
+  // nothing. Those go through "Discard all" in the Unstaged section instead.
+  const trackedUnstagedCount = unstagedFiles.filter(
+    (file) => parseFileStatus(file.status) !== "untracked",
+  ).length;
+  const untrackedCount = unstagedCount - trackedUnstagedCount;
+  const hasResettableChanges = stagedCount > 0 || trackedUnstagedCount > 0;
 
   /**
    * `git reset --hard HEAD`: drops staged and unstaged changes to tracked files
@@ -36,7 +44,7 @@ export function WorkingCommitDetails() {
     if (!headCommit) return;
     if (
       !confirm(
-        `Reset the working tree to HEAD?\n\nThis discards all staged and unstaged changes to tracked files (${stagedCount} staged, ${unstagedCount} unstaged). Untracked files are left in place.\n\nThis cannot be undone from GitEye; stash or commit first if you need a Git safety net.`,
+        `Reset the working tree to HEAD?\n\nThis discards all staged and unstaged changes to tracked files (${stagedCount} staged, ${trackedUnstagedCount} unstaged).${untrackedCount > 0 ? `\n\n${untrackedCount} untracked ${untrackedCount === 1 ? "file is" : "files are"} left in place; use "Discard all" in the Unstaged section to remove ${untrackedCount === 1 ? "it" : "them"}.` : ""}\n\nThis cannot be undone from GitEye; stash or commit first if you need a Git safety net.`,
       )
     ) {
       return;
@@ -64,7 +72,7 @@ export function WorkingCommitDetails() {
           variant="danger"
           icon={<History className="h-3.5 w-3.5" />}
           onClick={handleResetToHead}
-          disabled={!hasChanges || !headCommit || resetMutation.isPending}
+          disabled={!hasResettableChanges || !headCommit || resetMutation.isPending}
           title="git reset --hard HEAD — discard every staged and unstaged change to tracked files"
         >
           Reset to HEAD
