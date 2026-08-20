@@ -9,6 +9,7 @@ import {
   FolderGit2,
   GitBranch,
   Home,
+  History,
   Keyboard,
   Moon,
   RefreshCw,
@@ -22,6 +23,7 @@ import { cn } from "../../lib/cn";
 import { COMMAND_PALETTE_OPEN_EVENT } from "../../lib/command-palette";
 import { getShortcutBinding, useShortcut } from "../../lib/shortcuts";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { RecoveryCenter } from "./RecoveryCenter";
 import { runBranchPushFlow } from "../../lib/branch-push";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import { viewDefinitions, viewGroups } from "../../lib/view-registry";
@@ -64,6 +66,7 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const activeRepoPath = useAppStore((state) => state.activeRepoPath);
   const openRepoPaths = useAppStore((state) => state.openRepoPaths);
@@ -225,6 +228,18 @@ export function CommandPalette() {
         run: () => setShortcutsOpen(true),
       },
       {
+        id: "command:recovery-center",
+        kind: "command",
+        section: "Commands",
+        label: "Recovery center",
+        detail: "Undo recent HEAD moves via reflog and recover dangling commits",
+        keywords: "reflog undo recover lost commits reset restore safety",
+        icon: History,
+        disabled: !activeRepoPath,
+        priority: 85,
+        run: () => setRecoveryOpen(true),
+      },
+      {
         id: "command:refresh-repository",
         kind: "command",
         section: "Commands",
@@ -367,7 +382,12 @@ export function CommandPalette() {
   }, [activeIndex, results.length]);
 
   if (!open) {
-    return <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />;
+    return (
+      <>
+        <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        <RecoveryCenter open={recoveryOpen} onClose={() => setRecoveryOpen(false)} />
+      </>
+    );
   }
 
   const activeItem = results[activeIndex] ?? null;
@@ -383,6 +403,7 @@ export function CommandPalette() {
   return (
     <>
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <RecoveryCenter open={recoveryOpen} onClose={() => setRecoveryOpen(false)} />
       <div className="fixed inset-0 z-[110] flex items-start justify-center bg-black/45 px-4 pt-[12vh] backdrop-blur-sm" role="presentation" onMouseDown={() => setOpen(false)}>
       <section
         role="dialog"
