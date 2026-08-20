@@ -56,6 +56,11 @@ pub struct PullRequestDiff {
     pub number: u64,
     pub title: Option<String>,
     pub url: Option<String>,
+    pub body: Option<String>,
+    pub author: Option<String>,
+    pub author_avatar_url: Option<String>,
+    pub author_association: Option<String>,
+    pub created_at: Option<String>,
     pub diff_text: String,
     pub files: Vec<PullRequestFileDiff>,
     pub comments: Vec<ReviewCommentSummary>,
@@ -70,6 +75,8 @@ pub struct PullRequestDiff {
 pub struct ReviewCommentSummary {
     pub id: u64,
     pub author: Option<String>,
+    pub avatar_url: Option<String>,
+    pub author_association: Option<String>,
     pub path: Option<String>,
     pub line: Option<u64>,
     pub body: String,
@@ -96,6 +103,8 @@ pub struct CheckRunSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ReviewSummary {
     pub author: Option<String>,
+    pub avatar_url: Option<String>,
+    pub author_association: Option<String>,
     pub state: String,
     pub submitted_at: Option<String>,
     pub body: Option<String>,
@@ -108,6 +117,8 @@ pub struct ActivityItem {
     pub id: String,
     pub kind: String,
     pub actor: Option<String>,
+    pub avatar_url: Option<String>,
+    pub author_association: Option<String>,
     pub title: Option<String>,
     pub url: Option<String>,
     pub created_at: Option<String>,

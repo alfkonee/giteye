@@ -15,7 +15,6 @@ import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data
 import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
-import { WorkingTree } from "../working-tree/WorkingTree";
 import { CommitHistory } from "../commit-history/CommitHistory";
 import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
 import { IntegratePanel } from "./IntegratePanel";
@@ -231,21 +230,9 @@ export function GitWorkspace() {
 
       <PanelGroup direction="vertical" className="min-h-0 flex-1">
         <Panel id="workspace-main" order={1} minSize={30}>
-          <PanelGroup direction="horizontal" className="h-full">
-            <Panel id="workspace-changes" order={1} defaultSize={38} minSize={22}>
-              <div className="h-full overflow-hidden border-r border-[var(--color-border)]">
-                <WorkingTree />
-              </div>
-            </Panel>
-            <PanelResizeHandle className="group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
-              <div className="absolute inset-y-0 -inset-x-1.5" />
-            </PanelResizeHandle>
-            <Panel id="workspace-history" order={2} minSize={30}>
-              <div className="h-full overflow-hidden">
-                <CommitHistory />
-              </div>
-            </Panel>
-          </PanelGroup>
+          <div className="h-full overflow-hidden">
+            <CommitHistory />
+          </div>
         </Panel>
 
         {drawerTab ? (

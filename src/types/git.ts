@@ -485,6 +485,8 @@ export interface PullRequestFileDiff {
 export interface ReviewCommentSummary {
   id: number;
   author: string | null;
+  avatarUrl: string | null;
+  authorAssociation: string | null;
   path: string | null;
   line: number | null;
   body: string;
@@ -496,6 +498,11 @@ export interface PullRequestDiff {
   number: number;
   title: string | null;
   url: string | null;
+  body: string | null;
+  author: string | null;
+  authorAvatarUrl: string | null;
+  authorAssociation: string | null;
+  createdAt: string | null;
   diffText: string;
   files: PullRequestFileDiff[];
   comments: ReviewCommentSummary[];
@@ -520,6 +527,8 @@ export interface CheckRunSummary {
 
 export interface ReviewSummary {
   author: string | null;
+  avatarUrl: string | null;
+  authorAssociation: string | null;
   state: string;
   submittedAt: string | null;
   body: string | null;
@@ -530,6 +539,8 @@ export interface ActivityItem {
   id: string;
   kind: string;
   actor: string | null;
+  avatarUrl: string | null;
+  authorAssociation: string | null;
   title: string | null;
   url: string | null;
   createdAt: string | null;

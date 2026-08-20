@@ -259,11 +259,19 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
         }
     };
     let pr = fetch_pull_request(repo_path, &owner, &repo, number);
+    let (body, created_at, author_association, author, author_avatar_url) =
+        fetch_pull_request_detail(repo_path, &owner, &repo, number)
+            .unwrap_or((None, None, None, None, None));
 
     Ok(PullRequestDiff {
         number,
         title: pr.as_ref().map(|pr| pr.title.clone()),
         url: pr.and_then(|pr| pr.url),
+        body,
+        author,
+        author_avatar_url,
+        author_association,
+        created_at,
         diff_text,
         files,
         comments,
@@ -789,6 +797,32 @@ fn fetch_pull_request(
     })
 }
 
+fn fetch_pull_request_detail(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Option<(Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> {
+    #[derive(Deserialize)]
+    struct GhPullRequestDetail {
+        body: Option<String>,
+        created_at: Option<String>,
+        author_association: Option<String>,
+        user: Option<GhAuthor>,
+    }
+
+    let endpoint = format!("repos/{owner}/{repo}/pulls/{number}");
+    let output = run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    let detail = serde_json::from_str::<GhPullRequestDetail>(&output).ok()?;
+    Some((
+        detail.body,
+        detail.created_at,
+        detail.author_association,
+        detail.user.as_ref().and_then(|user| user.login.clone()),
+        detail.user.and_then(|user| user.avatar_url),
+    ))
+}
+
 fn fetch_pull_request_files(
     repo_path: &Path,
     owner: &str,
@@ -829,6 +863,7 @@ fn fetch_review_comments(
     struct GhComment {
         id: Option<u64>,
         user: Option<GhAuthor>,
+        author_association: Option<String>,
         path: Option<String>,
         line: Option<u64>,
         body: Option<String>,
@@ -843,7 +878,9 @@ fn fetch_review_comments(
         .into_iter()
         .map(|comment| ReviewCommentSummary {
             id: comment.id.unwrap_or_default(),
-            author: comment.user.and_then(|user| user.login),
+            author: comment.user.as_ref().and_then(|user| user.login.clone()),
+            avatar_url: comment.user.and_then(|user| user.avatar_url),
+            author_association: comment.author_association,
             path: comment.path,
             line: comment.line,
             body: comment.body.unwrap_or_default(),
@@ -922,6 +959,7 @@ fn fetch_reviews(
     #[derive(Deserialize)]
     struct GhReview {
         user: Option<GhAuthor>,
+        author_association: Option<String>,
         state: Option<String>,
         submitted_at: Option<String>,
         html_url: Option<String>,
@@ -941,7 +979,9 @@ fn fetch_reviews(
         .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
         .map(|review| ReviewSummary {
-            author: review.user.and_then(|user| user.login),
+            author: review.user.as_ref().and_then(|user| user.login.clone()),
+            avatar_url: review.user.and_then(|user| user.avatar_url),
+            author_association: review.author_association,
             state: review.state.unwrap_or_default(),
             submitted_at: review.submitted_at,
             body: review.body,
@@ -975,6 +1015,10 @@ fn fetch_activity(
             actor: event
                 .get("actor")
                 .and_then(|actor| json_string(actor, "login")),
+            avatar_url: event
+                .get("actor")
+                .and_then(|actor| json_string(actor, "avatar_url")),
+            author_association: json_string(&event, "author_association"),
             title: activity_title(&event),
             url: activity_url(&event),
             created_at: json_string(&event, "created_at"),
@@ -1013,6 +1057,11 @@ fn fetch_pull_request_activity(
                 .get("actor")
                 .or_else(|| event.get("user"))
                 .and_then(|actor| json_string(actor, "login")),
+            avatar_url: event
+                .get("actor")
+                .or_else(|| event.get("user"))
+                .and_then(|actor| json_string(actor, "avatar_url")),
+            author_association: json_string(&event, "author_association"),
             title: timeline_title(&event),
             url: json_string(&event, "html_url"),
             created_at: json_string(&event, "created_at")
@@ -1022,10 +1071,62 @@ fn fetch_pull_request_activity(
 }
 
 fn timeline_title(event: &Value) -> Option<String> {
-    json_string(event, "body")
-        .or_else(|| json_string(event, "commit_id"))
-        .or_else(|| json_string(event, "event"))
-        .or_else(|| json_string(event, "state"))
+    let kind = json_string(event, "event").unwrap_or_default();
+    match kind.as_str() {
+        "commented" | "reviewed" => json_string(event, "body"),
+        "labeled" => nested_string(event, "label", "name")
+            .map(|name| format!("added the {name} label")),
+        "unlabeled" => nested_string(event, "label", "name")
+            .map(|name| format!("removed the {name} label")),
+        "review_requested" => nested_string(event, "requested_reviewer", "login")
+            .or_else(|| nested_string(event, "requested_team", "name"))
+            .map(|who| format!("requested review from {who}")),
+        "review_request_removed" => nested_string(event, "requested_reviewer", "login")
+            .or_else(|| nested_string(event, "requested_team", "name"))
+            .map(|who| format!("removed request for review from {who}")),
+        "renamed" => match (
+            nested_string(event, "rename", "from"),
+            nested_string(event, "rename", "to"),
+        ) {
+            (Some(from), Some(to)) => Some(format!("changed the title from {from} to {to}")),
+            _ => Some("changed the title".to_string()),
+        },
+        "merged" => json_string(event, "commit_id")
+            .map(|sha| format!("merged commit {}", short_sha(&sha))),
+        "head_ref_force_pushed" => json_string(event, "ref")
+            .map(|reference| format!("force-pushed the {} branch", trim_ref(&reference))),
+        "head_ref_deleted" => json_string(event, "ref")
+            .map(|reference| format!("deleted the {} branch", trim_ref(&reference))),
+        "head_ref_restored" => json_string(event, "ref")
+            .map(|reference| format!("restored the {} branch", trim_ref(&reference))),
+        "closed" => Some("closed this pull request".to_string()),
+        "reopened" => Some("reopened this pull request".to_string()),
+        "converted_to_draft" => Some("marked this pull request as draft".to_string()),
+        "ready_for_review" => Some("marked this pull request as ready for review".to_string()),
+        "committed" => json_string(event, "commit_id")
+            .map(|sha| format!("added commit {}", short_sha(&sha))),
+        "referenced" | "cross-referenced" => json_string(event, "commit_id")
+            .map(|sha| format!("referenced this pull request in {}", short_sha(&sha))),
+        "subscribed" | "unsubscribed" => None,
+        _ => json_string(event, "commit_id")
+            .or_else(|| json_string(event, "event"))
+            .or_else(|| json_string(event, "state")),
+    }
+}
+
+fn nested_string(value: &Value, key: &str, nested: &str) -> Option<String> {
+    value.get(key).and_then(|item| json_string(item, nested))
+}
+
+fn short_sha(sha: &str) -> String {
+    if sha.len() > 7 { sha[..7].to_string() } else { sha.to_string() }
+}
+
+fn trim_ref(value: &str) -> String {
+    value
+        .strip_prefix("refs/heads/")
+        .unwrap_or(value)
+        .to_string()
 }
 
 fn activity_title(event: &Value) -> Option<String> {
@@ -1062,6 +1163,7 @@ fn json_string(value: &Value, key: &str) -> Option<String> {
 #[derive(Deserialize)]
 struct GhAuthor {
     login: Option<String>,
+    avatar_url: Option<String>,
 }
 #[derive(Deserialize)]
 struct GhLabel {
