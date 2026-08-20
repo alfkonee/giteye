@@ -114,7 +114,9 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const selectedFilePath = useAppStore((s) => s.selectedFilePath);
   const selectedFileStaged = useAppStore((s) => s.selectedFileStaged);
   const groups = groupFiles(files, staged);
-  const isBulkMutating = staged ? unstageAllMutation.isPending : stageAllMutation.isPending;
+  const isBulkMutating =
+    (staged ? unstageAllMutation.isPending : stageAllMutation.isPending) ||
+    discardFilesMutation.isPending;
   const rowActionsPending =
     stageMutation.isPending ||
     unstageMutation.isPending ||
@@ -172,6 +174,31 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
       filePath: file.path,
       staged,
       untracked: status === "untracked",
+    });
+  };
+
+  /**
+   * Section-wide counterpart to "Stage all" / "Unstage all": throws away every
+   * change this list is showing. Untracked entries are deleted rather than
+   * checked out, which `discard_files` handles per file.
+   */
+  const handleDiscardAll = () => {
+    if (files.length === 0) return;
+    const scope = staged ? "staged changes" : "unstaged changes";
+    if (
+      !confirm(
+        `Discard ${scope} in all ${files.length} ${files.length === 1 ? "file" : "files"}?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
+      )
+    ) {
+      return;
+    }
+    discardFilesMutation.mutate({
+      path: staged ? "all staged files" : "all unstaged files",
+      files: files.map((file) => ({
+        filePath: file.path,
+        staged,
+        untracked: parseFileStatus(file.status) === "untracked",
+      })),
     });
   };
 
@@ -305,14 +332,25 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           className="text-[10px]"
         />
         {files.length > 0 && (
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
-            disabled={isBulkMutating}
-          >
-            {staged ? "Unstage all" : "Stage all"}
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => (staged ? unstageAllMutation.mutate() : stageAllMutation.mutate())}
+              disabled={isBulkMutating}
+            >
+              {staged ? "Unstage all" : "Stage all"}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={handleDiscardAll}
+              disabled={isBulkMutating}
+              title={`Discard every ${staged ? "staged" : "unstaged"} change in this section`}
+            >
+              Discard all
+            </Button>
+          </>
         )}
       </div>
 
