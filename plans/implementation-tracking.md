@@ -13,8 +13,8 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 
 ## Progress
 
-- **Total:** 46  **Done:** 2  **Pending:** 44
-- P0 (release blockers): 2/10
+- **Total:** 46  **Done:** 3  **Pending:** 43
+- P0 (release blockers): 3/10
 - P1 (high value): 0/17
 - P2 (differentiators): 0/14
 - P3 (expansion): 0/5
@@ -25,7 +25,7 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 
 ## P0 — Security, privacy & release reliability
 
-- [ ] **A01** `enhancement` [#57](https://github.com/alfkonee/giteye/issues/57) Store AI API keys in the OS keychain instead of ai_config.json
+- [x] **A01** `enhancement` [#57](https://github.com/alfkonee/giteye/issues/57) Store AI API keys in the OS keychain instead of ai_config.json — closed by PR [#105](https://github.com/alfkonee/giteye/pull/105)
 - [ ] **A02** `bug` [#58](https://github.com/alfkonee/giteye/issues/58) Add a restrictive Content Security Policy and remove risky global Tauri exposure
 - [ ] **A03** `bug` [#59](https://github.com/alfkonee/giteye/issues/59) Make application tracing opt-in, bounded by retention, and disabled by default in release
 - [ ] **A04** `enhancement` [#60](https://github.com/alfkonee/giteye/issues/60) Add signed in-app auto-update with channels, progress, and rollback guidance
@@ -34,7 +34,7 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 - [ ] **A07** `bug` [#63](https://github.com/alfkonee/giteye/issues/63) Replace the fixed 3s gh timeout with cancellable, per-operation timeouts and retries
 - [ ] **A08** `bug` [#64](https://github.com/alfkonee/giteye/issues/64) Add frontend unit/component tests and live Tauri workflow tests to CI
 - [x] **A09** `bug` [#65](https://github.com/alfkonee/giteye/issues/65) Add graceful shutdown and interrupted-job recovery on startup — closed by PR [#104](https://github.com/alfkonee/giteye/pull/104)
-- [x] **A10** `bug` [#66](https://github.com/alfkonee/giteye/issues/66) Use the upstream-setup workflow from every Push/Pull entry point — closed by PR
+- [x] **A10** `bug` [#66](https://github.com/alfkonee/giteye/issues/66) Use the upstream-setup workflow from every Push/Pull entry point — closed by PR [#103](https://github.com/alfkonee/giteye/pull/103)
 
 ## P1 — Daily usability & polish
 
