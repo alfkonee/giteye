@@ -109,28 +109,26 @@ export function CommitBox() {
   const hasError = commitMutation.isError || amendMutation.isError || Boolean(aiSuggestionError);
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
-      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5">
+    <section className="flex shrink-0 flex-col border-t border-[var(--color-border)] bg-[var(--color-bg-primary)]">
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2.5 py-1">
         <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
         <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">Commit staged changes</span>
         <span className="min-w-0 truncate text-[11px] text-[var(--color-text-muted)]">
           → <span className="text-[var(--color-text-secondary)]">{branchName}</span>
-        </span>
-        <span className="giteye-chip ml-auto shrink-0 tabular-nums" data-tone={stagedCount > 0 ? "accent" : undefined}>
-          {stagedCount} staged
         </span>
         <span className="giteye-chip shrink-0 tabular-nums" data-tone={subjectLength > 72 ? "warning" : undefined}>
           {subjectLength}/72
         </span>
       </header>
 
-      <div className="min-h-0 flex-1 p-2">
+      <div className="p-1.5">
         <Textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={`Summary (required) — Ctrl+Enter commits to ${branchName}`}
-          className="h-full min-h-[96px] w-full resize-none text-[12.5px] leading-5"
+          rows={4}
+          className="max-h-[45vh] min-h-[56px] w-full resize-y text-[12.5px] leading-5"
         />
       </div>
 

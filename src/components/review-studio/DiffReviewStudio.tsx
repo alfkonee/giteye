@@ -5,15 +5,21 @@ import {
   ChevronRight,
   Circle,
   FileCode2,
+  FileText,
   Filter,
   Folder,
+  GitBranch,
+  GitCommitHorizontal,
+  GitMerge,
   GitPullRequestArrow,
+  Link2,
   MessageSquarePlus,
   Search,
   ShieldCheck,
+  Tag,
+  UserPlus,
+  XCircle,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   UnifiedDiffFallback,
   type DiffLineSelection,
@@ -28,11 +34,10 @@ import {
 } from "../../lib/pr-diff";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
+import { Avatar, Markdown } from "../ui";
 import type {
-  ActivityItem,
   CheckRunSummary,
   PullRequestSummary,
-  ReviewCommentSummary,
   ReviewSummary,
 } from "../../types/git";
 
@@ -55,12 +60,18 @@ interface CheckRow {
   url: string | null;
 }
 
-interface TimelineRow {
+interface ConversationItem {
   id: string;
-  kind: "comment" | "review" | "checkpoint";
+  kind: "review" | "reviewComment" | "issueComment" | "event";
   author: string;
-  body: string;
+  avatarUrl: string | null;
+  association: string | null;
+  body: string | null;
   detail: string | null;
+  state: string | null;
+  eventKind: string | null;
+  path: string | null;
+  line: number | null;
   age: string;
   url: string | null;
   createdAt: string | null;
@@ -145,43 +156,165 @@ const reviewFromSummary = (
   };
 };
 
-const activityFromSummary = (activity: ActivityItem): TimelineRow => ({
-  id: activity.id,
-  kind: "checkpoint",
-  author: activity.actor ?? "GitHub",
-  body: activity.title?.trim() || stateLabel(activity.kind),
-  detail: stateLabel(activity.kind),
-  age: formatRelative(activity.createdAt),
-  url: activity.url,
-  createdAt: activity.createdAt,
-});
+function associationLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  switch (value.toUpperCase()) {
+    case "MEMBER":
+      return "Member";
+    case "OWNER":
+      return "Owner";
+    case "COLLABORATOR":
+      return "Collaborator";
+    case "CONTRIBUTOR":
+    case "FIRST_TIMER":
+    case "FIRST_TIME_CONTRIBUTOR":
+      return "Contributor";
+    default:
+      return null;
+  }
+}
 
-const commentFromSummary = (comment: ReviewCommentSummary): TimelineRow => ({
-  id: `comment-${comment.id}`,
-  kind: "comment",
-  author: comment.author ?? "GitHub reviewer",
-  body: comment.body || "No comment body returned.",
-  detail: comment.path ? `${comment.path}${comment.line ? `:${comment.line}` : ""}` : null,
-  age: formatRelative(comment.createdAt),
-  url: comment.url,
-  createdAt: comment.createdAt,
-});
+function reviewStateInfo(state: string | null | undefined): {
+  label: string;
+  tone: "success" | "danger" | "muted";
+} {
+  const normalized = (state ?? "").toUpperCase();
+  if (normalized.includes("APPROVED")) {
+    return { label: "approved these changes", tone: "success" };
+  }
+  if (normalized.includes("CHANGES_REQUESTED") || normalized.includes("REQUEST_CHANGES")) {
+    return { label: "requested changes", tone: "danger" };
+  }
+  if (normalized.includes("DISMISSED")) {
+    return { label: "dismissed their review", tone: "muted" };
+  }
+  return { label: "left a comment", tone: "muted" };
+}
 
-function MarkdownBody({ children }: { children: string }) {
+function eventIcon(kind: string) {
+  switch (kind) {
+    case "labeled":
+    case "unlabeled":
+      return Tag;
+    case "review_requested":
+    case "review_request_removed":
+      return UserPlus;
+    case "merged":
+      return GitMerge;
+    case "closed":
+      return XCircle;
+    case "head_ref_force_pushed":
+    case "head_ref_deleted":
+    case "head_ref_restored":
+      return GitBranch;
+    case "committed":
+      return GitCommitHorizontal;
+    case "referenced":
+    case "cross-referenced":
+      return Link2;
+    case "renamed":
+      return FileText;
+    default:
+      return Circle;
+  }
+}
+
+function eventTone(kind: string): string {
+  if (kind === "merged") return "text-[var(--color-success)]";
+  if (kind === "closed") return "text-[var(--color-danger)]";
+  if (kind === "labeled" || kind === "review_requested") return "text-[var(--color-info)]";
+  if (kind.startsWith("head_ref_")) return "text-[var(--color-warning)]";
+  return "text-[var(--color-text-muted)]";
+}
+
+function AssociationBadge({ value }: { value: string | null }) {
+  const label = associationLabel(value);
+  if (!label) return null;
   return (
-    <div className="mt-2 break-words text-sm leading-6 text-[var(--color-text-secondary)] [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border)] [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-[var(--color-bg-surface)] [&_code]:px-1 [&_li]:ml-5 [&_li]:list-disc [&_ol>li]:list-decimal [&_p+p]:mt-2 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-[var(--color-bg-surface)] [&_pre]:p-3">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ href, children: linkChildren }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] underline underline-offset-2">
-              {linkChildren}
-            </a>
-          ),
-        }}
-      >
-        {children}
-      </ReactMarkdown>
+    <span className="rounded-full border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium text-[var(--color-text-muted)]">
+      {label}
+    </span>
+  );
+}
+
+function CommentCard({
+  item,
+  onViewDiff,
+}: {
+  item: ConversationItem;
+  onViewDiff: (path: string) => void;
+}) {
+  const isReview = item.kind === "review";
+  const isReviewComment = item.kind === "reviewComment";
+  const reviewInfo = isReview ? reviewStateInfo(item.state) : null;
+  const verb = reviewInfo?.label ?? (isReviewComment ? "commented on" : "commented");
+  const approved = isReview && (item.state ?? "").toUpperCase().includes("APPROVED");
+  const requestedChanges =
+    isReview &&
+    ((item.state ?? "").toUpperCase().includes("CHANGES_REQUESTED") ||
+      (item.state ?? "").toUpperCase().includes("REQUEST_CHANGES"));
+
+  return (
+    <article className="relative mb-3">
+      <span className="absolute -left-10 top-1">
+        <Avatar src={item.avatarUrl} name={item.author} size={20} />
+      </span>
+      <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--color-border-muted)] px-3 py-2">
+          <b className="text-sm font-semibold text-[var(--color-text-primary)]">{item.author}</b>
+          <AssociationBadge value={item.association} />
+          <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+            {approved ? <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-success)]" /> : null}
+            {requestedChanges ? <XCircle className="h-3.5 w-3.5 text-[var(--color-danger)]" /> : null}
+            {verb}
+          </span>
+          <span className="ml-auto text-xs text-[var(--color-text-muted)]">{item.age}</span>
+        </div>
+        {item.detail ? (
+          <button
+            type="button"
+            disabled={!item.path}
+            onClick={() => item.path && onViewDiff(item.path)}
+            className="block w-full truncate px-3 py-1.5 text-left font-mono text-[10px] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] disabled:cursor-default disabled:hover:bg-transparent"
+          >
+            {item.detail}
+          </button>
+        ) : null}
+        {item.body ? (
+          <div className="px-3 py-3">
+            <Markdown>{item.body}</Markdown>
+          </div>
+        ) : null}
+        {item.url ? (
+          <div className="border-t border-[var(--color-border-muted)] px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => item.url && window.open(item.url, "_blank")}
+              className="text-xs text-[var(--color-accent)] hover:underline"
+            >
+              Open on GitHub
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function EventRow({ item }: { item: ConversationItem }) {
+  const kind = item.eventKind ?? "timeline";
+  const Icon = eventIcon(kind);
+  return (
+    <div className="relative mb-2 flex min-h-7 items-center gap-3 text-xs text-[var(--color-text-muted)]">
+      <span className="absolute -left-10 top-1">
+        <Avatar src={item.avatarUrl} name={item.author} size={18} />
+      </span>
+      <Icon className={`h-3.5 w-3.5 shrink-0 ${eventTone(kind)}`} />
+      <span className="min-w-0 flex-1">
+        <b className="font-medium text-[var(--color-text-secondary)]">{item.author}</b>{" "}
+        {item.detail}
+      </span>
+      <span className="shrink-0 text-[var(--color-text-muted)]">{item.age}</span>
     </div>
   );
 }
@@ -320,27 +453,75 @@ export function DiffReviewStudio() {
     () => (prDiff?.reviews ?? []).map((review) => reviewFromSummary(review, currentPr?.author)),
     [prDiff?.reviews, currentPr?.author],
   );
-  const timelineRows = useMemo(() => {
-    const reviews: TimelineRow[] = reviewRows.map((review, index) => ({
-      id: `review-${index}-${review.name}-${review.createdAt ?? review.state}`,
-      kind: "review",
-      author: review.name,
-      body: review.body,
-      detail: review.state,
-      age: review.age,
-      url: review.url,
-      createdAt: review.createdAt,
-    }));
-    return [
-      ...(prDiff?.comments ?? []).map(commentFromSummary),
-      ...reviews,
-      ...(prDiff?.activity ?? []).map(activityFromSummary),
-    ].sort((left, right) => {
+  const conversationItems = useMemo<ConversationItem[]>(() => {
+    const reviewComments: ConversationItem[] = (prDiff?.comments ?? []).map(
+      (comment) => ({
+        id: `comment-${comment.id}`,
+        kind: "reviewComment",
+        author: comment.author ?? "GitHub",
+        avatarUrl: comment.avatarUrl,
+        association: comment.authorAssociation,
+        body: comment.body || "No comment body returned.",
+        detail: comment.path
+          ? `${comment.path}${comment.line ? `:${comment.line}` : ""}`
+          : null,
+        state: null,
+        eventKind: null,
+        path: comment.path,
+        line: comment.line,
+        url: comment.url,
+        age: formatRelative(comment.createdAt),
+        createdAt: comment.createdAt,
+      }),
+    );
+
+    const reviews: ConversationItem[] = (prDiff?.reviews ?? []).map(
+      (review, index) => ({
+        id: `review-${index}-${review.author ?? "gh"}-${review.submittedAt ?? review.state}`,
+        kind: "review",
+        author: review.author ?? "GitHub reviewer",
+        avatarUrl: review.avatarUrl,
+        association: review.authorAssociation,
+        body: review.body?.trim() || null,
+        detail: null,
+        state: review.state,
+        eventKind: null,
+        path: null,
+        line: null,
+        url: review.url,
+        age: formatRelative(review.submittedAt),
+        createdAt: review.submittedAt,
+      }),
+    );
+
+    const activity: ConversationItem[] = (prDiff?.activity ?? [])
+      .filter((item) => item.kind !== "reviewed")
+      .map((item): ConversationItem => {
+        const isComment = item.kind === "commented";
+        return {
+          id: `${isComment ? "issue-comment" : "event"}-${item.id}`,
+          kind: isComment ? "issueComment" : "event",
+          author: item.actor ?? "GitHub",
+          avatarUrl: item.avatarUrl,
+          association: item.authorAssociation,
+          body: isComment ? item.title?.trim() || null : null,
+          detail: isComment ? null : (item.title?.trim() || stateLabel(item.kind)),
+          state: null,
+          eventKind: isComment ? null : item.kind,
+          path: null,
+          line: null,
+          url: item.url,
+          age: formatRelative(item.createdAt),
+          createdAt: item.createdAt,
+        };
+      });
+
+    return [...reviewComments, ...reviews, ...activity].sort((left, right) => {
       const leftTime = left.createdAt ? Date.parse(left.createdAt) : 0;
       const rightTime = right.createdAt ? Date.parse(right.createdAt) : 0;
       return leftTime - rightTime;
     });
-  }, [prDiff?.activity, prDiff?.comments, reviewRows]);
+  }, [prDiff?.activity, prDiff?.comments, prDiff?.reviews]);
   const passingChecks = checkRows.filter((check) => check.passed).length;
   const providerDetail = !activeRepoPath
     ? "Open a repository to load GitHub review metadata."
@@ -357,7 +538,7 @@ export function DiffReviewStudio() {
     livePrs.length > 0
       ? "text-[var(--color-success)]"
       : "text-[var(--color-text-muted)]";
-  const commentCount = timelineRows.length;
+  const commentCount = conversationItems.filter((item) => item.kind !== "event").length;
   const filePatches = useMemo(
     () => splitPullRequestDiff(prDiff?.diffText),
     [prDiff?.diffText],
@@ -892,17 +1073,12 @@ export function DiffReviewStudio() {
             </div>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg-secondary)] p-4">
-            <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4">
-              <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-                <div className="flex gap-5">
-                  <span className="font-semibold">
-                    Activity ({commentCount})
-                  </span>
-                  <span className="text-[var(--color-text-secondary)]">
-                    GitHub comments, reviews, and timeline
-                  </span>
-                </div>
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg-secondary)]">
+            <div className="mx-auto flex max-w-4xl flex-col px-4 py-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  Conversation
+                </span>
                 <div className="flex items-center gap-2">
                   <button
                     disabled={!currentPr || reviewActionPending}
@@ -937,49 +1113,76 @@ export function DiffReviewStudio() {
                     onClick={() =>
                       currentPr?.url && window.open(currentPr.url, "_blank")
                     }
-                    className="inline-flex items-center gap-2 text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                    className="inline-flex items-center gap-1.5 text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
                   >
                     <MessageSquarePlus className="h-4 w-4" /> Open
                   </button>
                 </div>
               </div>
-              <div className="relative pl-8 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-[var(--color-border)]">
-                {timelineRows.length > 0 ? (
-                  timelineRows.map((item) => item.kind === "checkpoint" ? (
-                    <div key={item.id} className="relative mb-3 flex min-h-8 items-center gap-3 text-xs text-[var(--color-text-muted)]">
-                      <span className="absolute -left-8 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-accent)]">
-                        <GitPullRequestArrow className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <b className="text-[var(--color-text-secondary)]">{item.author}</b> {item.body}
-                      </span>
-                      <span className="shrink-0">{item.age}</span>
-                    </div>
-                  ) : (
-                    <article key={item.id} className="relative mb-4 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] p-3">
-                      <span className="absolute -left-[33px] top-3 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-                        <Circle className="h-2.5 w-2.5 fill-[var(--color-accent)] text-[var(--color-accent)]" />
-                      </span>
-                      <div className="flex items-center justify-between gap-3">
-                        <b className="text-sm text-[var(--color-text-primary)]">{item.author}</b>
-                        <span className="text-xs text-[var(--color-text-muted)]">{item.age}</span>
+
+              {currentPr || prDiff?.body ? (
+                <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
+                  <div className="flex items-start gap-3 p-4">
+                    <Avatar
+                      src={prDiff?.authorAvatarUrl}
+                      name={prDiff?.author ?? currentPr?.author}
+                      size={32}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <b className="font-semibold text-[var(--color-text-primary)]">
+                          {prDiff?.author ?? currentPr?.author ?? "GitHub"}
+                        </b>
+                        <AssociationBadge value={prDiff?.authorAssociation ?? null} />
+                        <span className="text-[var(--color-text-secondary)]">
+                          opened this pull request
+                        </span>
+                        <span className="text-xs text-[var(--color-text-muted)]">
+                          {formatRelative(prDiff?.createdAt)}
+                        </span>
                       </div>
-                      {item.detail ? (
-                        <div className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]">{item.detail}</div>
+                      {currentPr ? (
+                        <div className="mt-1 flex items-center gap-1.5 font-mono text-xs text-[var(--color-text-muted)]">
+                          <span>{currentPr.headRefName ?? "head"}</span>
+                          <ChevronRight className="h-3 w-3" />
+                          <span>{currentPr.baseRefName ?? "base"}</span>
+                        </div>
                       ) : null}
-                      <MarkdownBody>{item.body}</MarkdownBody>
-                      {item.url ? (
-                        <button type="button" onClick={() => window.open(item.url!, "_blank")} className="mt-2 text-xs text-[var(--color-accent)]">
-                          Open on GitHub
-                        </button>
-                      ) : null}
-                    </article>
-                  ))
+                    </div>
+                  </div>
+                  <div className="border-t border-[var(--color-border-muted)] px-4 py-4">
+                    {prDiff?.body ? (
+                      <Markdown>{prDiff.body}</Markdown>
+                    ) : (
+                      <p className="text-sm text-[var(--color-text-muted)]">
+                        No description provided.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="relative mt-4 pl-10 before:absolute before:bottom-2 before:left-[21px] before:top-2 before:w-px before:bg-[var(--color-border)]">
+                {conversationItems.length > 0 ? (
+                  conversationItems.map((item) =>
+                    item.kind === "event" ? (
+                      <EventRow key={item.id} item={item} />
+                    ) : (
+                      <CommentCard
+                        key={item.id}
+                        item={item}
+                        onViewDiff={(path) => {
+                          setSelectedFilePath(path);
+                          setActiveTab("files");
+                        }}
+                      />
+                    ),
+                  )
                 ) : (
                   <EmptyState message="No review activity returned by GitHub." />
                 )}
               </div>
-            </section>
+            </div>
           </div>
         )}
         {currentPr ? (

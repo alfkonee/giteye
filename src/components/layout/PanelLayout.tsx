@@ -11,7 +11,7 @@ import { EmptyState } from "../common/EmptyState";
 import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
-import { CommitBox } from "../working-tree/CommitBox";
+import { WorkingCommitDetails } from "../working-tree/WorkingCommitDetails";
 import { isWorkingTreeSelection } from "../../lib/working-tree-node";
 
 export function PanelLayout() {
@@ -67,7 +67,7 @@ export function PanelLayout() {
 
   const renderDetailPane = useCallback(() => {
     if (isWorkingTreeSelection(selectedCommitHash)) {
-      return <CommitBox />;
+      return <WorkingCommitDetails />;
     }
 
     if (selectedCommitRange.length === 2) {
