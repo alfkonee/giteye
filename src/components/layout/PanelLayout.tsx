@@ -7,10 +7,11 @@ import { getViewDefinition } from "../../lib/view-registry";
 import { CommitDetails } from "../commit-history/CommitDetails";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
+import { BlameTable, FileHistoryList } from "../diff-viewer/FileDetailsViews";
 import { EmptyState } from "../common/EmptyState";
 import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
-import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
+import { ArrowLeft, FolderOpen, GitBranch, Loader2 } from "lucide-react";
 import { WorkingCommitDetails } from "../working-tree/WorkingCommitDetails";
 import { WORKING_TREE_COMMIT_HASH, isWorkingTreeSelection } from "../../lib/working-tree-node";
 
@@ -41,6 +42,29 @@ export function PanelLayout() {
   const { mutate: stageHunk, isPending: isStageHunkPending } = useMutation(gitMutations.stageHunk(queryClient, activeRepoPath));
   const { mutate: unstageHunk, isPending: isUnstageHunkPending } = useMutation(gitMutations.unstageHunk(queryClient, activeRepoPath));
   const { mutate: discardHunk, isPending: isDiscardHunkPending } = useMutation(gitMutations.discardHunk(queryClient, activeRepoPath));
+
+  const [fileDetailMode, setFileDetailMode] = useState<"diff" | "blame" | "history">("diff");
+
+  // Reset to diff whenever the selected file changes so a stale blame/history
+  // view never renders for the wrong path.
+  useEffect(() => {
+    setFileDetailMode("diff");
+  }, [selectedFilePath]);
+
+  const blameRequest =
+    selectedFilePath && fileDetailMode === "blame"
+      ? { filePath: selectedFilePath, limit: 500 }
+      : null;
+  const historyRequest =
+    selectedFilePath && fileDetailMode === "history"
+      ? { filePath: selectedFilePath, limit: 100 }
+      : null;
+  const { data: blameLines, isLoading: blameLoading, error: blameError } = useQuery(
+    gitQueries.blameFile(activeRepoPath, blameRequest),
+  );
+  const { data: historyEntries, isLoading: historyLoading, error: historyError } = useQuery(
+    gitQueries.fileHistory(activeRepoPath, historyRequest),
+  );
 
   const handleStageHunk = useCallback((hunk: DiffHunkActionContext) => {
     if (!activeRepoPath) return;
@@ -102,6 +126,22 @@ export function PanelLayout() {
             <span className="giteye-chip shrink-0 px-1.5 text-[10.5px]" data-tone={selectedFileStaged ? "accent" : "warning"}>
               {selectedFileStaged ? "staged" : "unstaged"}
             </span>
+            <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-0.5">
+              {(["diff", "blame", "history"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setFileDetailMode(mode)}
+                  className={`rounded px-2 py-0.5 text-[10.5px] capitalize transition-colors ${
+                    fileDetailMode === mode
+                      ? "bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] shadow-sm"
+                      : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
           {selectedSubmodule ? (
             <div className="flex shrink-0 items-center gap-3 border-b border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 px-3 py-2 text-xs">
@@ -122,21 +162,45 @@ export function PanelLayout() {
             </div>
           ) : null}
           <div className="min-h-0 flex-1">
-            <DiffViewer
-              diffText={fileDiff.diffText}
-              filePath={fileDiff.filePath}
-              oldFilePath={fileDiff.oldFilePath ?? undefined}
-              isBinary={fileDiff.isBinary}
-              truncated={fileDiff.truncated}
-              isLoading={diffLoading}
-              error={diffError?.toString() ?? null}
-              mode={diffMode}
-              isStaged={selectedFileStaged}
-              isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
-              onStageHunk={selectedFileStaged ? undefined : handleStageHunk}
-              onUnstageHunk={selectedFileStaged ? handleUnstageHunk : undefined}
-              onDiscardHunk={handleDiscardHunk}
-            />
+            {fileDetailMode === "blame" ? (
+              blameLoading ? (
+                <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading blame…
+                </div>
+              ) : blameError ? (
+                <ErrorCallout message={`Failed to load blame: ${String(blameError)}`} />
+              ) : (
+                <BlameTable lines={blameLines ?? []} />
+              )
+            ) : fileDetailMode === "history" ? (
+              historyLoading ? (
+                <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--color-text-muted)]">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading history…
+                </div>
+              ) : historyError ? (
+                <ErrorCallout message={`Failed to load history: ${String(historyError)}`} />
+              ) : (
+                <FileHistoryList commits={historyEntries ?? []} />
+              )
+            ) : (
+              <DiffViewer
+                diffText={fileDiff.diffText}
+                filePath={fileDiff.filePath}
+                oldFilePath={fileDiff.oldFilePath ?? undefined}
+                isBinary={fileDiff.isBinary}
+                truncated={fileDiff.truncated}
+                isLoading={diffLoading}
+                error={diffError?.toString() ?? null}
+                mode={diffMode}
+                isStaged={selectedFileStaged}
+                isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
+                onStageHunk={selectedFileStaged ? undefined : handleStageHunk}
+                onUnstageHunk={selectedFileStaged ? handleUnstageHunk : undefined}
+                onDiscardHunk={handleDiscardHunk}
+              />
+            )}
           </div>
         </div>
       );
@@ -161,7 +225,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash, fileDetailMode, blameLines, blameLoading, blameError, historyEntries, historyLoading, historyError]);
 
   const showDetailPane = Boolean(activeViewDefinition.detailPane);
 
