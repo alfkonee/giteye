@@ -1,7 +1,91 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::DiffResult;
+use std::io::Read;
 use std::path::{Component, Path};
+use std::process::Stdio;
+
+/// Hard cap on a single diff payload. Beyond this the diff is truncated and
+/// flagged so the frontend can render a notice instead of an unbounded string.
+const MAX_DIFF_BYTES: usize = 4 * 1024 * 1024;
+
+struct BoundedDiff {
+    text: String,
+    truncated: bool,
+}
+
+/// Runs a git diff command and reads its stdout incrementally, capping at
+/// `MAX_DIFF_BYTES`. Reaching the cap kills the child and flags truncation,
+/// so an oversized text diff can never be materialised in full.
+fn run_bounded_diff(
+    repo_path: &Path,
+    args: &[&str],
+    allowed_exit_codes: &[i32],
+) -> Result<BoundedDiff, AppError> {
+    let mut child = GitCli::command()
+        .args(args)
+        .current_dir(repo_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                AppError::GitNotFound
+            } else {
+                AppError::IoError(error.to_string())
+            }
+        })?;
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::IoError("git diff stdout unavailable".to_string()))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::IoError("git diff stderr unavailable".to_string()))?;
+
+    let mut buffer: Vec<u8> = Vec::with_capacity(64 * 1024);
+    let mut truncated = false;
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        match stdout.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                if buffer.len() + read > MAX_DIFF_BYTES {
+                    truncated = true;
+                    let remaining = MAX_DIFF_BYTES.saturating_sub(buffer.len());
+                    buffer.extend_from_slice(&chunk[..remaining]);
+                    let _ = child.kill();
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(AppError::IoError("failed to read git diff output".to_string()));
+            }
+        }
+    }
+    drop(stdout);
+
+    let mut stderr_bytes = Vec::new();
+    let _ = stderr.read_to_end(&mut stderr_bytes);
+    drop(stderr);
+
+    let status = child.wait().map_err(|error| AppError::IoError(error.to_string()))?;
+    let status_code = status.code().unwrap_or(-1);
+    if !truncated && !allowed_exit_codes.contains(&status_code) {
+        let stderr_text = String::from_utf8_lossy(&stderr_bytes);
+        return Err(AppError::GitError(stderr_text.trim().to_string()));
+    }
+
+    Ok(BoundedDiff {
+        text: String::from_utf8_lossy(&buffer).to_string(),
+        truncated,
+    })
+}
 
 fn count_diff_stats(diff_text: &str) -> (u32, u32) {
     let additions = diff_text
@@ -75,15 +159,18 @@ pub fn get_file_diff(
 ) -> Result<DiffResult, AppError> {
     validate_repo_relative_file_path(file_path)?;
 
-    let diff_text = if staged {
-        GitCli::run(repo_path, &["diff", "--cached", "--", file_path])?
+    let (diff_text, truncated) = if staged {
+        let bounded = run_bounded_diff(repo_path, &["diff", "--cached", "--", file_path], &[0])?;
+        (bounded.text, bounded.truncated)
     } else {
-        let tracked_diff = GitCli::run(repo_path, &["diff", "--", file_path])?;
-        if tracked_diff.is_empty() && is_untracked(repo_path, file_path)? {
+        let tracked = run_bounded_diff(repo_path, &["diff", "--", file_path], &[0])?;
+        if tracked.text.is_empty() && !tracked.truncated && is_untracked(repo_path, file_path)? {
             ensure_existing_path_inside_repo(repo_path, file_path)?;
-            untracked_file_diff(repo_path, file_path)?
+            let bounded =
+                run_bounded_diff(repo_path, &["diff", "--no-index", "--", "/dev/null", file_path], &[0, 1])?;
+            (bounded.text, bounded.truncated)
         } else {
-            tracked_diff
+            (tracked.text, tracked.truncated)
         }
     };
 
@@ -97,6 +184,7 @@ pub fn get_file_diff(
         additions,
         deletions,
         is_binary,
+        truncated,
     })
 }
 
@@ -116,42 +204,23 @@ fn is_untracked(repo_path: &Path, file_path: &str) -> Result<bool, AppError> {
     Ok(!output.status.success())
 }
 
-fn untracked_file_diff(repo_path: &Path, file_path: &str) -> Result<String, AppError> {
-    let output = GitCli::command()
-        .args(["diff", "--no-index", "--", "/dev/null", file_path])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                AppError::GitNotFound
-            } else {
-                AppError::IoError(error.to_string())
-            }
-        })?;
-
-    if output.status.success() || output.status.code() == Some(1) {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(AppError::GitError(stderr.trim().to_string()))
-    }
-}
-
 pub fn get_commit_diff(repo_path: &Path, hash: &str) -> Result<DiffResult, AppError> {
-    let diff_text = GitCli::run(repo_path, &["show", "--format=", hash])?;
+    let bounded = run_bounded_diff(repo_path, &["show", "--format=", hash], &[0])?;
 
-    let is_binary = diff_text.contains("Binary files");
-    let (additions, deletions) = count_diff_stats(&diff_text);
+    let is_binary = bounded.text.contains("Binary files");
+    let (additions, deletions) = count_diff_stats(&bounded.text);
 
     Ok(DiffResult {
         file_path: hash.to_string(),
         old_file_path: None,
-        diff_text,
+        diff_text: bounded.text,
         additions,
         deletions,
         is_binary,
+        truncated: bounded.truncated,
     })
 }
+
 
 pub fn list_commit_range_files(
     repo_path: &Path,
@@ -240,17 +309,18 @@ pub fn get_commit_range_diff(
     if let Some(old_path) = old_file_path.as_deref() {
         args.push(old_path);
     }
-    let diff_text = GitCli::run(repo_path, &args)?;
-    let is_binary = diff_text.contains("Binary files");
-    let (additions, deletions) = count_diff_stats(&diff_text);
+    let bounded = run_bounded_diff(repo_path, &args, &[0])?;
+    let is_binary = bounded.text.contains("Binary files");
+    let (additions, deletions) = count_diff_stats(&bounded.text);
 
     Ok(DiffResult {
         file_path: file_path.to_string(),
         old_file_path,
-        diff_text,
+        diff_text: bounded.text,
         additions,
         deletions,
         is_binary,
+        truncated: bounded.truncated,
     })
 }
 
@@ -409,4 +479,55 @@ mod tests {
 
         assert!(matches!(error, AppError::InvalidPath(_)));
     }
+
+    #[test]
+    fn oversized_untracked_diff_is_truncated_and_bounded() {
+        let temp = TestDir::new("oversized");
+        git(&temp.path, &["init", "-b", "main"]);
+        // One line longer than the cap guarantees the unified diff exceeds it.
+        fs::write(
+            temp.path.join("big.txt"),
+            "x".repeat(MAX_DIFF_BYTES + 1024),
+        )
+        .expect("write oversized file");
+
+        let diff = get_file_diff(&temp.path, "big.txt", false).expect("oversized diff");
+
+        assert!(diff.truncated, "oversized diff must be flagged truncated");
+        assert!(
+            diff.diff_text.len() <= MAX_DIFF_BYTES,
+            "diff payload must be bounded to MAX_DIFF_BYTES ({} <= {})",
+            diff.diff_text.len(),
+            MAX_DIFF_BYTES
+        );
+    }
+
+    #[test]
+    fn small_diff_is_not_truncated() {
+        let temp = TestDir::new("small");
+        git(&temp.path, &["init", "-b", "main"]);
+        fs::write(temp.path.join("small.txt"), "hello\nworld\n").expect("write small file");
+
+        let diff = get_file_diff(&temp.path, "small.txt", false).expect("small diff");
+
+        assert!(!diff.truncated, "small diff must not be truncated");
+        assert!(diff.diff_text.contains("+hello"));
+    }
+
+    #[test]
+    fn binary_file_diff_reports_binary() {
+        let temp = TestDir::new("binary");
+        git(&temp.path, &["init", "-b", "main"]);
+        git(&temp.path, &["config", "user.name", "GitEye Test"]);
+        git(&temp.path, &["config", "user.email", "test@giteye.local"]);
+        fs::write(temp.path.join("image.bin"), [0u8, 1, 2, 0, 255]).expect("write binary file");
+        git(&temp.path, &["add", "image.bin"]);
+        git(&temp.path, &["commit", "-m", "add binary"]);
+        fs::write(temp.path.join("image.bin"), [0u8, 9, 0, 254, 0]).expect("rewrite binary file");
+
+        let diff = get_file_diff(&temp.path, "image.bin", false).expect("binary diff");
+
+        assert!(diff.is_binary, "binary file diff must report is_binary");
+    }
+
 }

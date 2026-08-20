@@ -288,6 +288,7 @@ export interface DiffResult {
   additions: number;
   deletions: number;
   isBinary: boolean;
+  truncated: boolean;
 }
 
 export interface RecentRepo {

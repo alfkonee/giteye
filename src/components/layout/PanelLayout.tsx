@@ -127,6 +127,7 @@ export function PanelLayout() {
               filePath={fileDiff.filePath}
               oldFilePath={fileDiff.oldFilePath ?? undefined}
               isBinary={fileDiff.isBinary}
+              truncated={fileDiff.truncated}
               isLoading={diffLoading}
               error={diffError?.toString() ?? null}
               mode={diffMode}
@@ -261,6 +262,7 @@ function CommitDiffWrapper() {
           filePath={commitDiff?.filePath ?? selectedCommitHash ?? "commit"}
           oldFilePath={commitDiff?.oldFilePath ?? undefined}
           isBinary={commitDiff?.isBinary}
+          truncated={commitDiff?.truncated}
           isLoading={isLoading}
           error={error?.toString() ?? null}
           mode={diffMode}
@@ -350,6 +352,7 @@ function CommitRangeDiffWrapper() {
               filePath={commitDiff?.filePath ?? selectedFilePath}
               oldFilePath={commitDiff?.oldFilePath ?? undefined}
               isBinary={commitDiff?.isBinary}
+              truncated={commitDiff?.truncated}
               isLoading={isLoading}
               error={error?.toString() ?? null}
               mode={diffMode}

@@ -18,6 +18,7 @@ export interface DiffViewerProps {
   language?: string;
   mode: "unified" | "split";
   isBinary?: boolean;
+  truncated?: boolean;
   isLoading?: boolean;
   error?: string | null;
   isStaged?: boolean;

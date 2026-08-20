@@ -406,7 +406,7 @@ function scrollToHunk(container: HTMLElement | null, hunk: ParsedActionHunk) {
  * @pierre/diffs gracefully degrades to the fallback.
  */
 export function DiffViewer(props: DiffViewerProps) {
-  const { diffText, filePath, isBinary, isLoading, error, focusedFilePath } = props;
+  const { diffText, filePath, isBinary, truncated, isLoading, error, focusedFilePath } = props;
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [activeHunkId, setActiveHunkId] = useState<string | null>(null);
 
@@ -496,28 +496,40 @@ export function DiffViewer(props: DiffViewerProps) {
     />
   );
 
+  const truncatedNotice = truncated ? (
+    <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-3 py-2">
+      <FileWarning className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        Diff truncated to the first 4&nbsp;MiB. The file is too large to render in full.
+      </p>
+    </div>
+  ) : null;
+
+  const body = hasHunkActions ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <DiffHunkNavigator
+        hunks={actionHunks}
+        activeHunk={activeHunk}
+        onSelect={handleSelectHunk}
+        isPending={props.isHunkActionPending}
+        onStageHunk={props.onStageHunk}
+        onUnstageHunk={props.onUnstageHunk}
+        onDiscardHunk={props.onDiscardHunk}
+      />
+      {/*
+        The diff body owns its scrolling so the hunk list above stays pinned;
+        otherwise navigating to a late hunk scrolls the list itself off-screen.
+      */}
+      <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">{primary}</div>
+    </div>
+  ) : (
+    primary
+  );
+
   return (
     <DiffErrorBoundary fallback={fallback}>
-      {hasHunkActions ? (
-        <div className="flex h-full min-h-0 flex-col">
-          <DiffHunkNavigator
-            hunks={actionHunks}
-            activeHunk={activeHunk}
-            onSelect={handleSelectHunk}
-            isPending={props.isHunkActionPending}
-            onStageHunk={props.onStageHunk}
-            onUnstageHunk={props.onUnstageHunk}
-            onDiscardHunk={props.onDiscardHunk}
-          />
-          {/*
-            The diff body owns its scrolling so the hunk list above stays pinned;
-            otherwise navigating to a late hunk scrolls the list itself off-screen.
-          */}
-          <div ref={bodyRef} className="min-h-0 flex-1 overflow-auto">{primary}</div>
-        </div>
-      ) : (
-        primary
-      )}
+      {truncatedNotice}
+      {body}
     </DiffErrorBoundary>
   );
 }
