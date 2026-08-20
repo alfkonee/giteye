@@ -45,6 +45,11 @@ const config = JSON.stringify({
     beforeDevCommand: "bun -e \"process.exit()\"",
     devUrl,
   },
+  // Shipped builds set withGlobalTauri to false. The debug-only MCP bridge plugin returns
+  // results through window.__TAURI__, so dev runs re-enable the global for live verification.
+  app: {
+    withGlobalTauri: true,
+  },
 });
 
 console.log(`Starting GitEye against ${devUrl}`);

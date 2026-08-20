@@ -4,12 +4,14 @@ import { PanelLayout } from "./PanelLayout";
 import { AppChrome } from "./AppChrome";
 import { RepositoryTabs } from "./RepositoryTabs";
 import { useAppStore } from "../../stores/app-store";
+import { useJobStore, isTerminalStatus } from "../../stores/job-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
-import { Circle, GitBranch } from "lucide-react";
+import { Circle, GitBranch, TerminalSquare } from "lucide-react";
 import type { RepositoryParent, ViewType } from "../../types/git";
 import { getViewDefinition } from "../../lib/view-registry";
+import { cn } from "../../lib/cn";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -35,11 +37,11 @@ export function AppShell() {
           submoduleParent={repoInfo?.submoduleParent ?? null}
         />
         {error ? (
-          <div className="border-b border-[var(--color-border)] p-3">
+          <div className="giteye-banner border-b border-[var(--color-border)] p-3">
             <ErrorCallout message="Failed to load repository snapshot" />
           </div>
         ) : null}
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <Sidebar />
           <div className="min-w-0 flex-1 overflow-hidden">
             <PanelLayout />
@@ -74,7 +76,7 @@ function StatusBar({
   isRebasing: boolean;
 }) {
   return (
-    <div className="flex h-[22px] shrink-0 items-center gap-1.5 border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 text-[10.5px] text-[var(--color-text-muted)]">
+    <div className="giteye-statusbar flex shrink-0 items-center gap-1.5 overflow-hidden border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 text-xs text-[var(--color-text-muted)]">
       <span className="min-w-0 max-w-[220px] truncate px-1">{repoName ?? "No repository"}</span>
       {branchName && (
         <span className="giteye-chip max-w-[240px] px-1.5 text-[10.5px]" data-tone="accent" title={branchName}>
@@ -84,7 +86,7 @@ function StatusBar({
       )}
       {submoduleParent ? (
         <span
-          className="giteye-chip max-w-[280px] px-1.5 text-[10.5px]"
+          className="giteye-status-optional giteye-chip max-w-[280px] px-1.5 text-xs"
           data-tone="accent"
           title={`Submodule ${submoduleParent.submodulePath} of ${submoduleParent.path}`}
         >
@@ -105,8 +107,38 @@ function StatusBar({
           Rebase active
         </span>
       )}
-      <span className="ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">{getViewDefinition(activeView).label}</span>
+      <CommandLogStatusButton />
+      <span className="giteye-status-optional ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">{getViewDefinition(activeView).label}</span>
     </div>
+  );
+}
+
+/**
+ * Status-bar entry point for the Quake console. Replaces the old floating
+ * launcher pill; shows running-job pressure without covering the workspace.
+ */
+function CommandLogStatusButton() {
+  const jobsById = useJobStore((state) => state.jobsById);
+  const open = useJobStore((state) => state.commandLogOpen);
+  const toggleCommandLog = useJobStore((state) => state.toggleCommandLog);
+  const runningCount = Object.values(jobsById).filter((job) => !isTerminalStatus(job.status)).length;
+
+  return (
+    <button
+      type="button"
+      onClick={toggleCommandLog}
+      aria-pressed={open}
+      title="Command log console (`)"
+      className={cn(
+        "giteye-chip px-1.5 text-[10.5px] transition-colors hover:text-[var(--color-text-primary)]",
+        open && "text-[var(--color-text-primary)]",
+      )}
+      data-tone={runningCount > 0 ? "accent" : undefined}
+    >
+      <TerminalSquare className="h-3 w-3 shrink-0" />
+      <span>{runningCount > 0 ? `${runningCount} running` : "Command log"}</span>
+      <kbd className="giteye-kbd ml-0.5">`</kbd>
+    </button>
   );
 }
 

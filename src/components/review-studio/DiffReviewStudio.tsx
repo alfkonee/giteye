@@ -532,7 +532,7 @@ export function DiffReviewStudio() {
   }, [lineCommentTarget, selectedFile?.path]);
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-[260px_minmax(650px,1fr)_300px] bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+    <section className="grid h-full min-h-0 grid-cols-1 overflow-auto bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] xl:grid-cols-[260px_minmax(650px,1fr)_300px] xl:overflow-hidden">
       <aside className="flex min-h-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
         <div className="border-b border-[var(--color-border)] p-3">
           <label className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-2 text-xs text-[var(--color-text-muted)]">

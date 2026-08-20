@@ -21,7 +21,7 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const { data: branches = [] } = useQuery(gitQueries.branches(activeRepoPath));
+  const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const displayRefs = buildDisplayRefs(commit.refs ?? [], branches);
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum GitJobStatus {
     Queued,
     Running,
+    Interrupted,
     Succeeded,
     Failed,
     Canceled,
@@ -27,6 +28,15 @@ pub struct GitJobLogLine {
     pub channel: GitJobLogChannel,
     pub line: String,
     pub timestamp: DateTime<Utc>,
+}
+
+/// Repository state that must be checked before recovering an interrupted Git job.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRecoveryState {
+    pub repo_path: String,
+    pub operation: Option<String>,
+    pub lock_paths: Vec<String>,
 }
 
 /// Full persisted record for a GitEye-triggered background Git command.

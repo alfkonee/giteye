@@ -129,17 +129,17 @@ export function WorkingTreePathContextMenu({
         ref={menuRef}
         role="menu"
         aria-label={`${target.kind === "directory" ? "Folder" : "File"} actions for ${target.path}`}
-        className="fixed max-h-[calc(100vh-16px)] w-[280px] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]"
+        className="giteye-context-menu fixed max-h-[calc(100vh-16px)] w-[248px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
         style={position}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-[var(--color-border-muted)] px-3 py-2">
-          <div className="truncate text-xs font-medium text-[var(--color-text-primary)]">
+        <div className="giteye-context-header flex items-baseline gap-2 border-b border-[var(--color-border-muted)]">
+          <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-[var(--color-text-primary)]">
             {target.path}
-          </div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
-            {target.kind === "directory" ? `${target.files.length} changed files` : "Changed file"}
-          </div>
+          </span>
+          <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+            {target.kind === "directory" ? `${target.files.length} files` : "file"}
+          </span>
         </div>
 
         {submodulePath ? (
@@ -153,7 +153,7 @@ export function WorkingTreePathContextMenu({
                 onClose();
               }}
             />
-            <div className="my-1 border-t border-[var(--color-border-muted)]" />
+            <div className="giteye-context-separator" />
           </>
         ) : null}
 
@@ -188,7 +188,7 @@ export function WorkingTreePathContextMenu({
           }}
         />
 
-        <div className="my-1 border-t border-[var(--color-border-muted)]" />
+        <div className="giteye-context-separator" />
         <MenuItem
           icon={<EyeOff />}
           label={`Ignore ${label}…`}
@@ -222,7 +222,7 @@ export function WorkingTreePathContextMenu({
           }
         />
 
-        <div className="my-1 border-t border-[var(--color-border-muted)]" />
+        <div className="giteye-context-separator" />
         <MenuItem
           icon={<Copy />}
           label="Copy relative path"
@@ -260,12 +260,13 @@ function MenuItem({
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent ${
+      title={label}
+      className={`giteye-context-item ${
         tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--color-text-primary)]"
       }`}
     >
-      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      <span>{label}</span>
+      {icon}
+      <span className="giteye-context-label">{label}</span>
     </button>
   );
 

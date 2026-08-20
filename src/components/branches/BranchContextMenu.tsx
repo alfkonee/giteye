@@ -136,184 +136,153 @@ export function BranchContextMenu({
         ref={menuRef}
         role="menu"
         aria-label={`Branch actions for ${branch.shortName}`}
-        className="fixed max-h-[calc(100vh-16px)] min-w-56 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]"
+        className="giteye-context-menu fixed max-h-[calc(100vh-16px)] w-[286px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
         style={position}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-[var(--color-border-muted)] px-3 py-2 text-xs">
-          <div className="max-w-64 truncate font-medium text-[var(--color-text-primary)]">{branch.shortName}</div>
-          <div className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">{trackingState}</div>
+        <div className="giteye-context-header flex items-baseline gap-2 border-b border-[var(--color-border-muted)]">
+          <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-[var(--color-text-primary)]">
+            {branch.shortName}
+          </span>
+          <span className="shrink-0 truncate text-[10.5px] text-[var(--color-text-muted)]">{trackingState}</span>
         </div>
-        <button
-          type="button"
-          role="menuitem"
+
+        <BranchMenuItem
+          label="Rename branch"
+          detail={canUseLocalBranchTools ? branch.shortName : "local branches only"}
           disabled={!canUseLocalBranchTools || !onRename}
-          onClick={() => {
-            if (!canUseLocalBranchTools) return;
-            onRename?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Rename branch</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {canUseLocalBranchTools ? branch.shortName : "Only local branches can be renamed"}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          onSelect={() => onRename?.(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Set tracking upstream"
+          detail={branch.upstream ?? "empty prompt clears tracking"}
           disabled={!canUseLocalBranchTools || !onSetUpstream}
-          onClick={() => {
-            if (!canUseLocalBranchTools) return;
-            onSetUpstream?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Set tracking upstream</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.upstream ?? "Leave prompt empty to clear tracking"}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          onSelect={() => onSetUpstream?.(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Push branch…"
+          detail="remote, target, tracking"
           disabled={!canUseLocalBranchTools || !onPushBranch}
-          onClick={() => {
-            if (!canUseLocalBranchTools) return;
-            onPushBranch?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Push branch…</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">Choose remote, target branch, and upstream tracking</span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          onSelect={() => onPushBranch?.(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Force-with-lease push…"
+          detail="confirms before rewrite"
+          tone="danger"
           disabled={!canUseLocalBranchTools || !onForcePushBranch}
-          onClick={() => {
-            if (!canUseLocalBranchTools) return;
-            onForcePushBranch?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-danger)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Force-with-lease push…</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">Confirms before rewriting remote history</span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            onCreateFromBranch(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)]"
-        >
-          <span className="font-medium">New branch from here</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">{branch.shortName}</span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          onSelect={() => onForcePushBranch?.(branch)}
+          onClose={onClose}
+        />
+
+        <div className="giteye-context-separator" />
+        <BranchMenuItem
+          label="New branch from here"
+          detail={branch.shortName}
+          onSelect={() => onCreateFromBranch(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Fast-forward from upstream"
+          detail={branch.upstream ?? "needs tracking"}
           disabled={!canFastForward}
-          onClick={() => {
-            if (!canFastForward) return;
-            onFastForward(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Fast-forward from upstream</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.upstream ?? "Only local branches with tracking can fast-forward"}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          onSelect={() => onFastForward(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Rebase current onto this"
+          detail={branch.isCurrent ? "pick another branch" : branch.shortName}
           disabled={!canRebaseCurrentBranch}
-          onClick={() => void rebaseCurrentBranch()}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Rebase current branch onto this branch</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.isCurrent
-              ? "Select another branch as the rebase upstream"
-              : branch.shortName}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+          keepOpen
+          onSelect={() => void rebaseCurrentBranch()}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Merge into current branch"
+          detail={branch.isCurrent ? "cannot merge into itself" : branch.shortName}
           disabled={branch.isCurrent}
-          onClick={() => {
-            if (branch.isCurrent) return;
-            onMerge(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Merge into current branch</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.isCurrent ? "Current branch cannot be merged into itself" : branch.shortName}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            onAdvancedMergeRebase?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-hover)]"
-        >
-          <span className="font-medium">Advanced merge &amp; rebase…</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            Open strategy, --onto, rerere, and conflict status controls
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          disabled={!canDelete}
-          onClick={() => {
-            if (!canDelete) return;
-            onDelete?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col border-t border-[var(--color-border-muted)] px-3 py-2 text-left text-xs text-[var(--color-danger)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Delete local branch</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.isCurrent
-              ? "Current branch cannot be deleted"
+          onSelect={() => onMerge(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Advanced merge & rebase…"
+          detail="strategy, --onto, rerere"
+          onSelect={() => onAdvancedMergeRebase?.(branch)}
+          onClose={onClose}
+        />
+
+        <div className="giteye-context-separator" />
+        <BranchMenuItem
+          label="Delete local branch"
+          detail={
+            branch.isCurrent
+              ? "current branch"
               : branch.isRemote
-                ? "Use Delete remote branch below"
-                : branch.shortName}
-          </span>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
+                ? "use remote delete below"
+                : branch.shortName
+          }
+          tone="danger"
+          disabled={!canDelete}
+          onSelect={() => onDelete?.(branch)}
+          onClose={onClose}
+        />
+        <BranchMenuItem
+          label="Delete remote branch"
+          detail={branch.isRemote ? branch.shortName : "remote branches only"}
+          tone="danger"
           disabled={!canDeleteRemote}
-          onClick={() => {
-            if (!canDeleteRemote) return;
-            onDeleteRemoteBranch?.(branch);
-            onClose();
-          }}
-          className="flex w-full flex-col px-3 py-2 text-left text-xs text-[var(--color-danger)] transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-        >
-          <span className="font-medium">Delete remote branch</span>
-          <span className="mt-0.5 max-w-64 truncate text-[11px] text-[var(--color-text-muted)]">
-            {branch.isRemote ? branch.shortName : "Only remote branches can be deleted here"}
-          </span>
-        </button>
+          onSelect={() => onDeleteRemoteBranch?.(branch)}
+          onClose={onClose}
+        />
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * One compact menu row: bold action on the left, muted context (upstream,
+ * branch name, or why it is disabled) right-aligned on the same line.
+ */
+function BranchMenuItem({
+  label,
+  detail,
+  tone = "default",
+  disabled = false,
+  keepOpen = false,
+  onSelect,
+  onClose,
+}: {
+  label: string;
+  detail: string;
+  tone?: "default" | "danger";
+  disabled?: boolean;
+  /** Handlers that own their own dismissal (async previews) keep the menu open. */
+  keepOpen?: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      title={`${label} — ${detail}`}
+      onClick={() => {
+        if (disabled) return;
+        if (!keepOpen) onClose();
+        onSelect();
+      }}
+      className={
+        tone === "danger"
+          ? "giteye-context-item text-[var(--color-danger)]"
+          : "giteye-context-item"
+      }
+    >
+      <span className="giteye-context-label">{label}</span>
+      <span className="giteye-context-detail">{detail}</span>
+    </button>
   );
 }

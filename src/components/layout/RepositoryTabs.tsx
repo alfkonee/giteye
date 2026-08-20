@@ -36,12 +36,12 @@ export function RepositoryTabs() {
   };
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2">
+    <div className="giteye-repository-tabs flex min-h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2">
       <button
         type="button"
         onClick={() => setActiveRepoPath(null)}
         className={cn(
-          "giteye-btn giteye-btn-sm h-8 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
+          "giteye-btn giteye-btn-sm min-h-9 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
           activeRepoPath
             ? "giteye-btn-ghost text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
             : "giteye-nav-active border border-[var(--color-border-accent)] text-[var(--color-text-primary)]",
@@ -65,7 +65,7 @@ export function RepositoryTabs() {
             <div
               key={repoPath}
               className={cn(
-                "group inline-flex h-8 max-w-[300px] shrink-0 items-stretch overflow-hidden rounded-lg border text-left text-xs transition-colors",
+                "group inline-flex min-h-9 max-w-[300px] shrink-0 items-stretch overflow-hidden rounded-lg border text-left text-xs transition-colors",
                 isActive
                   ? "giteye-nav-active border-[var(--color-border-accent)] text-[var(--color-text-primary)]"
                   : "border-transparent bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
@@ -100,7 +100,7 @@ export function RepositoryTabs() {
                 <button
                   type="button"
                   onClick={() => openCommandLog(repoPath)}
-                  className="giteye-chip shrink-0 self-center px-1.5 py-0 text-[10px]"
+                  className="giteye-chip min-h-8 shrink-0 self-center px-1.5 py-0 text-xs"
                   data-tone="accent"
                   title="Open command log for this repository"
                 >
@@ -111,8 +111,9 @@ export function RepositoryTabs() {
               <button
                 type="button"
                 onClick={() => closeRepoPath(repoPath)}
+                aria-label={`Close ${repoName}`}
                 className={cn(
-                  "mr-1 self-center rounded p-0.5 opacity-60 transition-colors hover:bg-[var(--color-bg-hover)] hover:opacity-100",
+                  "giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm mr-1 self-center opacity-70 transition-colors hover:opacity-100",
                   isActive ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
                 )}
                 title={`Close ${repoName}`}

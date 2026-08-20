@@ -10,19 +10,20 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "GitEye",
         "width": 1280,
         "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
         "decorations": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset:; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost blob: data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {

@@ -11,6 +11,8 @@ import { EmptyState } from "../common/EmptyState";
 import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
+import { CommitBox } from "../working-tree/CommitBox";
+import { isWorkingTreeSelection } from "../../lib/working-tree-node";
 
 export function PanelLayout() {
   const activeView = useAppStore((s) => s.activeView);
@@ -23,13 +25,14 @@ export function PanelLayout() {
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
+  const isNarrowLayout = useMediaQuery("(max-width: 820px)");
   const activeViewDefinition = getViewDefinition(activeView);
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
   );
   const { data: submodules } = useQuery(
-    gitQueries.submodules(activeRepoPath, activeView === "working-tree" && Boolean(activeRepoPath))
+    gitQueries.submodules(activeRepoPath, activeView === "workspace" && Boolean(activeRepoPath))
   );
   const selectedSubmodule = submodules?.find((submodule) => submodule.path === selectedFilePath) ?? null;
   const openSubmodule = useMutation(gitMutations.openSubmodule(activeRepoPath));
@@ -63,6 +66,10 @@ export function PanelLayout() {
   const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {
+    if (isWorkingTreeSelection(selectedCommitHash)) {
+      return <CommitBox />;
+    }
+
     if (selectedCommitRange.length === 2) {
       return <CommitRangeDiffWrapper />;
     }
@@ -148,7 +155,7 @@ export function PanelLayout() {
   }
 
   return (
-    <PanelGroup direction="horizontal" className="h-full bg-[var(--color-bg-primary)]">
+    <PanelGroup direction={isNarrowLayout ? "vertical" : "horizontal"} className="h-full bg-[var(--color-bg-primary)]">
       <Panel
         defaultSize={60}
         minSize={30}
@@ -157,9 +164,12 @@ export function PanelLayout() {
           {mainContent}
         </div>
       </Panel>
-      <PanelResizeHandle className="group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
-        <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
-        <div className="absolute left-1/2 top-1/2 h-10 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-border-strong)] opacity-0 transition-opacity group-hover:opacity-80 group-active:bg-[var(--color-accent)] group-active:opacity-100" />
+      <PanelResizeHandle
+        className={isNarrowLayout
+          ? "group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"
+          : "group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"}
+      >
+        <div className={isNarrowLayout ? "absolute -inset-y-1.5 inset-x-0" : "absolute inset-y-0 -inset-x-1.5"} />
       </PanelResizeHandle>
       <Panel defaultSize={40} minSize={20}>
         <div className="h-full overflow-auto bg-[var(--color-bg-primary)]">
@@ -337,4 +347,18 @@ function CommitRangeDiffWrapper() {
       </div>
     </div>
   );
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    setMatches(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [query]);
+
+  return matches;
 }

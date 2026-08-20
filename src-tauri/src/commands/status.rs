@@ -7,18 +7,24 @@ use std::path::Path;
 use tauri::State;
 
 #[tauri::command]
-pub fn get_status(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
-    status_service::get_status(Path::new(&repo_path))
+pub async fn get_status(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || status_service::get_status(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_staged_files(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
-    status_service::get_staged_files(Path::new(&repo_path))
+pub async fn get_staged_files(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || status_service::get_staged_files(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_unstaged_files(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
-    status_service::get_unstaged_files(Path::new(&repo_path))
+pub async fn get_unstaged_files(repo_path: String) -> Result<Vec<GitStatusFile>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || status_service::get_unstaged_files(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]

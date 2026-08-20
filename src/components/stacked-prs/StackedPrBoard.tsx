@@ -426,7 +426,7 @@ export function StackedPrBoard() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(720px,1fr)_360px] gap-3 p-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 xl:grid-cols-[minmax(720px,1fr)_360px] xl:overflow-hidden">
         <main className="flex min-h-0 flex-col gap-3 overflow-hidden">
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
             <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
@@ -519,7 +519,7 @@ export function StackedPrBoard() {
             </div>
           </section>
 
-          <section className="grid grid-cols-[1fr_1.25fr] gap-3">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1.25fr]">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">Stack Health</h3>
@@ -576,7 +576,7 @@ export function StackedPrBoard() {
             </div>
           </section>
 
-          <section className="grid min-h-0 grid-cols-[260px_1fr] gap-3 overflow-hidden">
+          <section className="grid min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[260px_1fr]">
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <h3 className="mb-3 font-semibold">PR List</h3>
               {stack.length > 0 ? (

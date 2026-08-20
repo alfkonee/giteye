@@ -589,6 +589,30 @@ function finishGitActionNotice(
   useNoticeStore.getState().finishNotice(context.noticeId, "success", detail, context.recoveryHint);
 }
 
+export function gitActionErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const payload = error as { error?: unknown; message?: unknown };
+    if (typeof payload.error === "string" && payload.error.length > 0) {
+      return payload.error;
+    }
+    if (typeof payload.message === "string" && payload.message.length > 0) {
+      return payload.message;
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Unexpected Git operation error.";
+    }
+  }
+  return String(error);
+}
+
 function failGitActionNotice(
   context: GitMutationNoticeContext | undefined,
   error: unknown,
@@ -597,11 +621,12 @@ function failGitActionNotice(
     return;
   }
 
-  const detail =
-    error instanceof Error && error.message.length > 0
-      ? error.message
-      : String(error);
-  useNoticeStore.getState().finishNotice(context.noticeId, "error", detail, context.recoveryHint);
+  useNoticeStore.getState().finishNotice(
+    context.noticeId,
+    "error",
+    gitActionErrorMessage(error),
+    context.recoveryHint,
+  );
 }
 
 async function refreshRepositoryLists(

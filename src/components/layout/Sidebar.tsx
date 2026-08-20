@@ -24,9 +24,9 @@ import {
   type ViewDefinition,
 } from "../../lib/view-registry";
 import type { Branch, ViewType } from "../../types/git";
-import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
+import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -44,7 +44,6 @@ export function Sidebar() {
   );
 
   const queryClient = useQueryClient();
-  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{
     branch: Branch;
     x: number;
@@ -54,6 +53,8 @@ export function Sidebar() {
   const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
   const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
   const [showAllRemoteBranches, setShowAllRemoteBranches] = useState(false);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia("(max-width: 820px)").matches);
+  const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
 
   useEffect(() => {
     setLocalBranchesExpanded(true);
@@ -61,6 +62,26 @@ export function Sidebar() {
     setShowAllLocalBranches(false);
     setShowAllRemoteBranches(false);
   }, [activeRepoPath]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 820px)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsNarrowViewport(event.matches);
+      if (!event.matches) setNarrowSidebarOpen(false);
+    };
+    setIsNarrowViewport(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isNarrowViewport || !narrowSidebarOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNarrowSidebarOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isNarrowViewport, narrowSidebarOpen]);
 
   const { data: snapshot } = useQuery(
     gitQueries.repositorySnapshot(activeRepoPath),
@@ -79,9 +100,6 @@ export function Sidebar() {
 
   const branchesQuery = useQuery(
     gitQueries.branches(activeRepoPath, shouldLoadBranches),
-  );
-  const checkoutBranch = useMutation(
-    gitMutations.checkoutBranch(queryClient, activeRepoPath),
   );
   const createBranch = useMutation(
     gitMutations.createBranch(queryClient, activeRepoPath),
@@ -120,6 +138,14 @@ export function Sidebar() {
   const rebaseQuery = useQuery(
     gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
   );
+  const branchActivation = useBranchActivation({
+    repoPath: activeRepoPath,
+    branches: branchesQuery.data ?? [],
+    onAdvancedIntegrate: (ref) => {
+      setPendingAdvancedBranchName(ref);
+      navigate("workspace");
+    },
+  });
 
   const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
@@ -145,8 +171,7 @@ export function Sidebar() {
   const showCollaborationViews =
     hasCollaborationData || isCollaborationView(activeView);
   const viewCounts: Partial<Record<ViewType, number | undefined>> = {
-    "working-tree": statusFileCount,
-    "rebase-conflicts": hasConflicts ? conflictCount : undefined,
+    workspace: hasConflicts ? conflictCount : statusFileCount,
     worktrees: workspaceSummary?.worktreeCount,
     submodules: workspaceSummary?.submoduleCount,
     remotes: remotesQuery.data?.length,
@@ -185,26 +210,16 @@ export function Sidebar() {
 
   const navigate = (view: ViewType) => {
     setActiveView(view);
-  };
-
-  const requestBranchSwitch = (branch: Branch) => {
-    if (!branch.isCurrent) {
-      setBranchToSwitch(branch);
-    }
-  };
-
-  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
-    if (!branchToSwitch) return;
-    checkoutBranch.mutate(
-      { branchName: branchToSwitch.shortName, strategy },
-      { onSuccess: () => setBranchToSwitch(null) },
-    );
+    setNarrowSidebarOpen(false);
   };
 
   const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
     event.preventDefault();
     setContextBranch({ branch, x: event.clientX, y: event.clientY });
   };
+
+  const describeActivation = (branch: Branch) =>
+    describeBranchActivation(branch, branchesQuery.data ?? []);
 
   const createBranchFrom = (branch: Branch) => {
     const name = window.prompt(`New branch name from ${branch.shortName}`);
@@ -264,8 +279,7 @@ export function Sidebar() {
         countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
         tone={
-          definition.id === "rebase-conflicts" &&
-          (hasConflicts || hasActiveRebase)
+          definition.id === "workspace" && (hasConflicts || hasActiveRebase)
             ? "warning"
             : "default"
         }
@@ -275,13 +289,20 @@ export function Sidebar() {
     );
   };
 
-  if (sidebarCollapsed) {
+  const sidebarHidden = isNarrowViewport ? !narrowSidebarOpen : sidebarCollapsed;
+  if (sidebarHidden) {
     return (
-      <div className="flex w-11 shrink-0 flex-col items-center border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm">
+      <div className="giteye-sidebar-rail flex w-12 shrink-0 flex-col items-center border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm">
         <button
-          onClick={toggleSidebar}
+          onClick={() => {
+            if (isNarrowViewport) setNarrowSidebarOpen(true);
+            else toggleSidebar();
+          }}
+          type="button"
+          aria-label="Open repository navigation"
+          aria-expanded={false}
           className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm mt-2 text-[var(--color-text-muted)]"
-          title="Expand sidebar"
+          title="Open repository navigation"
         >
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -290,7 +311,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/92 backdrop-blur-sm">
+    <aside aria-label="Repository navigation" className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/92 backdrop-blur-sm">
       <div className="border-b border-[var(--color-border-muted)] px-3 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] shadow-[var(--shadow-soft)]">
@@ -341,8 +362,9 @@ export function Sidebar() {
           <>
             <BranchTree
               branches={visibleBranches(localBranches, showAllLocalBranches)}
-              onSwitch={requestBranchSwitch}
+              onSwitch={branchActivation.activateBranch}
               onContextMenu={openBranchContextMenu}
+              describeActivation={describeActivation}
             />
             {localBranches.length > 8 ? (
               <ShowMoreButton
@@ -366,8 +388,9 @@ export function Sidebar() {
               <>
                 <BranchTree
                   branches={visibleBranches(remoteBranches, showAllRemoteBranches)}
-                  onSwitch={requestBranchSwitch}
+                  onSwitch={branchActivation.activateBranch}
                   onContextMenu={openBranchContextMenu}
+                  describeActivation={describeActivation}
                 />
                 {remoteBranches.length > 8 ? (
                   <ShowMoreButton
@@ -447,12 +470,19 @@ export function Sidebar() {
         <SidebarNavItem
           icon={<FolderOpen className="h-4 w-4" />}
           label="Repo Hub"
-          onClick={() => setGlobalView("repo-hub")}
+          onClick={() => {
+            setNarrowSidebarOpen(false);
+            setGlobalView("repo-hub");
+          }}
         />
 
         <button
-          onClick={toggleSidebar}
-          className="flex w-full items-center gap-2 px-2.5 py-1.5 text-[13px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          type="button"
+          onClick={() => {
+            if (isNarrowViewport) setNarrowSidebarOpen(false);
+            else toggleSidebar();
+          }}
+          className="giteye-menu-item flex w-full items-center gap-2 px-2.5 py-2 text-[13px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
         >
           <PanelLeftClose className="h-4 w-4" />
           <span>Collapse Sidebar</span>
@@ -466,11 +496,12 @@ export function Sidebar() {
           <span className="ml-auto">Command Menu</span>
         </div>
         <BranchSwitchDialog
-          branch={branchToSwitch}
+          branch={branchActivation.switchBranch}
           isClean={isClean}
-          isPending={checkoutBranch.isPending}
-          onCancel={() => setBranchToSwitch(null)}
-          onConfirm={confirmBranchSwitch}
+          isPending={branchActivation.switchPending}
+          followUpNote={branchActivation.switchFollowUp}
+          onCancel={branchActivation.cancelSwitch}
+          onConfirm={branchActivation.confirmSwitch}
         />
         <BranchContextMenu
           branch={contextBranch?.branch ?? null}
@@ -482,7 +513,7 @@ export function Sidebar() {
           onMerge={mergeBranch}
           onAdvancedMergeRebase={(branch) => {
             setPendingAdvancedBranchName(branch.shortName);
-            navigate("rebase-conflicts");
+            navigate("workspace");
           }}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
@@ -514,7 +545,7 @@ function SidebarSection({
   );
   return (
     onToggle ? (
-      <button type="button" aria-expanded={expanded} onClick={onToggle} className="giteye-section-label flex w-full items-center px-3 pb-1 pt-3 text-left hover:text-[var(--color-text-primary)]">
+      <button type="button" aria-expanded={expanded} onClick={onToggle} className="giteye-section-label flex min-h-8 w-full items-center px-3 pb-1 pt-3 text-left hover:text-[var(--color-text-primary)]">
         {content}
       </button>
     ) : (
@@ -559,15 +590,23 @@ function BranchTree({
   branches,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   branches: Branch[];
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   const tree = buildBranchTree(branches);
   return (
     <div className="pb-1">
-      <BranchTreeContents node={tree} depth={0} onSwitch={onSwitch} onContextMenu={onContextMenu} />
+      <BranchTreeContents
+        node={tree}
+        depth={0}
+        onSwitch={onSwitch}
+        onContextMenu={onContextMenu}
+        describeActivation={describeActivation}
+      />
     </div>
   );
 }
@@ -577,16 +616,26 @@ function BranchTreeContents({
   depth,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   node: BranchTreeNode;
   depth: number;
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   return (
     <>
       {[...node.folders.entries()].map(([name, folder]) => (
-        <BranchFolder key={name} name={name} node={folder} depth={depth} onSwitch={onSwitch} onContextMenu={onContextMenu} />
+        <BranchFolder
+          key={name}
+          name={name}
+          node={folder}
+          depth={depth}
+          onSwitch={onSwitch}
+          onContextMenu={onContextMenu}
+          describeActivation={describeActivation}
+        />
       ))}
       {node.branches.map(({ branch, label }) => (
         <button
@@ -594,7 +643,7 @@ function BranchTreeContents({
           type="button"
           onDoubleClick={() => onSwitch(branch)}
           onContextMenu={(event) => onContextMenu(event, branch)}
-          title={branch.isCurrent ? "Current branch" : "Double-click to switch branch"}
+          title={describeActivation(branch)}
           style={{ paddingLeft: `${24 + depth * 14}px` }}
           className={cn(
             "giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pr-2 text-left text-[12px] transition-colors",
@@ -620,12 +669,14 @@ function BranchFolder({
   depth,
   onSwitch,
   onContextMenu,
+  describeActivation,
 }: {
   name: string;
   node: BranchTreeNode;
   depth: number;
   onSwitch: (branch: Branch) => void;
   onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  describeActivation: (branch: Branch) => string;
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const count = node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
@@ -643,7 +694,15 @@ function BranchFolder({
         <span className="min-w-0 flex-1 truncate">{name}</span>
         <span className="text-[9px] tabular-nums">{count}</span>
       </button>
-      {expanded ? <BranchTreeContents node={node} depth={depth + 1} onSwitch={onSwitch} onContextMenu={onContextMenu} /> : null}
+      {expanded ? (
+        <BranchTreeContents
+          node={node}
+          depth={depth + 1}
+          onSwitch={onSwitch}
+          onContextMenu={onContextMenu}
+          describeActivation={describeActivation}
+        />
+      ) : null}
     </>
   );
 }
@@ -654,7 +713,7 @@ function countBranchTree(node: BranchTreeNode): number {
 
 function ShowMoreButton({ expanded, hiddenCount, onClick }: { expanded: boolean; hiddenCount: number; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="mx-6 mb-1 rounded px-2 py-1 text-[11px] font-medium text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]">
+    <button type="button" onClick={onClick} className="giteye-menu-item mx-6 mb-1 rounded px-2 py-1 text-xs font-medium text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]">
       {expanded ? "Show less" : `Show ${hiddenCount} more`}
     </button>
   );
@@ -696,6 +755,7 @@ function SidebarNavItem({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       title={title}

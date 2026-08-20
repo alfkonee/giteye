@@ -1,21 +1,32 @@
-import { useEffect } from "react";
-import { recordTrace } from "../../lib/invoke-trace";
+import { useEffect, useSyncExternalStore } from "react";
+import {
+  isInvokeTraceRecording,
+  recordTrace,
+  subscribeInvokeTraces,
+} from "../../lib/invoke-trace";
 import { useAppStore } from "../../stores/app-store";
 
 export function FrontendTraceCollector() {
-  useEffect(
-    () =>
-      useAppStore.subscribe((state, previousState) => {
-        if (state.route === previousState.route) return;
-        recordTrace("navigation", "navigation.change", {
-          from: previousState.route,
-          to: state.route,
-        });
-      }),
-    [],
+  const recording = useSyncExternalStore(
+    subscribeInvokeTraces,
+    isInvokeTraceRecording,
+    isInvokeTraceRecording,
   );
 
   useEffect(() => {
+    if (!recording) return;
+    return useAppStore.subscribe((state, previousState) => {
+      if (state.route === previousState.route) return;
+      recordTrace("navigation", "navigation.change", {
+        from: previousState.route,
+        to: state.route,
+      });
+    });
+  }, [recording]);
+
+  useEffect(() => {
+    if (!recording) return;
+
     const handleClick = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target.closest("button, a, input, select, textarea, [role]") : null;
       recordTrace("frontend", "ui.click", {
@@ -57,7 +68,7 @@ export function FrontendTraceCollector() {
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, []);
+  }, [recording]);
 
   return null;
 }

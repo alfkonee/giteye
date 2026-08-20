@@ -37,7 +37,7 @@ export function NoticeCenter() {
     <aside
       aria-live="polite"
       aria-label="Action notices"
-      className="pointer-events-none fixed bottom-16 right-4 z-[80] flex w-[380px] max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className="pointer-events-none fixed bottom-12 right-3 z-[80] flex w-[400px] max-w-[calc(100vw-1.5rem)] flex-col gap-2"
     >
       {transcriptOpen && (
         <OperationTranscriptPanel
@@ -63,7 +63,7 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
   return (
     <div
       className={cn(
-        "pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md",
+        "giteye-banner pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md",
         notice.status === "error"
           ? "border-[var(--color-danger)]/45"
           : notice.status === "success"
@@ -96,8 +96,8 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{notice.title}</p>
-              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-secondary)]">{statusDetail}</p>
+              <p className="text-sm font-semibold leading-5 text-[var(--color-text-primary)]">{notice.title}</p>
+              <p className="mt-1 line-clamp-3 text-[13px] leading-5 text-[var(--color-text-secondary)]">{statusDetail}</p>
               {notice.recoveryHint && (
                 <p className="mt-2 rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
                   {notice.recoveryHint}
@@ -107,7 +107,7 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
                 <button
                   type="button"
                   onClick={() => openCommandLog(true, notice.action?.jobId ?? null)}
-                  className="mt-2 rounded-md border border-[var(--color-accent)]/35 px-2 py-1 text-xs font-medium text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent)]/10"
+                  className="giteye-btn giteye-btn-secondary giteye-btn-sm mt-2 text-[var(--color-accent)]"
                 >
                   {notice.action.label}
                 </button>
@@ -116,7 +116,7 @@ function NoticeCard({ notice, now, onDismiss }: { notice: Notice; now: number; o
             <button
               type="button"
               onClick={() => onDismiss(notice.id)}
-              className="-mr-1 rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+              className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm -mr-1 text-[var(--color-text-muted)]"
               aria-label={`Dismiss ${notice.title}`}
             >
               <X className="h-3.5 w-3.5" />
@@ -152,7 +152,7 @@ function OperationTranscriptPanel({
   onClear: () => void;
 }) {
   return (
-    <section className="pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md">
+    <section className="giteye-banner pointer-events-auto overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/95 shadow-[var(--shadow-elevated)] backdrop-blur-md">
       <header className="giteye-panel-header border-b border-[var(--color-border-muted)] px-3 py-2">
         <History className="h-4 w-4 text-[var(--color-accent)]" />
         <div className="min-w-0 flex-1">
@@ -163,7 +163,7 @@ function OperationTranscriptPanel({
           type="button"
           onClick={onClear}
           disabled={entries.length === 0}
-          className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Clear operation transcript"
           title="Clear operation transcript"
         >
@@ -172,7 +172,7 @@ function OperationTranscriptPanel({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+          className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)]"
           aria-label="Close operation transcript"
         >
           <X className="h-3.5 w-3.5" />

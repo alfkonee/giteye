@@ -1,15 +1,16 @@
 import { useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { gitMutations, gitQueries } from "../../lib/git-data";
+import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
+import { runBranchPushFlow } from "../../lib/branch-push";
 import { formatDryRunPreview } from "../../lib/git-preview";
-import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight } from "lucide-react";
+import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight, FastForward } from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { BranchSwitchDialog } from "./BranchSwitchDialog";
 import { BranchContextMenu } from "./BranchContextMenu";
 import type { Branch } from "../../types/git";
-import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
+import { findTrackingLocalBranch, useBranchActivation } from "../../lib/branch-activation";
 
 function remoteNamesFromBranches(branches: Branch[]) {
   return Array.from(
@@ -39,7 +40,6 @@ export function BranchList() {
   const queryClient = useQueryClient();
   const { data: branches, isLoading } = useQuery(gitQueries.branches(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
-  const checkoutMutation = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
   const createMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const deleteMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
   const fastForwardMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
@@ -50,17 +50,24 @@ export function BranchList() {
   const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
   const deleteRemoteBranchMutation = useMutation(gitMutations.deleteRemoteBranch(queryClient, activeRepoPath));
   const deleteRemoteBranchDryRunMutation = useMutation(gitMutations.deleteRemoteBranchDryRun(activeRepoPath));
+  const branchActivation = useBranchActivation({
+    repoPath: activeRepoPath,
+    branches: branches ?? [],
+    onAdvancedIntegrate: (ref) => {
+      setPendingAdvancedBranchName(ref);
+      setActiveView("workspace");
+    },
+  });
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
   const remoteNames = remoteNamesFromBranches(branches ?? []);
   const branchMutationError =
-    checkoutMutation.error ??
+    branchActivation.error ??
     createMutation.error ??
     deleteMutation.error ??
     renameMutation.error ??
@@ -72,7 +79,7 @@ export function BranchList() {
     deleteRemoteBranchMutation.error ??
     deleteRemoteBranchDryRunMutation.error;
   const branchMutationPending =
-    checkoutMutation.isPending ||
+    branchActivation.isPending ||
     createMutation.isPending ||
     deleteMutation.isPending ||
     renameMutation.isPending ||
@@ -98,33 +105,8 @@ export function BranchList() {
     );
   };
 
-  const requestBranchSwitch = (branch: Branch) => {
-    if (!branch.isCurrent) {
-      setBranchToSwitch(branch);
-    }
-  };
-
-  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
-    if (!branchToSwitch) return;
-    checkoutMutation.mutate(
-      { branchName: branchToSwitch.shortName, strategy },
-      { onSuccess: () => setBranchToSwitch(null) },
-    );
-  };
-
-  const checkoutRemote = (branch: Branch) => {
-    const localName = branch.shortName.split("/").slice(1).join("/");
-    if (!localName) return;
-    createMutation.mutate({ name: localName, checkout: true, startPoint: branch.shortName });
-  };
-
-  const trackedByLocal = (branch: Branch): string | null => {
-    const remoteRef = branch.shortName;
-    const trackingLocal = localBranches.find(
-      (local) => local.upstream === remoteRef,
-    );
-    return trackingLocal ? trackingLocal.shortName : null;
-  };
+  const trackedByLocal = (branch: Branch): string | null =>
+    findTrackingLocalBranch(branch, branches ?? [])?.shortName ?? null;
 
   const openBranchContextMenu = (event: MouseEvent, branch: Branch) => {
     event.preventDefault();
@@ -175,35 +157,13 @@ export function BranchList() {
 
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
-    const remote = window.prompt("Push to remote", branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin")?.trim();
-    if (!remote) return;
-    const upstreamBranch = branch.upstream?.startsWith(`${remote}/`) ? branch.upstream.slice(remote.length + 1) : branch.shortName;
-    const remoteBranch = window.prompt("Remote branch name", upstreamBranch)?.trim();
-    if (remoteBranch === undefined) return;
-    const target = `${remote}/${remoteBranch || branch.shortName}`;
-    const setUpstream = !forceWithLease && window.confirm(`Set "${branch.shortName}" to track ${target} after push?`);
-    const request = {
-      remote,
-      localBranch: branch.shortName,
-      remoteBranch: remoteBranch || null,
-      setUpstream,
+    await runBranchPushFlow({
+      branch,
+      remoteNames,
       forceWithLease,
-    };
-    let previewText: string;
-    try {
-      previewText = formatDryRunPreview(
-        await pushBranchDryRunMutation.mutateAsync(request),
-        "Git did not report any ref updates for this push dry run.",
-      );
-    } catch (error) {
-      window.alert(`Unable to preview push to ${target}: ${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    const forceWarning = forceWithLease
-      ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
-      : "";
-    if (!window.confirm(`Push "${branch.shortName}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
-    pushBranchMutation.mutate(request);
+      dryRunPreview: (request) => pushBranchDryRunMutation.mutateAsync(request),
+      submitPush: (request) => pushBranchMutation.mutate(request),
+    });
   };
 
   const deleteRemoteBranch = async (branch: Branch) => {
@@ -251,7 +211,9 @@ export function BranchList() {
 
       {(branchMutationPending || branchMutationError) && (
         <div className={cn("border-b border-[var(--color-border)] px-3 py-2 text-xs", branchMutationError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
-          {branchMutationError ? String(branchMutationError) : "Updating branches…"}
+          {branchMutationError
+            ? gitActionErrorMessage(branchMutationError)
+            : "Updating branches…"}
         </div>
       )}
       {showCreate && (
@@ -281,7 +243,7 @@ export function BranchList() {
                 ? "bg-[var(--color-bg-hover)]"
                 : "hover:bg-[var(--color-bg-surface)]"
             )}
-            onDoubleClick={() => requestBranchSwitch(branch)}
+            onDoubleClick={() => branchActivation.activateBranch(branch)}
             onContextMenu={(event) => openBranchContextMenu(event, branch)}
             title={branch.isCurrent ? "Current branch" : "Double-click to switch branch, right-click for branch actions"}
           >
@@ -354,9 +316,9 @@ export function BranchList() {
               <div
                 key={branch.name}
                 className="group flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--color-bg-surface)] cursor-pointer text-xs text-[var(--color-text-secondary)]"
-                onDoubleClick={() => requestBranchSwitch(branch)}
+                onDoubleClick={() => branchActivation.activateBranch(branch)}
                 onContextMenu={(event) => openBranchContextMenu(event, branch)}
-                title={trackedBy ? `Tracked by local branch "${trackedBy}"` : "Double-click to switch remote branch, right-click for branch actions"}
+                title={trackedBy ? `Double-click to fast-forward "${trackedBy}" to ${branch.shortName}` : `Double-click to create a local branch tracking ${branch.shortName}`}
               >
                 <GitBranch className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{branch.shortName}</span>
@@ -368,18 +330,13 @@ export function BranchList() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    checkoutRemote(branch);
+                    branchActivation.activateBranch(branch);
                   }}
-                  disabled={Boolean(trackedBy) || createMutation.isPending}
-                  className={cn(
-                    "rounded px-1.5 py-0.5 text-[10px] font-medium opacity-0 transition-all group-focus-within:opacity-100 group-hover:opacity-100",
-                    trackedBy
-                      ? "cursor-not-allowed text-[var(--color-text-muted)]"
-                      : "text-[var(--color-accent)] hover:bg-[var(--color-bg-surface)]",
-                  )}
-                  title={trackedBy ? `Already tracked by "${trackedBy}"` : "Checkout and track this remote branch"}
+                  disabled={branchActivation.isPending}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-accent)] opacity-0 transition-all hover:bg-[var(--color-bg-surface)] group-focus-within:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
+                  title={trackedBy ? `Fast-forward "${trackedBy}" to this remote branch` : "Create a tracking local branch and check it out"}
                 >
-                  {trackedBy ? <Check className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                  {trackedBy ? <FastForward className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
                 </button>
                 <button
                   onClick={(e) => {
@@ -399,11 +356,12 @@ export function BranchList() {
       </div>
 
       <BranchSwitchDialog
-        branch={branchToSwitch}
+        branch={branchActivation.switchBranch}
         isClean={isClean}
-        isPending={checkoutMutation.isPending}
-        onCancel={() => setBranchToSwitch(null)}
-        onConfirm={confirmBranchSwitch}
+        isPending={branchActivation.switchPending}
+        followUpNote={branchActivation.switchFollowUp}
+        onCancel={branchActivation.cancelSwitch}
+        onConfirm={branchActivation.confirmSwitch}
       />
       <BranchContextMenu
         branch={contextBranch?.branch ?? null}
@@ -420,7 +378,7 @@ export function BranchList() {
         onMerge={mergeBranch}
         onAdvancedMergeRebase={(branch) => {
           setPendingAdvancedBranchName(branch.shortName);
-          setActiveView("rebase-conflicts");
+          setActiveView("workspace");
         }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}

@@ -11,16 +11,22 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn get_rebase_state(repo_path: String) -> Result<RebaseState, AppError> {
-    rebase_service::get_rebase_state(Path::new(&repo_path))
+pub async fn get_rebase_state(repo_path: String) -> Result<RebaseState, AppError> {
+    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rebase_state(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_conflict_content(
+pub async fn get_conflict_content(
     repo_path: String,
     file_path: String,
 ) -> Result<ConflictContent, AppError> {
-    rebase_service::get_conflict_content(Path::new(&repo_path), &file_path)
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::get_conflict_content(Path::new(&repo_path), &file_path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -72,37 +78,53 @@ pub fn skip_rebase(
 }
 
 #[tauri::command]
-pub fn mark_file_resolved(repo_path: String, file_path: String) -> Result<(), AppError> {
-    rebase_service::mark_file_resolved(Path::new(&repo_path), &file_path)
+pub async fn mark_file_resolved(repo_path: String, file_path: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::mark_file_resolved(Path::new(&repo_path), &file_path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn checkout_conflict_side(
+pub async fn checkout_conflict_side(
     repo_path: String,
     file_path: String,
     side: String,
 ) -> Result<(), AppError> {
-    rebase_service::checkout_conflict_side(Path::new(&repo_path), &file_path, &side)
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::checkout_conflict_side(Path::new(&repo_path), &file_path, &side)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn update_rebase_todo(repo_path: String, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
-    rebase_service::update_rebase_todo(Path::new(&repo_path), items)
+pub async fn update_rebase_todo(repo_path: String, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::update_rebase_todo(Path::new(&repo_path), items)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn preview_rebase(
+pub async fn preview_rebase(
     repo_path: String,
     upstream: String,
     onto: Option<String>,
     branch: Option<String>,
 ) -> Result<Vec<RebasePreviewItem>, AppError> {
-    rebase_service::preview_rebase(
-        Path::new(&repo_path),
-        &upstream,
-        onto.as_deref(),
-        branch.as_deref(),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::preview_rebase(
+            Path::new(&repo_path),
+            &upstream,
+            onto.as_deref(),
+            branch.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -148,23 +170,35 @@ pub fn rebase_upstream(
 }
 
 #[tauri::command]
-pub fn get_rerere_config(repo_path: String) -> Result<bool, AppError> {
-    rebase_service::get_rerere_config(Path::new(&repo_path))
+pub async fn get_rerere_config(repo_path: String) -> Result<bool, AppError> {
+    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rerere_config(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_rerere_status(repo_path: String) -> Result<RerereStatus, AppError> {
-    rebase_service::get_rerere_status(Path::new(&repo_path))
+pub async fn get_rerere_status(repo_path: String) -> Result<RerereStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rerere_status(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn set_rerere_enabled(repo_path: String, enabled: bool) -> Result<RerereStatus, AppError> {
-    rebase_service::set_rerere_enabled(Path::new(&repo_path), enabled)
+pub async fn set_rerere_enabled(repo_path: String, enabled: bool) -> Result<RerereStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::set_rerere_enabled(Path::new(&repo_path), enabled)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_operation_summary(repo_path: String) -> Result<GitOperationSummary, AppError> {
-    rebase_service::get_operation_summary(Path::new(&repo_path))
+pub async fn get_operation_summary(repo_path: String) -> Result<GitOperationSummary, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::get_operation_summary(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 fn rebase_onto_args(

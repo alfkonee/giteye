@@ -189,12 +189,13 @@ export function RepositoryWelcome() {
       title={globalView === "settings" ? "GitEye · Settings" : "GitEye · Repo Hub"}
       subtitle={globalView === "settings" ? "Application preferences" : "No repository open"}
     >
-      <div className="flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-        <aside className="flex w-[248px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
+      <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
+        <aside className="giteye-hub-sidebar flex w-[248px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
           <nav className="flex-1 overflow-y-auto px-3 py-4">
             <button
               type="button"
               onClick={() => setGlobalView("repo-hub")}
+              aria-current={globalView === "repo-hub" ? "page" : undefined}
               className={cn(
                 "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
                 globalView === "repo-hub" && "giteye-nav-active text-[var(--color-text-primary)]",
@@ -206,6 +207,7 @@ export function RepositoryWelcome() {
             <button
               type="button"
               onClick={() => setGlobalView("settings")}
+              aria-current={globalView === "settings" ? "page" : undefined}
               className={cn(
                 "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
                 globalView === "settings" && "giteye-nav-active text-[var(--color-text-primary)]",
@@ -217,6 +219,7 @@ export function RepositoryWelcome() {
             <button
               type="button"
               onClick={() => setShowNotifications((v) => !v)}
+              aria-expanded={showNotifications}
               className={cn(
                 "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
                 showNotifications && "giteye-nav-active text-[var(--color-text-primary)]",
@@ -240,7 +243,7 @@ export function RepositoryWelcome() {
                     key={repoPath}
                     type="button"
                     onClick={() => setActiveRepoPath(repoPath)}
-                    className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
+                    className="giteye-menu-item flex w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
                     title={repoPath}
                   >
                     <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
@@ -284,12 +287,13 @@ export function RepositoryWelcome() {
         </aside>
 
         {showNotifications && (
-          <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
+          <aside className="giteye-hub-notifications flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
             <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
               <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Notifications</h2>
               <button
                 type="button"
                 onClick={() => setShowNotifications(false)}
+                aria-label="Close notifications"
                 className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
               >
                 <X className="h-4 w-4" />
@@ -345,21 +349,50 @@ export function RepositoryWelcome() {
           </aside>
         )}
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="giteye-hub-main-shell flex min-w-0 flex-1 flex-col">
+          <nav aria-label="Application navigation" className="giteye-hub-compact-nav hidden shrink-0 items-center gap-1 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
+            <button
+              type="button"
+              onClick={() => setGlobalView("repo-hub")}
+              aria-current={globalView === "repo-hub" ? "page" : undefined}
+              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", globalView === "repo-hub" && "giteye-nav-active")}
+            >
+              <Home className="h-4 w-4" />
+              Repo Hub
+            </button>
+            <button
+              type="button"
+              onClick={() => setGlobalView("settings")}
+              aria-current={globalView === "settings" ? "page" : undefined}
+              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", globalView === "settings" && "giteye-nav-active")}
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNotifications((visible) => !visible)}
+              aria-expanded={showNotifications}
+              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", showNotifications && "giteye-nav-active")}
+            >
+              <Bell className="h-4 w-4" />
+              Notifications
+            </button>
+          </nav>
           <RepositoryTabs />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {globalView === "settings" ? (
               <SettingsPlaceholder />
             ) : (
               <>
-            <section className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
+            <section className="giteye-hub-main min-w-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="mx-auto max-w-[1020px]">
-                <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="giteye-hub-heading mb-4 flex items-start justify-between gap-4">
                   <div>
                     <h1 className="text-[30px] font-semibold leading-none tracking-[-0.035em] text-[var(--color-text-primary)]">Repo Hub</h1>
                     <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Open, clone, or revisit a repository from one calm starting point.</p>
                   </div>
-                  <div className="relative shrink-0">
+                  <div className="giteye-hub-search relative shrink-0">
                     <Input
                       ref={searchInputRef}
                       value={repoSearch}
@@ -397,8 +430,8 @@ export function RepositoryWelcome() {
                       </button>
                     </div>
                   </div>
-                  <div className="mt-3 flex gap-2">
-                    <div className="relative min-w-0 flex-1">
+                  <div className="giteye-hub-open-row mt-3 flex gap-2">
+                    <div className="giteye-hub-open-input relative min-w-0 flex-1">
                       <Input
                         value={path}
                         onChange={(event) => setPath(event.target.value)}
@@ -444,7 +477,7 @@ export function RepositoryWelcome() {
                   />
                 </div>
 
-                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_320px] gap-4">
+                <div className="giteye-hub-summary-grid mt-4 grid grid-cols-[minmax(0,1fr)_320px] gap-4">
                   <FavoriteList
                     loading={favoritesLoading}
                     repos={favoriteRepos}
@@ -493,7 +526,7 @@ export function RepositoryWelcome() {
             <GitBranch className="h-3.5 w-3.5" />
             No repository open
           </span>
-          <span className="flex items-center gap-3">
+          <span className="giteye-hub-footer-shortcuts flex items-center gap-3">
             <Shortcut keys="⌘K" label="Search" />
             <Shortcut keys="⌘N" label="New Repo" />
             <Shortcut keys="⌘O" label="Open Repo" />
@@ -605,86 +638,79 @@ function RepositoryList({
             const isFavorite = favoritePaths.has(repo.path);
 
             return (
-              <button
+              <div
                 key={repo.path}
-                type="button"
-                onClick={() => onOpen(repo.path)}
                 className={cn(
-                  "group relative grid w-full grid-cols-[minmax(0,1fr)_96px_56px] items-center gap-3 rounded-md px-2 py-2.5 text-left hover:bg-[var(--color-bg-hover)]",
-                  repo.parentPath && "ml-5 w-[calc(100%-1.25rem)] border-l-2 border-[var(--color-accent)]/30 pl-3",
+                  "group relative grid w-full grid-cols-[minmax(0,1fr)_80px] items-center rounded-md px-1 hover:bg-[var(--color-bg-hover)]",
+                  repo.parentPath && "ml-5 w-[calc(100%-1.25rem)] border-l-2 border-[var(--color-accent)]/30 pl-2",
                 )}
               >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-                    <FolderGit2 className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
-                      {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
+                <button
+                  type="button"
+                  onClick={() => onOpen(repo.path)}
+                  className="grid min-h-12 min-w-0 grid-cols-[minmax(0,1fr)_96px] items-center gap-3 px-1 text-left"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
+                      <FolderGit2 className="h-4 w-4" />
                     </span>
-                    {repo.parentName ? (
-                      <span className="block truncate text-[10px] capitalize text-[var(--color-text-muted)]">
-                        {repo.relationshipKind} repository
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
+                        {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
                       </span>
-                    ) : null}
-                    <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                      {repo.parentName ? (
+                        <span className="block truncate text-xs capitalize text-[var(--color-text-muted)]">
+                          {repo.relationshipKind} repository
+                        </span>
+                      ) : null}
+                      <span className="block truncate text-xs text-[var(--color-text-secondary)]">{repo.path}</span>
+                    </span>
                   </span>
-                </span>
-                <span className="text-right text-[11px] text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
+                  <span className="text-right text-xs text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
+                </button>
                 <span className="flex justify-end gap-1">
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSetFavorite(repo, !isFavorite);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onSetFavorite(repo, !isFavorite);
-                      }
-                    }}
-                    className="rounded-md p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-warning)]"
-                  >
-                    <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-warning)]")} />
-                  </span>
                   <button
                     type="button"
+                    aria-label={isFavorite ? `Remove ${repo.name} from favorites` : `Add ${repo.name} to favorites`}
+                    title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    onClick={() => onSetFavorite(repo, !isFavorite)}
+                    className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] hover:text-[var(--color-warning)]"
+                  >
+                    <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-warning)]")} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`More actions for ${repo.name}`}
                     title="More actions"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setMenuRepo(menuRepo?.path === repo.path ? null : repo);
-                    }}
-                    className="rounded-md p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]"
+                    aria-expanded={menuRepo?.path === repo.path}
+                    onClick={() => setMenuRepo(menuRepo?.path === repo.path ? null : repo)}
+                    className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] opacity-70 hover:text-[var(--color-text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
                   >
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
                   {menuRepo?.path === repo.path && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setMenuRepo(null)} />
-                      <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
+                      <div role="menu" aria-label={`Actions for ${repo.name}`} className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          role="menuitem"
+                          onClick={() => {
                             setMenuRepo(null);
                             void navigator.clipboard.writeText(repo.path);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                          className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
                         >
                           Copy Path
                         </button>
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          role="menuitem"
+                          onClick={() => {
                             setMenuRepo(null);
                             onRemoveRecent(repo.path);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
+                          className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
                         >
                           Remove from Recents
                         </button>
@@ -692,7 +718,7 @@ function RepositoryList({
                     </>
                   )}
                 </span>
-              </button>
+              </div>
             );
           })
         )}
@@ -728,43 +754,35 @@ function FavoriteList({
           </div>
         ) : (
           repos.map((repo) => (
-            <button
+            <div
               key={repo.path}
-              type="button"
-              onClick={() => onOpen(repo.path)}
-              className="group grid w-full grid-cols-[minmax(0,1fr)_32px] items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-[var(--color-bg-hover)]"
+              className="group grid w-full grid-cols-[minmax(0,1fr)_40px] items-center gap-2 rounded-md px-1 hover:bg-[var(--color-bg-hover)]"
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-warning)]">
+              <button
+                type="button"
+                onClick={() => onOpen(repo.path)}
+                className="flex min-h-12 min-w-0 items-center gap-3 px-1 text-left"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-warning)]">
                   <Star className="h-4 w-4 fill-current" />
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
                     {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
                   </span>
-                  <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{repo.path}</span>
+                  <span className="block truncate text-xs text-[var(--color-text-secondary)]">{repo.path}</span>
                 </span>
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${repo.name} from favorites`}
                 title="Remove from favorites"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSetFavorite(repo, false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onSetFavorite(repo, false);
-                  }
-                }}
-                className="rounded-md p-1 text-[var(--color-warning)] transition-colors hover:bg-[var(--color-bg-surface)]"
+                onClick={() => onSetFavorite(repo, false)}
+                className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-warning)]"
               >
                 <Star className="h-4 w-4 fill-current" />
-              </span>
-            </button>
+              </button>
+            </div>
           ))
         )}
       </div>

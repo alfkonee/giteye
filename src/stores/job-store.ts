@@ -37,6 +37,7 @@ interface JobStore {
   ingestEvent: (event: GitJobEvent) => void;
   hydrateJobs: (jobs: GitJobRecord[]) => void;
   setCommandLogOpen: (open: boolean, jobId?: string | null) => void;
+  toggleCommandLog: () => void;
   selectJob: (jobId: string | null) => void;
   setRepoFilter: (repoPath: string | null) => void;
   clearJobOutput: (repoPath?: string | null) => void;
@@ -68,6 +69,10 @@ export const useJobStore = create<JobStore>((set) => ({
       commandLogOpen: open,
       selectedJobId: jobId ?? state.selectedJobId,
     }));
+  },
+
+  toggleCommandLog: () => {
+    set((state) => ({ commandLogOpen: !state.commandLogOpen }));
   },
 
   selectJob: (jobId) => {
@@ -183,5 +188,5 @@ function canonicalStatus(status: GitJobStatus): GitJobStatus {
 }
 
 export function isTerminalStatus(status: GitJobStatus) {
-  return status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
+  return status === "interrupted" || status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
 }

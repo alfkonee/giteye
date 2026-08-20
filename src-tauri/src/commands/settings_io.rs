@@ -28,72 +28,80 @@ pub struct AiExportConfig {
 }
 
 #[tauri::command]
-pub fn export_settings(
+pub async fn export_settings(
     app_handle: tauri::AppHandle,
     output_path: String,
     theme: String,
     diff_mode: String,
 ) -> Result<String, AppError> {
-    let recents = storage::load_recent_repositories(&app_handle)?;
-    let favorites = storage::load_favorite_repositories(&app_handle)?;
-    let ai_config = ai_service::get_ai_config(&app_handle)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let recents = storage::load_recent_repositories(&app_handle)?;
+        let favorites = storage::load_favorite_repositories(&app_handle)?;
+        let ai_config = ai_service::get_ai_config(&app_handle)?;
 
-    let bundle = ExportBundle {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        exported_at: chrono::Utc::now().to_rfc3339(),
-        theme,
-        diff_mode,
-        ai_config: Some(AiExportConfig {
-            provider: ai_config.provider,
-            model: ai_config.model,
-            prompts: Some(ai_config.prompts),
-        }),
-        recent_repositories: recents,
-        favorite_repositories: favorites,
-    };
+        let bundle = ExportBundle {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            exported_at: chrono::Utc::now().to_rfc3339(),
+            theme,
+            diff_mode,
+            ai_config: Some(AiExportConfig {
+                provider: ai_config.provider,
+                model: ai_config.model,
+                prompts: Some(ai_config.prompts),
+            }),
+            recent_repositories: recents,
+            favorite_repositories: favorites,
+        };
 
-    let json = serde_json::to_string_pretty(&bundle)
-        .map_err(|e| AppError::SerializationError(e.to_string()))?;
+        let json = serde_json::to_string_pretty(&bundle)
+            .map_err(|e| AppError::SerializationError(e.to_string()))?;
 
-    fs::write(Path::new(&output_path), json).map_err(|e| AppError::StorageError(e.to_string()))?;
+        fs::write(Path::new(&output_path), json).map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    Ok(format!("Settings exported to {output_path}"))
+        Ok(format!("Settings exported to {output_path}"))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn import_settings(
+pub async fn import_settings(
     app_handle: tauri::AppHandle,
     input_path: String,
 ) -> Result<ExportBundle, AppError> {
-    let data = fs::read_to_string(Path::new(&input_path))
-        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let data = fs::read_to_string(Path::new(&input_path))
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    let bundle: ExportBundle = serde_json::from_str(&data)
-        .map_err(|e| AppError::SerializationError(format!("Invalid settings file: {}", e)))?;
+        let bundle: ExportBundle = serde_json::from_str(&data)
+            .map_err(|e| AppError::SerializationError(format!("Invalid settings file: {}", e)))?;
 
-    for repo in &bundle.recent_repositories {
-        let _ = storage::save_recent_repository(&app_handle, &repo.path, &repo.name);
-    }
+        for repo in &bundle.recent_repositories {
+            let _ = storage::save_recent_repository(&app_handle, &repo.path, &repo.name);
+        }
 
-    for fav in &bundle.favorite_repositories {
-        let _ = storage::set_repository_favorite(&app_handle, &fav.path, &fav.name, true);
-    }
+        for fav in &bundle.favorite_repositories {
+            let _ = storage::set_repository_favorite(&app_handle, &fav.path, &fav.name, true);
+        }
 
-    if let Some(ai_config) = &bundle.ai_config {
-        let prompts = match ai_config.prompts.clone() {
-            Some(prompts) => prompts,
-            None => ai_service::get_ai_config(&app_handle)?.default_prompts,
-        };
-        let _ = ai_service::save_ai_config(
-            &app_handle,
-            ai_service::SaveAiConfigRequest {
-                provider: ai_config.provider,
-                model: ai_config.model.clone(),
-                api_key: None,
-                prompts,
-            },
-        )?;
-    }
+        if let Some(ai_config) = &bundle.ai_config {
+            let prompts = match ai_config.prompts.clone() {
+                Some(prompts) => prompts,
+                None => ai_service::get_ai_config(&app_handle)?.default_prompts,
+            };
+            let _ = ai_service::save_ai_config(
+                &app_handle,
+                ai_service::SaveAiConfigRequest {
+                    provider: ai_config.provider,
+                    model: ai_config.model.clone(),
+                    api_key: None,
+                    prompts,
+                },
+            )?;
+        }
 
-    Ok(bundle)
+        Ok(bundle)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }

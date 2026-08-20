@@ -743,6 +743,7 @@ export interface GitSignatureSummary {
 export type GitJobStatus =
   | "queued"
   | "running"
+  | "interrupted"
   | "succeeded"
   | "failed"
   | "canceled"
@@ -782,11 +783,16 @@ export interface GitJobRecord extends GitJobSummary {
   output?: GitJobStreamLine[];
 }
 
+export interface GitRecoveryState {
+  repoPath: string;
+  operation: string | null;
+  lockPaths: string[];
+}
+
 export type GlobalViewType = "repo-hub" | "settings";
 
 export type RepositoryViewType =
-  | "working-tree"
-  | "history"
+  | "workspace"
   | "branches"
   | "remotes"
   | "stashes"
@@ -798,7 +804,6 @@ export type RepositoryViewType =
   | "review-studio"
   | "worktrees"
   | "submodules"
-  | "rebase-conflicts"
   | "archaeology"
   | "diagnostics"
   | "custom-command";
