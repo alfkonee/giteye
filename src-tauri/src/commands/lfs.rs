@@ -9,55 +9,83 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn get_lfs_status(repo_path: String) -> Result<LfsStatus, AppError> {
-    lfs_service::get_lfs_status(Path::new(&repo_path))
+pub async fn get_lfs_status(repo_path: String) -> Result<LfsStatus, AppError> {
+    tauri::async_runtime::spawn_blocking(move || lfs_service::get_lfs_status(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn install_lfs(repo_path: String) -> Result<(), AppError> {
-    lfs_service::install_lfs(Path::new(&repo_path))
+pub async fn install_lfs(repo_path: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || lfs_service::install_lfs(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn track_lfs_pattern(repo_path: String, pattern: String) -> Result<(), AppError> {
-    lfs_service::track_lfs_pattern(Path::new(&repo_path), &pattern)
+pub async fn track_lfs_pattern(repo_path: String, pattern: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::track_lfs_pattern(Path::new(&repo_path), &pattern)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn untrack_lfs_pattern(repo_path: String, pattern: String) -> Result<(), AppError> {
-    lfs_service::untrack_lfs_pattern(Path::new(&repo_path), &pattern)
+pub async fn untrack_lfs_pattern(repo_path: String, pattern: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::untrack_lfs_pattern(Path::new(&repo_path), &pattern)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn list_lfs_locks(repo_path: String, remote: Option<String>) -> Result<LfsLocks, AppError> {
-    lfs_service::list_lfs_locks(Path::new(&repo_path), remote.as_deref())
+pub async fn list_lfs_locks(repo_path: String, remote: Option<String>) -> Result<LfsLocks, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::list_lfs_locks(Path::new(&repo_path), remote.as_deref())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn lock_lfs_file(
+pub async fn lock_lfs_file(
     repo_path: String,
     path: String,
     remote: Option<String>,
 ) -> Result<(), AppError> {
-    lfs_service::lock_lfs_file(Path::new(&repo_path), &path, remote.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::lock_lfs_file(Path::new(&repo_path), &path, remote.as_deref())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn unlock_lfs_file(
+pub async fn unlock_lfs_file(
     repo_path: String,
     lock_id: String,
     remote: Option<String>,
     force: bool,
 ) -> Result<(), AppError> {
-    lfs_service::unlock_lfs_file(Path::new(&repo_path), &lock_id, remote.as_deref(), force)
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::unlock_lfs_file(Path::new(&repo_path), &lock_id, remote.as_deref(), force)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn preview_lfs_transfer(
+pub async fn preview_lfs_transfer(
     repo_path: String,
     request: LfsTransferRequest,
 ) -> Result<LfsCommandPreview, AppError> {
-    lfs_service::preview_lfs_transfer(Path::new(&repo_path), &request)
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::preview_lfs_transfer(Path::new(&repo_path), &request)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -78,11 +106,15 @@ pub fn start_lfs_transfer(
 }
 
 #[tauri::command]
-pub fn preview_lfs_prune(
+pub async fn preview_lfs_prune(
     repo_path: String,
     request: LfsPruneRequest,
 ) -> Result<LfsCommandPreview, AppError> {
-    lfs_service::preview_lfs_prune(Path::new(&repo_path), &request)
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::preview_lfs_prune(Path::new(&repo_path), &request)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -99,11 +131,15 @@ pub fn start_lfs_prune(
 }
 
 #[tauri::command]
-pub fn preview_lfs_fsck(
+pub async fn preview_lfs_fsck(
     repo_path: String,
     revision: Option<String>,
 ) -> Result<LfsCommandPreview, AppError> {
-    lfs_service::preview_lfs_fsck(Path::new(&repo_path), revision.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::preview_lfs_fsck(Path::new(&repo_path), revision.as_deref())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -125,11 +161,15 @@ pub fn start_lfs_fsck(
 }
 
 #[tauri::command]
-pub fn preview_lfs_migration(
+pub async fn preview_lfs_migration(
     repo_path: String,
     request: LfsMigrationRequest,
 ) -> Result<LfsCommandPreview, AppError> {
-    lfs_service::preview_lfs_migration(Path::new(&repo_path), &request)
+    tauri::async_runtime::spawn_blocking(move || {
+        lfs_service::preview_lfs_migration(Path::new(&repo_path), &request)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]

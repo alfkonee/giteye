@@ -7,68 +7,93 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn list_branches(repo_path: String) -> Result<Vec<Branch>, AppError> {
-    branch_service::list_branches(Path::new(&repo_path))
+pub async fn list_branches(repo_path: String) -> Result<Vec<Branch>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || branch_service::list_branches(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_current_branch(repo_path: String) -> Result<String, AppError> {
-    branch_service::get_current_branch(Path::new(&repo_path))
+pub async fn get_current_branch(repo_path: String) -> Result<String, AppError> {
+    tauri::async_runtime::spawn_blocking(move || branch_service::get_current_branch(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn checkout_branch(
+pub async fn checkout_branch(
     repo_path: String,
     branch_name: String,
     strategy: Option<String>,
 ) -> Result<(), AppError> {
-    branch_service::checkout_branch(
-        Path::new(&repo_path),
-        &branch_name,
-        strategy.as_deref().unwrap_or("move"),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::checkout_branch(
+            Path::new(&repo_path),
+            &branch_name,
+            strategy.as_deref().unwrap_or("move"),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn create_branch(
+pub async fn create_branch(
     repo_path: String,
     branch_name: String,
     checkout: bool,
     start_point: Option<String>,
 ) -> Result<(), AppError> {
-    branch_service::create_branch(
-        Path::new(&repo_path),
-        &branch_name,
-        checkout,
-        start_point.as_deref(),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::create_branch(
+            Path::new(&repo_path),
+            &branch_name,
+            checkout,
+            start_point.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
+
 #[tauri::command]
-pub fn rename_branch(
+pub async fn rename_branch(
     repo_path: String,
     old_name: String,
     new_name: String,
 ) -> Result<(), AppError> {
-    branch_service::rename_branch(Path::new(&repo_path), &old_name, &new_name)
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::rename_branch(Path::new(&repo_path), &old_name, &new_name)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn set_branch_upstream(
+pub async fn set_branch_upstream(
     repo_path: String,
     branch_name: String,
     upstream: Option<String>,
 ) -> Result<(), AppError> {
-    branch_service::set_branch_upstream(Path::new(&repo_path), &branch_name, upstream.as_deref())
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::set_branch_upstream(Path::new(&repo_path), &branch_name, upstream.as_deref())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn fast_forward_branch(
+pub async fn fast_forward_branch(
     repo_path: String,
     branch_name: String,
     upstream: String,
 ) -> Result<(), AppError> {
-    branch_service::fast_forward_branch(Path::new(&repo_path), &branch_name, &upstream)
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::fast_forward_branch(Path::new(&repo_path), &branch_name, &upstream)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -112,8 +137,12 @@ pub fn merge_with_options(
 }
 
 #[tauri::command]
-pub fn delete_branch(repo_path: String, branch_name: String) -> Result<(), AppError> {
-    branch_service::delete_branch(Path::new(&repo_path), &branch_name)
+pub async fn delete_branch(repo_path: String, branch_name: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::delete_branch(Path::new(&repo_path), &branch_name)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 fn merge_args(

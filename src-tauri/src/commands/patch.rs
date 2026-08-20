@@ -12,53 +12,75 @@ pub struct DiscardFileRequest {
 }
 
 #[tauri::command]
-pub fn apply_patch(repo_path: String, request: PatchApplyRequest) -> Result<(), AppError> {
-    patch_service::apply_patch(Path::new(&repo_path), request)
+pub async fn apply_patch(repo_path: String, request: PatchApplyRequest) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || patch_service::apply_patch(Path::new(&repo_path), request))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn stage_hunk(
+pub async fn stage_hunk(
     repo_path: String,
     file_path: String,
     hunk_patch: String,
 ) -> Result<(), AppError> {
-    patch_service::stage_hunk(Path::new(&repo_path), &file_path, &hunk_patch)
+    tauri::async_runtime::spawn_blocking(move || {
+        patch_service::stage_hunk(Path::new(&repo_path), &file_path, &hunk_patch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn unstage_hunk(
+pub async fn unstage_hunk(
     repo_path: String,
     file_path: String,
     hunk_patch: String,
 ) -> Result<(), AppError> {
-    patch_service::unstage_hunk(Path::new(&repo_path), &file_path, &hunk_patch)
+    tauri::async_runtime::spawn_blocking(move || {
+        patch_service::unstage_hunk(Path::new(&repo_path), &file_path, &hunk_patch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn discard_hunk(
+pub async fn discard_hunk(
     repo_path: String,
     file_path: String,
     staged: bool,
     hunk_patch: String,
 ) -> Result<(), AppError> {
-    patch_service::discard_hunk(Path::new(&repo_path), &file_path, staged, &hunk_patch)
+    tauri::async_runtime::spawn_blocking(move || {
+        patch_service::discard_hunk(Path::new(&repo_path), &file_path, staged, &hunk_patch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn discard_file(
+pub async fn discard_file(
     repo_path: String,
     file_path: String,
     staged: bool,
     untracked: bool,
 ) -> Result<(), AppError> {
-    patch_service::discard_file(Path::new(&repo_path), &file_path, staged, untracked)
+    tauri::async_runtime::spawn_blocking(move || {
+        patch_service::discard_file(Path::new(&repo_path), &file_path, staged, untracked)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn discard_files(repo_path: String, files: Vec<DiscardFileRequest>) -> Result<(), AppError> {
-    let repo_path = Path::new(&repo_path);
-    for file in files {
-        patch_service::discard_file(repo_path, &file.file_path, file.staged, file.untracked)?;
-    }
-    Ok(())
+pub async fn discard_files(repo_path: String, files: Vec<DiscardFileRequest>) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo_path = Path::new(&repo_path);
+        for file in files {
+            patch_service::discard_file(repo_path, &file.file_path, file.staged, file.untracked)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }

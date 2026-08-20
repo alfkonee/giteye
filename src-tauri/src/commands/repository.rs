@@ -9,30 +9,38 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn open_repository(
+pub async fn open_repository(
     path: String,
     app_handle: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    let repo_path = Path::new(&path);
-    if !repo_path.exists() {
-        return Err(AppError::RepositoryNotFound(path));
-    }
-    let snapshot = repository_service::get_repository_snapshot(repo_path)?;
-    storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
-    repository_service::prime_repository_context_with_budget(repo_path.to_path_buf(), false);
-    Ok(snapshot)
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo_path = Path::new(&path);
+        if !repo_path.exists() {
+            return Err(AppError::RepositoryNotFound(path.clone()));
+        }
+        let snapshot = repository_service::get_repository_snapshot(repo_path)?;
+        storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
+        repository_service::prime_repository_context_with_budget(repo_path.to_path_buf(), false);
+        Ok(snapshot)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn init_repository(
+pub async fn init_repository(
     path: String,
     app_handle: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    repository_service::init_repository(Path::new(&path))?;
-    let snapshot = repository_service::get_repository_snapshot(Path::new(&path))?;
-    storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
-    repository_service::prime_repository_context_with_budget(Path::new(&path).to_path_buf(), false);
-    Ok(snapshot)
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::init_repository(Path::new(&path))?;
+        let snapshot = repository_service::get_repository_snapshot(Path::new(&path))?;
+        storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
+        repository_service::prime_repository_context_with_budget(Path::new(&path).to_path_buf(), false);
+        Ok(snapshot)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -77,73 +85,109 @@ pub fn clone_repository(
 }
 
 #[tauri::command]
-pub fn get_repository_info(path: String) -> Result<RepositoryInfo, AppError> {
-    repository_service::get_repository_info(Path::new(&path))
+pub async fn get_repository_info(path: String) -> Result<RepositoryInfo, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::get_repository_info(Path::new(&path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_repository_snapshot(path: String) -> Result<RepositorySnapshot, AppError> {
-    repository_service::get_repository_snapshot(Path::new(&path))
+pub async fn get_repository_snapshot(path: String) -> Result<RepositorySnapshot, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::get_repository_snapshot(Path::new(&path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_branch_summary(path: String) -> Result<BranchSummary, AppError> {
-    repository_service::get_branch_summary(Path::new(&path))
+pub async fn get_branch_summary(path: String) -> Result<BranchSummary, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::get_branch_summary(Path::new(&path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn get_workspace_summary(path: String) -> Result<WorkspaceSummary, AppError> {
-    repository_service::get_workspace_summary(Path::new(&path))
+pub async fn get_workspace_summary(path: String) -> Result<WorkspaceSummary, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::get_workspace_summary(Path::new(&path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn warm_repository_context(repo_path: String, include_github: bool) -> Result<(), AppError> {
-    repository_service::warm_repository_context(
-        Path::new(&repo_path).to_path_buf(),
-        include_github,
-    );
-    Ok(())
+pub async fn warm_repository_context(repo_path: String, include_github: bool) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repository_service::warm_repository_context(
+            Path::new(&repo_path).to_path_buf(),
+            include_github,
+        );
+        Ok(())
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn list_recent_repositories(
+pub async fn list_recent_repositories(
     app_handle: AppHandle,
 ) -> Result<Vec<storage::RecentRepo>, AppError> {
-    let mut repositories = storage::load_recent_repositories(&app_handle)?;
-    enrich_recent_relationships(&mut repositories);
-    Ok(repositories)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut repositories = storage::load_recent_repositories(&app_handle)?;
+        enrich_recent_relationships(&mut repositories);
+        Ok(repositories)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn list_favorite_repositories(
+pub async fn list_favorite_repositories(
     app_handle: AppHandle,
 ) -> Result<Vec<storage::FavoriteRepo>, AppError> {
-    let mut repositories = storage::load_favorite_repositories(&app_handle)?;
-    enrich_favorite_relationships(&mut repositories);
-    Ok(repositories)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut repositories = storage::load_favorite_repositories(&app_handle)?;
+        enrich_favorite_relationships(&mut repositories);
+        Ok(repositories)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn set_repository_favorite(
+pub async fn set_repository_favorite(
     app_handle: AppHandle,
     repo_path: String,
     name: String,
     favorite: bool,
 ) -> Result<Vec<storage::FavoriteRepo>, AppError> {
-    let mut repositories =
-        storage::set_repository_favorite(&app_handle, &repo_path, &name, favorite)?;
-    enrich_favorite_relationships(&mut repositories);
-    Ok(repositories)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut repositories =
+            storage::set_repository_favorite(&app_handle, &repo_path, &name, favorite)?;
+        enrich_favorite_relationships(&mut repositories);
+        Ok(repositories)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn remove_recent_repository(
+pub async fn remove_recent_repository(
     app_handle: AppHandle,
     repo_path: String,
 ) -> Result<Vec<storage::RecentRepo>, AppError> {
-    let mut repositories = storage::remove_recent_repository(&app_handle, &repo_path)?;
-    enrich_recent_relationships(&mut repositories);
-    Ok(repositories)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut repositories = storage::remove_recent_repository(&app_handle, &repo_path)?;
+        enrich_recent_relationships(&mut repositories);
+        Ok(repositories)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 const RELATIONSHIP_ENRICHMENT_BATCH_SIZE: usize = 4;

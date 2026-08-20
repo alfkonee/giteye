@@ -7,8 +7,10 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn list_submodules(repo_path: String) -> Result<Vec<Submodule>, AppError> {
-    submodule_service::list_submodules(Path::new(&repo_path))
+pub async fn list_submodules(repo_path: String) -> Result<Vec<Submodule>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || submodule_service::list_submodules(Path::new(&repo_path)))
+        .await
+        .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -38,20 +40,24 @@ pub fn update_submodule(
 }
 
 #[tauri::command]
-pub fn add_submodule(
+pub async fn add_submodule(
     repo_path: String,
     url: String,
     path: String,
     branch: Option<String>,
     name: Option<String>,
 ) -> Result<(), AppError> {
-    submodule_service::add_submodule(
-        Path::new(&repo_path),
-        &url,
-        &path,
-        branch.as_deref(),
-        name.as_deref(),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        submodule_service::add_submodule(
+            Path::new(&repo_path),
+            &url,
+            &path,
+            branch.as_deref(),
+            name.as_deref(),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
@@ -109,28 +115,44 @@ pub fn submodule_init_update(
 }
 
 #[tauri::command]
-pub fn submodule_set_branch(
+pub async fn submodule_set_branch(
     repo_path: String,
     path: String,
     branch: String,
 ) -> Result<(), AppError> {
-    submodule_service::submodule_set_branch(Path::new(&repo_path), &path, &branch)
+    tauri::async_runtime::spawn_blocking(move || {
+        submodule_service::submodule_set_branch(Path::new(&repo_path), &path, &branch)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn submodule_foreach_status(
+pub async fn submodule_foreach_status(
     repo_path: String,
     recursive: bool,
 ) -> Result<Vec<SubmoduleForeachStatus>, AppError> {
-    submodule_service::submodule_foreach_status(Path::new(&repo_path), recursive)
+    tauri::async_runtime::spawn_blocking(move || {
+        submodule_service::submodule_foreach_status(Path::new(&repo_path), recursive)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn open_submodule(repo_path: String, path: String) -> Result<String, AppError> {
-    submodule_service::open_submodule(Path::new(&repo_path), &path)
+pub async fn open_submodule(repo_path: String, path: String) -> Result<String, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        submodule_service::open_submodule(Path::new(&repo_path), &path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn bump_submodule(repo_path: String, path: String) -> Result<(), AppError> {
-    submodule_service::bump_submodule(Path::new(&repo_path), &path)
+pub async fn bump_submodule(repo_path: String, path: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        submodule_service::bump_submodule(Path::new(&repo_path), &path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }

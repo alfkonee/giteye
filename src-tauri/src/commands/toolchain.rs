@@ -48,9 +48,13 @@ pub fn cancel_toolchain_install(state: tauri::State<'_, ToolchainInstallerState>
 }
 
 #[tauri::command]
-pub fn select_git_executable(
+pub async fn select_git_executable(
     app_handle: tauri::AppHandle,
     executable_path: Option<String>,
 ) -> Result<ToolchainStatus, AppError> {
-    toolchain_service::select_git_executable(&app_handle, executable_path)
+    tauri::async_runtime::spawn_blocking(move || {
+        toolchain_service::select_git_executable(&app_handle, executable_path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
