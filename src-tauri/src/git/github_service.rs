@@ -8,10 +8,11 @@ use crate::models::github::{
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 static GITHUB_OVERVIEW_CACHE: LazyLock<Mutex<HashMap<String, RepositoryGithubOverview>>> =
@@ -843,7 +844,13 @@ fn fetch_pull_request_detail(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Option<(Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> {
+) -> Option<(
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+)> {
     #[derive(Deserialize)]
     struct GhPullRequestDetail {
         body: Option<String>,
@@ -1115,10 +1122,12 @@ fn timeline_title(event: &Value) -> Option<String> {
     let kind = json_string(event, "event").unwrap_or_default();
     match kind.as_str() {
         "commented" | "reviewed" => json_string(event, "body"),
-        "labeled" => nested_string(event, "label", "name")
-            .map(|name| format!("added the {name} label")),
-        "unlabeled" => nested_string(event, "label", "name")
-            .map(|name| format!("removed the {name} label")),
+        "labeled" => {
+            nested_string(event, "label", "name").map(|name| format!("added the {name} label"))
+        }
+        "unlabeled" => {
+            nested_string(event, "label", "name").map(|name| format!("removed the {name} label"))
+        }
         "review_requested" => nested_string(event, "requested_reviewer", "login")
             .or_else(|| nested_string(event, "requested_team", "name"))
             .map(|who| format!("requested review from {who}")),
@@ -1132,8 +1141,9 @@ fn timeline_title(event: &Value) -> Option<String> {
             (Some(from), Some(to)) => Some(format!("changed the title from {from} to {to}")),
             _ => Some("changed the title".to_string()),
         },
-        "merged" => json_string(event, "commit_id")
-            .map(|sha| format!("merged commit {}", short_sha(&sha))),
+        "merged" => {
+            json_string(event, "commit_id").map(|sha| format!("merged commit {}", short_sha(&sha)))
+        }
         "head_ref_force_pushed" => json_string(event, "ref")
             .map(|reference| format!("force-pushed the {} branch", trim_ref(&reference))),
         "head_ref_deleted" => json_string(event, "ref")
@@ -1144,8 +1154,9 @@ fn timeline_title(event: &Value) -> Option<String> {
         "reopened" => Some("reopened this pull request".to_string()),
         "converted_to_draft" => Some("marked this pull request as draft".to_string()),
         "ready_for_review" => Some("marked this pull request as ready for review".to_string()),
-        "committed" => json_string(event, "commit_id")
-            .map(|sha| format!("added commit {}", short_sha(&sha))),
+        "committed" => {
+            json_string(event, "commit_id").map(|sha| format!("added commit {}", short_sha(&sha)))
+        }
         "referenced" | "cross-referenced" => json_string(event, "commit_id")
             .map(|sha| format!("referenced this pull request in {}", short_sha(&sha))),
         "subscribed" | "unsubscribed" => None,
@@ -1160,7 +1171,11 @@ fn nested_string(value: &Value, key: &str, nested: &str) -> Option<String> {
 }
 
 fn short_sha(sha: &str) -> String {
-    if sha.len() > 7 { sha[..7].to_string() } else { sha.to_string() }
+    if sha.len() > 7 {
+        sha[..7].to_string()
+    } else {
+        sha.to_string()
+    }
 }
 
 fn trim_ref(value: &str) -> String {
@@ -1264,12 +1279,7 @@ fn run_required_process(
     run_gh(program, args, repo_path, op, None).map_err(|error| gh_error_to_app(program, op, error))
 }
 
-fn run_process(
-    program: &str,
-    args: &[&str],
-    repo_path: &Path,
-    op: GhOp,
-) -> Option<String> {
+fn run_process(program: &str, args: &[&str], repo_path: &Path, op: GhOp) -> Option<String> {
     run_gh(program, args, repo_path, op, None).ok()
 }
 
@@ -1329,6 +1339,25 @@ fn backoff_delay(attempt: u32) -> Duration {
     Duration::from_millis(150 * (1u64 << attempt))
 }
 
+fn spawn_pipe_reader<R: Read + Send + 'static>(
+    mut pipe: R,
+) -> JoinHandle<std::io::Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        pipe.read_to_end(&mut bytes).map(|_| bytes)
+    })
+}
+
+fn join_pipe_reader(
+    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+    stream: &str,
+) -> Result<Vec<u8>, GhRunError> {
+    reader
+        .join()
+        .map_err(|_| GhRunError::Spawn(format!("gh {stream} reader panicked")))?
+        .map_err(|error| GhRunError::Spawn(format!("failed to read gh {stream}: {error}")))
+}
+
 fn run_gh_once(
     program: &str,
     args: &[&str],
@@ -1346,6 +1375,18 @@ fn run_gh_once(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| GhRunError::Spawn(e.to_string()))?;
+    let stdout_reader = spawn_pipe_reader(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| GhRunError::Spawn("gh stdout unavailable".to_string()))?,
+    );
+    let stderr_reader = spawn_pipe_reader(
+        child
+            .stderr
+            .take()
+            .ok_or_else(|| GhRunError::Spawn("gh stderr unavailable".to_string()))?,
+    );
 
     let deadline = Instant::now() + timeout;
     loop {
@@ -1353,29 +1394,38 @@ fn run_gh_once(
             if !github_request_active(request_context) {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
                 return Err(GhRunError::Cancelled);
             }
         }
 
         match child.try_wait() {
-            Ok(Some(_)) => {
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| GhRunError::Spawn(e.to_string()))?;
-                if output.status.success() {
-                    return String::from_utf8(output.stdout)
-                        .map_err(|e| GhRunError::Spawn(e.to_string()));
+            Ok(Some(status)) => {
+                let stdout = join_pipe_reader(stdout_reader, "stdout")?;
+                let stderr = join_pipe_reader(stderr_reader, "stderr")?;
+                if status.success() {
+                    return String::from_utf8(stdout).map_err(|e| GhRunError::Spawn(e.to_string()));
                 }
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(GhRunError::NonZero(stderr.trim().to_string()));
+                return Err(GhRunError::NonZero(
+                    String::from_utf8_lossy(&stderr).trim().to_string(),
+                ));
             }
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
                 return Err(GhRunError::Timeout);
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
-            Err(e) => return Err(GhRunError::Spawn(e.to_string())),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GhRunError::Spawn(e.to_string()));
+            }
         }
     }
 }

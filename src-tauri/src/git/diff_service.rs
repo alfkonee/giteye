@@ -4,6 +4,7 @@ use crate::models::DiffResult;
 use std::io::Read;
 use std::path::{Component, Path};
 use std::process::Stdio;
+use std::thread;
 
 /// Hard cap on a single diff payload. Beyond this the diff is truncated and
 /// flagged so the frontend can render a notice instead of an unbounded string.
@@ -14,9 +15,60 @@ struct BoundedDiff {
     truncated: bool,
 }
 
-/// Runs a git diff command and reads its stdout incrementally, capping at
-/// `MAX_DIFF_BYTES`. Reaching the cap kills the child and flags truncation,
-/// so an oversized text diff can never be materialised in full.
+/// Appends as much of `text` as fits without splitting a UTF-8 code point.
+/// Returns whether all input bytes fit.
+fn push_utf8_with_cap(output: &mut String, text: &str, max_bytes: usize) -> bool {
+    let remaining = max_bytes.saturating_sub(output.len());
+    if text.len() <= remaining {
+        output.push_str(text);
+        return true;
+    }
+
+    let mut end = remaining;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    output.push_str(&text[..end]);
+    false
+}
+
+/// Converts bytes like `String::from_utf8_lossy`, but never allocates or returns
+/// more than `max_bytes`. Invalid sequences become U+FFFD only while it fits.
+fn bounded_lossy_utf8(bytes: &[u8], max_bytes: usize) -> (String, bool) {
+    let mut output = String::with_capacity(bytes.len().min(max_bytes));
+    let mut remaining = bytes;
+
+    while !remaining.is_empty() {
+        match std::str::from_utf8(remaining) {
+            Ok(valid) => {
+                let truncated = !push_utf8_with_cap(&mut output, valid, max_bytes);
+                return (output, truncated);
+            }
+            Err(error) => {
+                let valid_up_to = error.valid_up_to();
+                let valid = std::str::from_utf8(&remaining[..valid_up_to])
+                    .expect("UTF-8 error valid prefix must be UTF-8");
+                if !push_utf8_with_cap(&mut output, valid, max_bytes)
+                    || !push_utf8_with_cap(&mut output, "\u{FFFD}", max_bytes)
+                {
+                    return (output, true);
+                }
+
+                match error.error_len() {
+                    Some(invalid_len) => remaining = &remaining[valid_up_to + invalid_len..],
+                    None => return (output, false),
+                }
+            }
+        }
+    }
+
+    (output, false)
+}
+
+/// Runs a git diff command and reads stdout incrementally, capping at
+/// `MAX_DIFF_BYTES`. stderr is drained concurrently: an external diff driver
+/// must never block the child by filling its diagnostics pipe while stdout is
+/// still being read.
 fn run_bounded_diff(
     repo_path: &Path,
     args: &[&str],
@@ -44,6 +96,10 @@ fn run_bounded_diff(
         .stderr
         .take()
         .ok_or_else(|| AppError::IoError("git diff stderr unavailable".to_string()))?;
+    let stderr_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).map(|_| bytes)
+    });
 
     let mut buffer: Vec<u8> = Vec::with_capacity(64 * 1024);
     let mut truncated = false;
@@ -63,27 +119,34 @@ fn run_bounded_diff(
             }
             Err(_) => {
                 let _ = child.kill();
+                drop(stdout);
                 let _ = child.wait();
-                return Err(AppError::IoError("failed to read git diff output".to_string()));
+                let _ = stderr_reader.join();
+                return Err(AppError::IoError(
+                    "failed to read git diff output".to_string(),
+                ));
             }
         }
     }
     drop(stdout);
 
-    let mut stderr_bytes = Vec::new();
-    let _ = stderr.read_to_end(&mut stderr_bytes);
-    drop(stderr);
-
-    let status = child.wait().map_err(|error| AppError::IoError(error.to_string()))?;
+    let status = child
+        .wait()
+        .map_err(|error| AppError::IoError(error.to_string()))?;
+    let stderr_bytes = stderr_reader
+        .join()
+        .map_err(|_| AppError::IoError("git diff stderr reader panicked".to_string()))?
+        .map_err(|error| AppError::IoError(error.to_string()))?;
     let status_code = status.code().unwrap_or(-1);
     if !truncated && !allowed_exit_codes.contains(&status_code) {
         let stderr_text = String::from_utf8_lossy(&stderr_bytes);
         return Err(AppError::GitError(stderr_text.trim().to_string()));
     }
 
+    let (text, conversion_truncated) = bounded_lossy_utf8(&buffer, MAX_DIFF_BYTES);
     Ok(BoundedDiff {
-        text: String::from_utf8_lossy(&buffer).to_string(),
-        truncated,
+        text,
+        truncated: truncated || conversion_truncated,
     })
 }
 
@@ -166,8 +229,11 @@ pub fn get_file_diff(
         let tracked = run_bounded_diff(repo_path, &["diff", "--", file_path], &[0])?;
         if tracked.text.is_empty() && !tracked.truncated && is_untracked(repo_path, file_path)? {
             ensure_existing_path_inside_repo(repo_path, file_path)?;
-            let bounded =
-                run_bounded_diff(repo_path, &["diff", "--no-index", "--", "/dev/null", file_path], &[0, 1])?;
+            let bounded = run_bounded_diff(
+                repo_path,
+                &["diff", "--no-index", "--", "/dev/null", file_path],
+                &[0, 1],
+            )?;
             (bounded.text, bounded.truncated)
         } else {
             (tracked.text, tracked.truncated)
@@ -220,7 +286,6 @@ pub fn get_commit_diff(repo_path: &Path, hash: &str) -> Result<DiffResult, AppEr
         truncated: bounded.truncated,
     })
 }
-
 
 pub fn list_commit_range_files(
     repo_path: &Path,
@@ -331,6 +396,18 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+    #[test]
+    fn lossy_utf8_conversion_never_expands_past_diff_cap() {
+        // Every invalid byte becomes the three-byte U+FFFD sequence under
+        // `from_utf8_lossy`, which used to turn a 4 MiB raw buffer into a 12 MiB
+        // Tauri payload.
+        let bytes = vec![0xff; MAX_DIFF_BYTES];
+        let (text, truncated) = bounded_lossy_utf8(&bytes, MAX_DIFF_BYTES);
+
+        assert!(truncated, "lossy expansion must be reported as truncation");
+        assert!(text.len() <= MAX_DIFF_BYTES);
+        assert!(text.is_char_boundary(text.len()));
+    }
 
     struct TestDir {
         path: PathBuf,
@@ -485,11 +562,8 @@ mod tests {
         let temp = TestDir::new("oversized");
         git(&temp.path, &["init", "-b", "main"]);
         // One line longer than the cap guarantees the unified diff exceeds it.
-        fs::write(
-            temp.path.join("big.txt"),
-            "x".repeat(MAX_DIFF_BYTES + 1024),
-        )
-        .expect("write oversized file");
+        fs::write(temp.path.join("big.txt"), "x".repeat(MAX_DIFF_BYTES + 1024))
+            .expect("write oversized file");
 
         let diff = get_file_diff(&temp.path, "big.txt", false).expect("oversized diff");
 
@@ -529,5 +603,4 @@ mod tests {
 
         assert!(diff.is_binary, "binary file diff must report is_binary");
     }
-
 }
