@@ -22,6 +22,7 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
+import { getShortcutBinding } from "../../lib/shortcuts";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { AppChrome } from "../layout/AppChrome";
@@ -527,10 +528,8 @@ export function RepositoryWelcome() {
             No repository open
           </span>
           <span className="giteye-hub-footer-shortcuts flex items-center gap-3">
-            <Shortcut keys="⌘K" label="Search" />
-            <Shortcut keys="⌘N" label="New Repo" />
-            <Shortcut keys="⌘O" label="Open Repo" />
-            <Shortcut keys="⌘/" label="Shortcuts" />
+            <Shortcut keys={getShortcutBinding("command-palette").replace("Mod+", "⌘")} label="Search" />
+            <Shortcut keys={getShortcutBinding("toggle-command-log").replace("Mod+", "⌘")} label="Command log" />
           </span>
           <span className="giteye-chip" data-tone="success">
             <CheckCircle2 className="h-3.5 w-3.5" />
