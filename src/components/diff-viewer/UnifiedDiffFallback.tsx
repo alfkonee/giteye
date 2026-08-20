@@ -22,6 +22,11 @@ interface UnifiedDiffFallbackProps {
   onStageHunk?: DiffHunkActionHandler;
   onUnstageHunk?: DiffHunkActionHandler;
   onDiscardHunk?: DiffHunkActionHandler;
+  /**
+   * Hunk selected in the navigator rail. Its row is scrolled into view,
+   * highlighted, and is the only row that carries the hunk action buttons.
+   */
+  activeHunkId?: string | null;
 }
 
 interface DiffHunk extends DiffHunkActionContext {
@@ -218,6 +223,7 @@ export function UnifiedDiffFallback({
   onStageHunk,
   onUnstageHunk,
   onDiscardHunk,
+  activeHunkId,
 }: UnifiedDiffFallbackProps) {
   const focusedRowRef = useRef<HTMLDivElement | null>(null);
   const lines = useMemo(
@@ -279,16 +285,18 @@ export function UnifiedDiffFallback({
                 selectableLine === selectedLine.line,
             );
             const canActOnHunk = Boolean(line.hunk && (onStageHunk || onUnstageHunk || onDiscardHunk));
+            const isActiveHunk = Boolean(line.hunk && activeHunkId && line.hunk.id === activeHunkId);
 
             return (
             <div
               key={i}
+              data-hunk-id={line.hunk?.id}
               ref={isFocusedFileHeader ? focusedRowRef : undefined}
               role={canSelectLine ? "button" : undefined}
               tabIndex={canSelectLine ? 0 : undefined}
               onClick={canSelectLine ? () => onLineSelect?.({ filePath: line.filePath!, line: selectableLine!, side: line.side! }) : undefined}
               onKeyDown={canSelectLine ? (event) => { if (event.key === "Enter") onLineSelect?.({ filePath: line.filePath!, line: selectableLine!, side: line.side! }); } : undefined}
-              className={cn("flex whitespace-pre", rowClass[line.type], canSelectLine && "cursor-pointer hover:ring-1 hover:ring-inset hover:ring-[var(--color-accent)]/60", isSelectedLine && "ring-2 ring-inset ring-[var(--color-accent)]", isFocusedFileHeader && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/18")}
+              className={cn("flex whitespace-pre", rowClass[line.type], canSelectLine && "cursor-pointer hover:ring-1 hover:ring-inset hover:ring-[var(--color-accent)]/60", isSelectedLine && "ring-2 ring-inset ring-[var(--color-accent)]", isActiveHunk && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/20", isFocusedFileHeader && "ring-2 ring-inset ring-[var(--color-accent)] bg-[var(--color-accent)]/18")}
             >
               <span
                 className={cn(
@@ -312,7 +320,7 @@ export function UnifiedDiffFallback({
               <span className={cn("min-w-0 flex-1 px-3 whitespace-pre", canActOnHunk && "pr-2")}>
                 {line.content || " "}
               </span>
-              {line.hunk && canActOnHunk ? (
+              {line.hunk && canActOnHunk && isActiveHunk ? (
                 <div className="sticky right-0 ml-4 flex shrink-0 items-center gap-1 bg-inherit px-2 py-0.5 font-sans whitespace-normal">
                   <CopyHunkPatchButton hunk={line.hunk} />
                   <HunkActionButton hunk={line.hunk} label="Stage" disabled={isHunkActionPending} onAction={onStageHunk} />

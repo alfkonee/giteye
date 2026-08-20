@@ -24,7 +24,18 @@ import type { DiffsThemeNames } from "@pierre/diffs";
  */
 
 
-export function PierreDiffViewer(props: DiffViewerProps) {
+interface PierreDiffViewerProps extends DiffViewerProps {
+  /** 1-based first line of the active hunk on the additions side. */
+  activeHunkStart?: number;
+  /** Line count the active hunk spans on the additions side. */
+  activeHunkLineCount?: number;
+}
+
+export function PierreDiffViewer({
+  activeHunkStart,
+  activeHunkLineCount,
+  ...props
+}: PierreDiffViewerProps) {
   const theme = useAppStore((s) => s.theme);
   const diffTheme: DiffsThemeNames = theme === "light" ? "github-light" : "github-dark";
 
@@ -38,10 +49,25 @@ export function PierreDiffViewer(props: DiffViewerProps) {
     [diffTheme, props.mode],
   );
 
+  // Marks the hunk chosen in the navigator rail so the reader can see where the
+  // Stage/Discard buttons in the rail will apply.
+  const selectedLines = useMemo(
+    () =>
+      activeHunkStart === undefined
+        ? null
+        : {
+            start: activeHunkStart,
+            end: activeHunkStart + Math.max(1, activeHunkLineCount ?? 1) - 1,
+            side: "additions" as const,
+          },
+    [activeHunkStart, activeHunkLineCount],
+  );
+
   return (
     <PatchDiff
       patch={props.diffText}
       options={options}
+      selectedLines={selectedLines}
       className="h-full"
     />
   );

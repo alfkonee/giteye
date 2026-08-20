@@ -12,7 +12,7 @@ import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen, GitBranch } from "lucide-react";
 import { WorkingCommitDetails } from "../working-tree/WorkingCommitDetails";
-import { isWorkingTreeSelection } from "../../lib/working-tree-node";
+import { WORKING_TREE_COMMIT_HASH, isWorkingTreeSelection } from "../../lib/working-tree-node";
 
 export function PanelLayout() {
   const activeView = useAppStore((s) => s.activeView);
@@ -24,6 +24,7 @@ export function PanelLayout() {
   const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
   const queryClient = useQueryClient();
   const isNarrowLayout = useMediaQuery("(max-width: 820px)");
   const activeViewDefinition = getViewDefinition(activeView);
@@ -85,6 +86,23 @@ export function PanelLayout() {
     if (selectedFilePath && fileDiff) {
       return (
         <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2.5 py-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCommitHash(WORKING_TREE_COMMIT_HASH)}
+              className="giteye-btn giteye-btn-ghost giteye-btn-sm gap-1"
+              title="Back to the commit pane (staged/unstaged lists and commit form)"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to commit
+            </button>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-text-muted)]">
+              {fileDiff.filePath}
+            </span>
+            <span className="giteye-chip shrink-0 px-1.5 text-[10.5px]" data-tone={selectedFileStaged ? "accent" : "warning"}>
+              {selectedFileStaged ? "staged" : "unstaged"}
+            </span>
+          </div>
           {selectedSubmodule ? (
             <div className="flex shrink-0 items-center gap-3 border-b border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 px-3 py-2 text-xs">
               <GitBranch className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -142,7 +160,7 @@ export function PanelLayout() {
         description="Select a file or commit to view details"
       />
     );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk]);
+  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash]);
 
   const showDetailPane = Boolean(activeViewDefinition.detailPane);
 
