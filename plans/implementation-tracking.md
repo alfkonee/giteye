@@ -13,15 +13,15 @@ Use the accompanying **`giteye-implementation-tracking`** skill to keep this fil
 
 ## Progress
 
-- **Total:** 46  **Done:** 6  **Dropped:** 5  **Pending:** 35
-- P0 (release blockers): 5/10
-- P1 (high value): 1/17
-- P2 (differentiators): 0/14 (1 dropped)
+- **Total:** 46  **Done:** 11  **Dropped:** 5  **Pending:** 30
+- P0 (release blockers): 7/10
+- P1 (high value): 3/17
+- P2 (differentiators): 1/14 (1 dropped)
 - P3 (expansion): 0/5 (4 dropped)
 
 **Legend:** `[ ]` = open · `[x]` = done · `[-]` = closed as out of scope. `PR` reference = merged PR that closed it.
 
-Last reconciled against GitHub: **2026-08-20** (backlog audit at `main` 65084bf).
+Last reconciled against GitHub: **2026-08-20** (audit + implementation wave, PR [#112](https://github.com/alfkonee/giteye/pull/112)).
 
 ---
 
@@ -32,8 +32,8 @@ Last reconciled against GitHub: **2026-08-20** (backlog audit at `main` 65084bf)
 - [x] **A03** `bug` [#59](https://github.com/alfkonee/giteye/issues/59) Make application tracing opt-in, bounded by retention, and disabled by default in release — landed in `aa6d44e` via PR [#105](https://github.com/alfkonee/giteye/pull/105); verified and closed during the 2026-08-20 audit
 - [ ] **A04** `enhancement` [#60](https://github.com/alfkonee/giteye/issues/60) Add signed in-app auto-update with channels, progress, and rollback guidance
 - [ ] **A05** `bug` [#61](https://github.com/alfkonee/giteye/issues/61) Introduce one typed error envelope and a single frontend error renderer — *partial: backend unified on `AppError`; envelope still a flat string, no single frontend renderer*
-- [ ] **A06** `bug` [#62](https://github.com/alfkonee/giteye/issues/62) Bound and stream diff payloads; detect oversized text and binary files before loading
-- [ ] **A07** `bug` [#63](https://github.com/alfkonee/giteye/issues/63) Replace the fixed 3s gh timeout with cancellable, per-operation timeouts and retries — *partial: PR [#108](https://github.com/alfkonee/giteye/pull/108) made calls async; fixed 3s/2s budgets, no retry, no real cancellation remain*
+- [x] **A06** `bug` [#62](https://github.com/alfkonee/giteye/issues/62) Bound and stream diff payloads; detect oversized text and binary files before loading — closed by PR [#112](https://github.com/alfkonee/giteye/pull/112)
+- [x] **A07** `bug` [#63](https://github.com/alfkonee/giteye/issues/63) Replace the fixed 3s gh timeout with cancellable, per-operation timeouts and retries — closed by PR [#112](https://github.com/alfkonee/giteye/pull/112)
 - [ ] **A08** `bug` [#64](https://github.com/alfkonee/giteye/issues/64) Add frontend unit/component tests and live Tauri workflow tests to CI — *blocks the automated a11y check in A26*
 - [x] **A09** `bug` [#65](https://github.com/alfkonee/giteye/issues/65) Add graceful shutdown and interrupted-job recovery on startup — closed by PR [#104](https://github.com/alfkonee/giteye/pull/104)
 - [x] **A10** `bug` [#66](https://github.com/alfkonee/giteye/issues/66) Use the upstream-setup workflow from every Push/Pull entry point — closed by PR [#103](https://github.com/alfkonee/giteye/pull/103)
@@ -50,10 +50,10 @@ Last reconciled against GitHub: **2026-08-20** (backlog audit at `main` 65084bf)
 - [ ] **A18** `enhancement` [#74](https://github.com/alfkonee/giteye/issues/74) Add a branch cleanup dashboard with safe batch operations — *no merged/stale/gone classification, no multi-select*
 - [ ] **A19** `enhancement` [#75](https://github.com/alfkonee/giteye/issues/75) Add line-level and arbitrary-selection staging — *hunk granularity shipped in PR [#111](https://github.com/alfkonee/giteye/pull/111); sub-hunk patch synthesis still absent*
 - [ ] **A20** `enhancement` [#76](https://github.com/alfkonee/giteye/issues/76) Add binary and rich file previews to the diff viewer — *binary state is a text placeholder*
-- [ ] **A21** `enhancement` [#77](https://github.com/alfkonee/giteye/issues/77) Build a unified Undo and Recovery Center — *partial: reflog panel, lost-commits, reset preview and A09 job recovery all exist but are scattered; needs an aggregation layer only*
+- [x] **A21** `enhancement` [#77](https://github.com/alfkonee/giteye/issues/77) Build a unified Undo and Recovery Center — closed by PR [#112](https://github.com/alfkonee/giteye/pull/112) (Recovery Center dialog: reflog undo + lost commits)
 - [ ] **A22** `bug` [#78](https://github.com/alfkonee/giteye/issues/78) Split the long Settings page into searchable categories — *`SettingsPlaceholder.tsx` is 664 lines, 8 inline categories, no search, no dirty state*
 - [ ] **A23** `enhancement` [#79](https://github.com/alfkonee/giteye/issues/79) Add system theme, density, font, diff typography, and color-blind palettes — *0 of 5 knobs exposed; density/size tokens exist in `design-system.ts` + `index.css` but are unwired*
-- [ ] **A24** `enhancement` [#80](https://github.com/alfkonee/giteye/issues/80) Add discoverable and customizable keyboard shortcuts — *partial: palette command IDs exist; bindings hard-coded, ⌘N/⌘O/⌘/ hints are dead*
+- [x] **A24** `enhancement` [#80](https://github.com/alfkonee/giteye/issues/80) Add discoverable and customizable keyboard shortcuts — closed by PR [#112](https://github.com/alfkonee/giteye/pull/112) (central registry + ShortcutsDialog remap + persistence)
 - [ ] **A25** `enhancement` [#81](https://github.com/alfkonee/giteye/issues/81) Add native desktop notifications and actionable notification preferences — *no `tauri-plugin-notification`; `notifyInfo` is an in-app toast*
 - [ ] **A26** `bug` [#82](https://github.com/alfkonee/giteye/issues/82) Complete accessibility pass: keyboard, screen-reader, contrast, zoom, reduced-motion — *partial: aria/focus-visible/reduced-motion primitives broadly present but unvalidated; blocked by A08 (no test stage) and A12 (native dialogs)*
 - [ ] **A27** `enhancement` [#83](https://github.com/alfkonee/giteye/issues/83) Add Create diagnostic bundle with preview and redaction — *redaction primitives exist (`redact_git_job_args`, `redactTraceText`); no bundle, no preview*
@@ -72,7 +72,7 @@ Last reconciled against GitHub: **2026-08-20** (backlog audit at `main` 65084bf)
 - [ ] **A37** `enhancement` [#93](https://github.com/alfkonee/giteye/issues/93) Add a repository health dashboard — *fsck/gc/maintenance live under Diagnostics; no unified dashboard, no stale-branch detection*
 - [ ] **A38** `enhancement` [#94](https://github.com/alfkonee/giteye/issues/94) Add GitHub release and changelog management — *git tags only; split into release lifecycle + changelog generation*
 - [ ] **A39** `enhancement` [#95](https://github.com/alfkonee/giteye/issues/95) Add an optional embedded terminal tied to the active repository/worktree — *no pty crate, no xterm; `CustomCommandView` is one-shot*
-- [ ] **A40** `enhancement` [#96](https://github.com/alfkonee/giteye/issues/96) Integrate file history and blame into the diff/file details pane — *`blame_file` + `file_history` exist in `archaeology_service.rs`, surfaced only as Archaeology forms*
+- [x] **A40** `enhancement` [#96](https://github.com/alfkonee/giteye/issues/96) Integrate file history and blame into the diff/file details pane — closed by PR [#112](https://github.com/alfkonee/giteye/pull/112) (diff/blame/history toggle + BlameTable/FileHistoryList)
 - [ ] **A41** `enhancement` [#97](https://github.com/alfkonee/giteye/issues/97) Add commit templates, trailers, co-authors, and recent-message history — *CommitBox has sign-off/skip-hooks/allow-empty + AI suggestion only*
 
 ## P3 — Longer-term expansion
@@ -87,5 +87,5 @@ Last reconciled against GitHub: **2026-08-20** (backlog audit at `main` 65084bf)
 
 - **Label hygiene, not yet applied:** #64 (missing tests), #67 (code splitting), #68 (dialog migration) and #78 (settings split) are labelled `bug` but are enhancements/tech debt. #62 and #63 are genuine defects and should keep `bug`.
 - **Recommended next order:** A06 (#62 unbounded diffs — the remaining hang risk), A07 (#63 timeouts/retries), A08 (#64 test harness, which unblocks A26), then A12 (#68) → A26 (#82).
-- **Cheap wins identified during the audit:** A21 (#77) needs only an aggregation layer over existing reflog/lost-commit/recovery commands; A40 (#96) needs only to surface existing `blame_file`/`file_history` in the file-details pane; A24 (#80) can build on the palette's existing command IDs.
-- **Dead UI to fix or remove:** Team Workspaces + Activity Feed placeholder cards (`RepositoryWelcome.tsx:510-513, 796-800`), disabled `Add Account` button (:274-278), and the unhandled ⌘N/⌘O/⌘/ hints (:529-533).
+- **Cheap wins shipped:** A21 (#77), A40 (#96), and A24 (#80) landed in PR [#112](https://github.com/alfkonee/giteye/pull/112).
+- **Dead UI to fix or remove:** Team Workspaces + Activity Feed placeholder cards (`RepositoryWelcome.tsx`), and the disabled `Add Account` button. The dead ⌘N/⌘O/⌘/ footer hints were replaced with real bindings in A24.
