@@ -62,6 +62,8 @@ import type {
   GitSignatureSummary,
   GitJobRecord,
   GitJobSummary,
+  IgnoreScope,
+  IgnoreRuleResult,
   GitRecoveryState,
 } from "../types/git";
 
@@ -714,6 +716,13 @@ export const gitApi = {
     repoPath: string,
     files: Array<{ filePath: string; staged: boolean; untracked: boolean }>,
   ) => invoke<void>("discard_files", { repoPath, files }),
+
+  // Ignore rules
+  addIgnoreRules: (repoPath: string, patterns: string[], scope: IgnoreScope) =>
+    invoke<IgnoreRuleResult>("add_ignore_rules", {
+      repoPath,
+      request: { patterns, scope },
+    }),
 
   // Worktrees
   listWorktrees: (repoPath: string) =>

@@ -836,6 +836,15 @@ export interface SelectedEntityState {
 }
 export type DiffMode = "unified" | "split";
 
+/** `repository` writes to `.gitignore`, `local` to `.git/info/exclude`. */
+export type IgnoreScope = "repository" | "local";
+
+export interface IgnoreRuleResult {
+  file: string;
+  added: string[];
+  skipped: string[];
+}
+
 export type FileStatus =
   | "modified"
   | "added"

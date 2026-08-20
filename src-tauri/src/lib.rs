@@ -77,6 +77,7 @@ pub fn run() {
             commands::status::stage_all,
             commands::status::unstage_all,
             commands::status::commit,
+            commands::ignore::add_ignore_rules,
             commands::commits::get_commit_history,
             commands::commits::get_commit_details,
             commands::archaeology::commit_search,

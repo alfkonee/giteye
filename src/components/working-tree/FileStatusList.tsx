@@ -15,6 +15,8 @@ import {
   WorkingTreePathContextMenu,
   type WorkingTreePathTarget,
 } from "./WorkingTreePathContextMenu";
+import { IgnorePathDialog } from "./IgnorePathDialog";
+import type { IgnoreScope } from "../../types/git";
 
 interface FileStatusListProps {
   title: string;
@@ -94,6 +96,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
+  const [ignoreTarget, setIgnoreTarget] = useState<WorkingTreePathTarget | null>(null);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
@@ -104,6 +107,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const stashPathMutation = useMutation(gitMutations.createStashForPaths(queryClient, repoPath));
   const discardFileMutation = useMutation(gitMutations.discardFile(queryClient, repoPath));
   const discardFilesMutation = useMutation(gitMutations.discardFiles(queryClient, repoPath));
+  const addIgnoreRulesMutation = useMutation(gitMutations.addIgnoreRules(queryClient, repoPath));
   const submodulesQuery = useQuery(gitQueries.submodules(repoPath, Boolean(repoPath)));
   const openSubmodule = useMutation(gitMutations.openSubmodule(repoPath));
   const openRepository = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
@@ -247,6 +251,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
+  const handleIgnoreTarget = (patterns: string[], scope: IgnoreScope) => {
+    if (!ignoreTarget) return;
+    addIgnoreRulesMutation.mutate(
+      { path: ignoreTarget.path, patterns, scope },
+      { onSuccess: () => setIgnoreTarget(null) },
+    );
+  };
+
   const contextMenuPending =
     stageMutation.isPending ||
     unstageMutation.isPending ||
@@ -254,7 +266,8 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     discardFileMutation.isPending ||
     discardFilesMutation.isPending ||
     openSubmodule.isPending ||
-    openRepository.isPending;
+    openRepository.isPending ||
+    addIgnoreRulesMutation.isPending;
   const contextSubmodule = contextTarget?.kind === "file"
     ? (submodulesQuery.data ?? []).find((submodule) => submodule.path === contextTarget.path)
     : null;
@@ -456,9 +469,19 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         onUnstage={(path) => unstageMutation.mutate(path)}
         onStash={handleStashTarget}
         onDiscard={handleDiscardTarget}
+        onIgnore={setIgnoreTarget}
         onOpenSubmodule={handleOpenSubmodule}
         onClose={() => setContextTarget(null)}
       />
+      {ignoreTarget && (
+        <IgnorePathDialog
+          key={`${ignoreTarget.kind}:${ignoreTarget.path}`}
+          target={ignoreTarget}
+          isPending={addIgnoreRulesMutation.isPending}
+          onCancel={() => setIgnoreTarget(null)}
+          onConfirm={handleIgnoreTarget}
+        />
+      )}
     </div>
   );
 }
