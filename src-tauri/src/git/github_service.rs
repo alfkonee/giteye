@@ -11,9 +11,14 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, LazyLock, Mutex,
+};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+
+const MAX_GH_STDERR_BYTES: usize = 256 * 1024;
 
 static GITHUB_OVERVIEW_CACHE: LazyLock<Mutex<HashMap<String, RepositoryGithubOverview>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -50,14 +55,26 @@ impl GhOp {
             Self::Read | Self::Diff => 2,
         }
     }
+
+    fn stdout_limit(self) -> usize {
+        match self {
+            Self::Auth => 256 * 1024,
+            Self::Read => 8 * 1024 * 1024,
+            Self::Diff => 16 * 1024 * 1024,
+            Self::Mutation => 4 * 1024 * 1024,
+        }
+    }
 }
 
 /// Terminal failure of a single `gh` process, before retry is considered.
+#[derive(Debug)]
 enum GhRunError {
     /// The process exceeded its deadline.
     Timeout,
     /// The request generation advanced (user navigated away): do not retry.
     Cancelled,
+    /// stdout or stderr exceeded its operation-specific retention cap.
+    OutputLimit { stream: &'static str, limit: usize },
     /// The process exited non-zero; stderr trimmed.
     NonZero(String),
     /// Spawn/io failure.
@@ -1300,6 +1317,10 @@ fn gh_error_to_app(program: &str, op: GhOp, error: GhRunError) -> AppError {
             op.timeout().as_secs()
         )),
         GhRunError::Cancelled => AppError::GitError(format!("{program} request was cancelled")),
+        GhRunError::OutputLimit { stream, limit } => AppError::GitError(format!(
+            "{program} {stream} exceeded the {} MiB output limit",
+            limit / (1024 * 1024)
+        )),
         GhRunError::NonZero(stderr) => AppError::GitError(stderr),
         GhRunError::Spawn(message) => AppError::GitError(message),
     }
@@ -1322,7 +1343,14 @@ fn run_gh(
     let mut last_error = GhRunError::Timeout;
 
     for attempt in 0..=retries {
-        match run_gh_once(program, args, repo_path, timeout, request_context) {
+        match run_gh_once(
+            program,
+            args,
+            repo_path,
+            timeout,
+            op.stdout_limit(),
+            request_context,
+        ) {
             Ok(output) => return Ok(output),
             Err(GhRunError::Timeout) if attempt < retries => {
                 last_error = GhRunError::Timeout;
@@ -1339,19 +1367,42 @@ fn backoff_delay(attempt: u32) -> Duration {
     Duration::from_millis(150 * (1u64 << attempt))
 }
 
+#[derive(Debug)]
+struct BoundedPipe {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
 fn spawn_pipe_reader<R: Read + Send + 'static>(
     mut pipe: R,
-) -> JoinHandle<std::io::Result<Vec<u8>>> {
+    limit: usize,
+    limit_reached: Arc<AtomicBool>,
+) -> JoinHandle<std::io::Result<BoundedPipe>> {
     thread::spawn(move || {
-        let mut bytes = Vec::new();
-        pipe.read_to_end(&mut bytes).map(|_| bytes)
+        let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
+        let mut truncated = false;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            let read = pipe.read(&mut chunk)?;
+            if read == 0 {
+                break;
+            }
+            let remaining = limit.saturating_sub(bytes.len());
+            let kept = remaining.min(read);
+            bytes.extend_from_slice(&chunk[..kept]);
+            if kept < read {
+                truncated = true;
+                limit_reached.store(true, Ordering::Release);
+            }
+        }
+        Ok(BoundedPipe { bytes, truncated })
     })
 }
 
 fn join_pipe_reader(
-    reader: JoinHandle<std::io::Result<Vec<u8>>>,
+    reader: JoinHandle<std::io::Result<BoundedPipe>>,
     stream: &str,
-) -> Result<Vec<u8>, GhRunError> {
+) -> Result<BoundedPipe, GhRunError> {
     reader
         .join()
         .map_err(|_| GhRunError::Spawn(format!("gh {stream} reader panicked")))?
@@ -1363,6 +1414,7 @@ fn run_gh_once(
     args: &[&str],
     repo_path: &Path,
     timeout: Duration,
+    stdout_limit: usize,
     request_context: Option<&GithubRequestContext>,
 ) -> Result<String, GhRunError> {
     let mut command = Command::new(program);
@@ -1375,17 +1427,23 @@ fn run_gh_once(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| GhRunError::Spawn(e.to_string()))?;
+    let stdout_limit_reached = Arc::new(AtomicBool::new(false));
+    let stderr_limit_reached = Arc::new(AtomicBool::new(false));
     let stdout_reader = spawn_pipe_reader(
         child
             .stdout
             .take()
             .ok_or_else(|| GhRunError::Spawn("gh stdout unavailable".to_string()))?,
+        stdout_limit,
+        Arc::clone(&stdout_limit_reached),
     );
     let stderr_reader = spawn_pipe_reader(
         child
             .stderr
             .take()
             .ok_or_else(|| GhRunError::Spawn("gh stderr unavailable".to_string()))?,
+        MAX_GH_STDERR_BYTES,
+        Arc::clone(&stderr_limit_reached),
     );
 
     let deadline = Instant::now() + timeout;
@@ -1399,16 +1457,48 @@ fn run_gh_once(
                 return Err(GhRunError::Cancelled);
             }
         }
+        if stdout_limit_reached.load(Ordering::Acquire)
+            || stderr_limit_reached.load(Ordering::Acquire)
+        {
+            let stream = if stdout_limit_reached.load(Ordering::Acquire) {
+                "stdout"
+            } else {
+                "stderr"
+            };
+            let limit = if stream == "stdout" {
+                stdout_limit
+            } else {
+                MAX_GH_STDERR_BYTES
+            };
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(GhRunError::OutputLimit { stream, limit });
+        }
 
         match child.try_wait() {
             Ok(Some(status)) => {
                 let stdout = join_pipe_reader(stdout_reader, "stdout")?;
                 let stderr = join_pipe_reader(stderr_reader, "stderr")?;
+                if stdout.truncated {
+                    return Err(GhRunError::OutputLimit {
+                        stream: "stdout",
+                        limit: stdout_limit,
+                    });
+                }
+                if stderr.truncated {
+                    return Err(GhRunError::OutputLimit {
+                        stream: "stderr",
+                        limit: MAX_GH_STDERR_BYTES,
+                    });
+                }
                 if status.success() {
-                    return String::from_utf8(stdout).map_err(|e| GhRunError::Spawn(e.to_string()));
+                    return String::from_utf8(stdout.bytes)
+                        .map_err(|e| GhRunError::Spawn(e.to_string()));
                 }
                 return Err(GhRunError::NonZero(
-                    String::from_utf8_lossy(&stderr).trim().to_string(),
+                    String::from_utf8_lossy(&stderr.bytes).trim().to_string(),
                 ));
             }
             Ok(None) if Instant::now() >= deadline => {
@@ -1440,11 +1530,16 @@ fn canonical_repo_key(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_github_overview, clear_github_overview_cache, merge_method_flag,
-        normalize_review_comment_side, parse_github_remote, store_github_overview,
+        cached_github_overview, clear_github_overview_cache, join_pipe_reader, merge_method_flag,
+        normalize_review_comment_side, parse_github_remote, spawn_pipe_reader,
+        store_github_overview,
     };
     use crate::errors::AppError;
     use crate::models::github::RepositoryGithubOverview;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
 
     #[test]
     fn parses_github_remote_urls() {
@@ -1471,6 +1566,21 @@ mod tests {
         assert_eq!(normalize_review_comment_side("RIGHT").unwrap(), "RIGHT");
         assert_eq!(normalize_review_comment_side("left").unwrap(), "LEFT");
         assert!(normalize_review_comment_side("BOTH").is_err());
+    }
+
+    #[test]
+    fn pipe_reader_drains_but_retains_only_the_limit() {
+        let limit_reached = Arc::new(AtomicBool::new(false));
+        let reader = spawn_pipe_reader(
+            std::io::Cursor::new(vec![b'x'; 1024]),
+            64,
+            Arc::clone(&limit_reached),
+        );
+        let captured = join_pipe_reader(reader, "test").expect("bounded capture");
+
+        assert_eq!(captured.bytes.len(), 64);
+        assert!(captured.truncated);
+        assert!(limit_reached.load(Ordering::Acquire));
     }
 
     #[test]

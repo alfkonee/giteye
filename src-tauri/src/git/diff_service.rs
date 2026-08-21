@@ -4,15 +4,64 @@ use crate::models::DiffResult;
 use std::io::Read;
 use std::path::{Component, Path};
 use std::process::Stdio;
-use std::thread;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 /// Hard cap on a single diff payload. Beyond this the diff is truncated and
 /// flagged so the frontend can render a notice instead of an unbounded string.
 const MAX_DIFF_BYTES: usize = 4 * 1024 * 1024;
+const MAX_DIFF_STDERR_BYTES: usize = 256 * 1024;
+const DIFF_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct BoundedDiff {
     text: String,
     truncated: bool,
+}
+
+#[derive(Debug)]
+struct BoundedBytes {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn spawn_bounded_reader<R: Read + Send + 'static>(
+    mut pipe: R,
+    max_bytes: usize,
+    limit_reached: Arc<AtomicBool>,
+) -> JoinHandle<std::io::Result<BoundedBytes>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::with_capacity(max_bytes.min(64 * 1024));
+        let mut truncated = false;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            let read = pipe.read(&mut chunk)?;
+            if read == 0 {
+                break;
+            }
+            let remaining = max_bytes.saturating_sub(bytes.len());
+            let kept = remaining.min(read);
+            bytes.extend_from_slice(&chunk[..kept]);
+            if kept < read {
+                truncated = true;
+                limit_reached.store(true, Ordering::Release);
+            }
+        }
+        Ok(BoundedBytes { bytes, truncated })
+    })
+}
+
+fn join_bounded_reader(
+    reader: JoinHandle<std::io::Result<BoundedBytes>>,
+    stream: &str,
+) -> Result<BoundedBytes, AppError> {
+    reader
+        .join()
+        .map_err(|_| AppError::IoError(format!("git diff {stream} reader panicked")))?
+        .map_err(|error| AppError::IoError(format!("failed to read git diff {stream}: {error}")))
 }
 
 /// Appends as much of `text` as fits without splitting a UTF-8 code point.
@@ -65,10 +114,11 @@ fn bounded_lossy_utf8(bytes: &[u8], max_bytes: usize) -> (String, bool) {
     (output, false)
 }
 
-/// Runs a git diff command and reads stdout incrementally, capping at
-/// `MAX_DIFF_BYTES`. stderr is drained concurrently: an external diff driver
-/// must never block the child by filling its diagnostics pipe while stdout is
-/// still being read.
+/// Runs a git diff command with bounded, concurrently drained output.
+///
+/// Both pipes are capped in memory while still being drained to prevent child
+/// backpressure. The parent polls a hard deadline and terminates as soon as
+/// stdout crosses the payload cap, so a custom diff driver cannot run forever.
 fn run_bounded_diff(
     repo_path: &Path,
     args: &[&str],
@@ -88,62 +138,75 @@ fn run_bounded_diff(
             }
         })?;
 
-    let mut stdout = child
+    let stdout = child
         .stdout
         .take()
         .ok_or_else(|| AppError::IoError("git diff stdout unavailable".to_string()))?;
-    let mut stderr = child
+    let stderr = child
         .stderr
         .take()
         .ok_or_else(|| AppError::IoError("git diff stderr unavailable".to_string()))?;
-    let stderr_reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.read_to_end(&mut bytes).map(|_| bytes)
-    });
+    let stdout_limit_reached = Arc::new(AtomicBool::new(false));
+    let stderr_limit_reached = Arc::new(AtomicBool::new(false));
+    let stdout_reader =
+        spawn_bounded_reader(stdout, MAX_DIFF_BYTES, Arc::clone(&stdout_limit_reached));
+    let stderr_reader = spawn_bounded_reader(
+        stderr,
+        MAX_DIFF_STDERR_BYTES,
+        Arc::clone(&stderr_limit_reached),
+    );
 
-    let mut buffer: Vec<u8> = Vec::with_capacity(64 * 1024);
-    let mut truncated = false;
-    let mut chunk = [0u8; 16 * 1024];
-    loop {
-        match stdout.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(read) => {
-                if buffer.len() + read > MAX_DIFF_BYTES {
-                    truncated = true;
-                    let remaining = MAX_DIFF_BYTES.saturating_sub(buffer.len());
-                    buffer.extend_from_slice(&chunk[..remaining]);
-                    let _ = child.kill();
-                    break;
-                }
-                buffer.extend_from_slice(&chunk[..read]);
-            }
-            Err(_) => {
+    let deadline = Instant::now() + DIFF_TIMEOUT;
+    let mut killed_for_stdout_limit = false;
+    let mut timed_out = false;
+    let status = loop {
+        if stdout_limit_reached.load(Ordering::Acquire) {
+            killed_for_stdout_limit = true;
+            let _ = child.kill();
+            break child
+                .wait()
+                .map_err(|error| AppError::IoError(error.to_string()))?;
+        }
+        if Instant::now() >= deadline {
+            timed_out = true;
+            let _ = child.kill();
+            break child
+                .wait()
+                .map_err(|error| AppError::IoError(error.to_string()))?;
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+            Err(error) => {
                 let _ = child.kill();
-                drop(stdout);
                 let _ = child.wait();
+                let _ = stdout_reader.join();
                 let _ = stderr_reader.join();
-                return Err(AppError::IoError(
-                    "failed to read git diff output".to_string(),
-                ));
+                return Err(AppError::IoError(error.to_string()));
             }
         }
-    }
-    drop(stdout);
+    };
 
-    let status = child
-        .wait()
-        .map_err(|error| AppError::IoError(error.to_string()))?;
-    let stderr_bytes = stderr_reader
-        .join()
-        .map_err(|_| AppError::IoError("git diff stderr reader panicked".to_string()))?
-        .map_err(|error| AppError::IoError(error.to_string()))?;
+    let stdout = join_bounded_reader(stdout_reader, "stdout")?;
+    let stderr = join_bounded_reader(stderr_reader, "stderr")?;
+    if timed_out {
+        return Err(AppError::GitError(format!(
+            "git diff timed out after {}s",
+            DIFF_TIMEOUT.as_secs()
+        )));
+    }
+
+    let truncated = killed_for_stdout_limit || stdout.truncated;
     let status_code = status.code().unwrap_or(-1);
     if !truncated && !allowed_exit_codes.contains(&status_code) {
-        let stderr_text = String::from_utf8_lossy(&stderr_bytes);
-        return Err(AppError::GitError(stderr_text.trim().to_string()));
+        let mut stderr_text = String::from_utf8_lossy(&stderr.bytes).trim().to_string();
+        if stderr.truncated || stderr_limit_reached.load(Ordering::Acquire) {
+            stderr_text.push_str("\n[stderr truncated]");
+        }
+        return Err(AppError::GitError(stderr_text));
     }
 
-    let (text, conversion_truncated) = bounded_lossy_utf8(&buffer, MAX_DIFF_BYTES);
+    let (text, conversion_truncated) = bounded_lossy_utf8(&stdout.bytes, MAX_DIFF_BYTES);
     Ok(BoundedDiff {
         text,
         truncated: truncated || conversion_truncated,
@@ -407,6 +470,21 @@ mod tests {
         assert!(truncated, "lossy expansion must be reported as truncation");
         assert!(text.len() <= MAX_DIFF_BYTES);
         assert!(text.is_char_boundary(text.len()));
+    }
+
+    #[test]
+    fn bounded_reader_drains_but_retains_only_the_limit() {
+        let limit_reached = Arc::new(AtomicBool::new(false));
+        let reader = spawn_bounded_reader(
+            std::io::Cursor::new(vec![b'x'; 1024]),
+            64,
+            Arc::clone(&limit_reached),
+        );
+        let captured = join_bounded_reader(reader, "test").expect("bounded capture");
+
+        assert_eq!(captured.bytes.len(), 64);
+        assert!(captured.truncated);
+        assert!(limit_reached.load(Ordering::Acquire));
     }
 
     struct TestDir {
