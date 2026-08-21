@@ -1317,10 +1317,16 @@ fn gh_error_to_app(program: &str, op: GhOp, error: GhRunError) -> AppError {
             op.timeout().as_secs()
         )),
         GhRunError::Cancelled => AppError::GitError(format!("{program} request was cancelled")),
-        GhRunError::OutputLimit { stream, limit } => AppError::GitError(format!(
-            "{program} {stream} exceeded the {} MiB output limit",
-            limit / (1024 * 1024)
-        )),
+        GhRunError::OutputLimit { stream, limit } => {
+            let display_limit = if limit >= 1024 * 1024 {
+                format!("{} MiB", limit / (1024 * 1024))
+            } else {
+                format!("{} KiB", limit / 1024)
+            };
+            AppError::GitError(format!(
+                "{program} {stream} exceeded the {display_limit} output limit"
+            ))
+        }
         GhRunError::NonZero(stderr) => AppError::GitError(stderr),
         GhRunError::Spawn(message) => AppError::GitError(message),
     }
