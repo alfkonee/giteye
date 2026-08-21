@@ -299,6 +299,7 @@ export interface RecentRepo {
   parentName: string | null;
   relationshipKind: "submodule" | "worktree" | null;
   isStale: boolean;
+  currentBranch: string | null;
 }
 
 export interface FavoriteRepo {
@@ -308,6 +309,12 @@ export interface FavoriteRepo {
   parentPath: string | null;
   parentName: string | null;
   relationshipKind: "submodule" | "worktree" | null;
+  currentBranch: string | null;
+}
+
+export interface HubCommitActivity {
+  path: string;
+  commitsThisWeek: number;
 }
 
 export interface Worktree {
@@ -847,6 +854,7 @@ export interface SelectedEntityState {
   conflictPath: string | null;
 }
 export type DiffMode = "unified" | "split";
+export type Theme = "dark" | "light" | "system";
 
 /** `repository` writes to `.gitignore`, `local` to `.git/info/exclude`. */
 export type IgnoreScope = "repository" | "local";

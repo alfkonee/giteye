@@ -230,6 +230,9 @@ export const gitKeys = {
   recentRepositories: () => [...gitKeys.all, "recent-repositories"] as const,
   favoriteRepositories: () =>
     [...gitKeys.all, "favorite-repositories"] as const,
+  toolchainStatus: () => [...gitKeys.all, "toolchain-status"] as const,
+  hubActivity: (paths: readonly string[]) =>
+    [...gitKeys.all, "hub-activity", [...paths]] as const,
   gitJobs: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "jobs", repoPath ?? null] as const,
   aiConfig: () => [...gitKeys.all, "ai-config"] as const,
@@ -681,6 +684,21 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.favoriteRepositories(),
       queryFn: () => gitApi.listFavoriteRepositories(),
+    }),
+
+  toolchainStatus: () =>
+    queryOptions({
+      queryKey: gitKeys.toolchainStatus(),
+      queryFn: () => gitApi.getToolchainStatus(),
+      staleTime: 60_000,
+    }),
+
+  hubActivity: (paths: string[]) =>
+    queryOptions({
+      queryKey: gitKeys.hubActivity(paths),
+      queryFn: () => gitApi.hubCommitActivity(paths),
+      enabled: paths.length > 0,
+      staleTime: 60_000,
     }),
 
   gitJobs: (repoPath?: string | null) =>

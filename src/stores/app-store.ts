@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AppRoute,
   DiffMode,
+  Theme,
   GlobalViewType,
   RepositorySessionState,
   SelectedEntityState,
@@ -108,8 +109,8 @@ export interface AppStore {
   setDiffMode: (mode: DiffMode) => void;
 
   // Theme
-  theme: "dark" | "light";
-  setTheme: (theme: "dark" | "light") => void;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
 }
 
 type ActiveSessionState = Pick<

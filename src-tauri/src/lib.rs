@@ -60,6 +60,7 @@ pub fn run() {
             commands::repository::list_favorite_repositories,
             commands::repository::set_repository_favorite,
             commands::repository::remove_recent_repository,
+            commands::repository::hub_commit_activity,
             commands::jobs::list_git_jobs,
             commands::jobs::get_git_job,
             commands::jobs::cancel_git_job,

@@ -32,6 +32,7 @@ import type {
   RerereStatus,
   GitOperationSummary,
   GitIdentity,
+  HubCommitActivity,
   GitCredentialConfig,
   LfsStatus,
   LfsLocks,
@@ -202,6 +203,8 @@ export const gitApi = {
     invoke<void>("warm_repository_context", { repoPath, includeGithub }),
   listRecentRepositories: () =>
     invoke<RecentRepo[]>("list_recent_repositories"),
+  hubCommitActivity: (repoPaths: string[]) =>
+    invoke<HubCommitActivity[]>("hub_commit_activity", { repoPaths }),
 
   listFavoriteRepositories: () =>
     invoke<FavoriteRepo[]>("list_favorite_repositories"),

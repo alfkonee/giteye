@@ -5,7 +5,8 @@ import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi, type AiProvider } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
-import type { SshKey } from "../../types/git";
+import { resolveTheme, useSystemPrefersDark } from "../../lib/theme";
+import type { SshKey, Theme } from "../../types/git";
 import { AiModelCombobox } from "./AiModelCombobox";
 import { ToolchainSettings } from "../toolchain/ToolchainSetup";
 
@@ -81,7 +82,7 @@ export function SettingsPlaceholder() {
     },
     onSuccess: (bundle) => {
       if (!bundle) return;
-      if (bundle.theme) setTheme(bundle.theme as "dark" | "light");
+      if (bundle.theme) setTheme(bundle.theme as Theme);
       if (bundle.diffMode) setDiffMode(bundle.diffMode as "unified" | "split");
       void queryClient.invalidateQueries({ queryKey: ["git", "recent-repositories"] });
       void queryClient.invalidateQueries({ queryKey: ["git", "favorite-repositories"] });
@@ -90,7 +91,8 @@ export function SettingsPlaceholder() {
     onError: (error) => setExportImportMessage(`Import failed: ${error}`),
   });
 
-  const isDark = theme === "dark";
+  const systemPrefersDark = useSystemPrefersDark();
+  const isDark = resolveTheme(theme, systemPrefersDark) === "dark";
   const identityPending = identityLoading || setGitIdentity.isPending;
   const identityErrorText = identityError ?? setGitIdentity.error;
   const credentialPending = credentialLoading || saveCredentialHelperMutation.isPending;
@@ -228,21 +230,24 @@ export function SettingsPlaceholder() {
               <div className="flex items-center justify-between gap-4 px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]">
-                    {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                    {theme === "system" ? <Monitor className="h-4 w-4" /> : isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
                   </div>
                   <div>
                     <div className="text-[13px] font-medium text-[var(--color-text-primary)]">Theme</div>
                     <div className="text-[11px] text-[var(--color-text-muted)]">
-                      {isDark ? "Dark interface enabled" : "Light interface enabled"}
+                      {theme === "system" ? "Follows system appearance" : isDark ? "Dark interface enabled" : "Light interface enabled"}
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-0.5">
+                <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-0.5">
                   <ThemeButton active={theme === "light"} onClick={() => setTheme("light")} icon={<Sun className="h-3.5 w-3.5" />}>
                     Light
                   </ThemeButton>
                   <ThemeButton active={theme === "dark"} onClick={() => setTheme("dark")} icon={<Moon className="h-3.5 w-3.5" />}>
                     Dark
+                  </ThemeButton>
+                  <ThemeButton active={theme === "system"} onClick={() => setTheme("system")} icon={<Monitor className="h-3.5 w-3.5" />}>
+                    System
                   </ThemeButton>
                 </div>
               </div>
