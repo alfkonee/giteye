@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { GitStatusFile } from "../../types/git";
 import { parseFileStatus } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 export interface WorkingTreePathTarget {
   kind: "file" | "directory";
@@ -108,7 +109,10 @@ export function WorkingTreePathContextMenu({
     try {
       await action();
     } catch (error) {
-      window.alert(`${description} failed: ${error instanceof Error ? error.message : String(error)}`);
+      await appDialog.alert(
+        `${description} failed: ${error instanceof Error ? error.message : String(error)}`,
+        `${description} failed`,
+      );
     }
   };
 

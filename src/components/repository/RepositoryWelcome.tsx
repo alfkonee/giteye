@@ -22,6 +22,7 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
+import { appDialog } from "../common/AppDialogProvider";
 import { getShortcutBinding } from "../../lib/shortcuts";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
@@ -131,11 +132,15 @@ export function RepositoryWelcome() {
     }
   };
 
-  const handleCloneRepository = () => {
-    const url = window.prompt("Repository URL to clone");
+  const handleCloneRepository = async () => {
+    const url = await appDialog.prompt("Enter the repository URL to clone.", "", "Clone repository");
     if (!url?.trim()) return;
 
-    const destination = window.prompt("Destination path for cloned repository");
+    const destination = await appDialog.prompt(
+      "Enter the destination path for the cloned repository.",
+      "",
+      "Clone destination",
+    );
     if (!destination?.trim()) return;
 
     cloneMutation.mutate({ url: url.trim(), destination: destination.trim() });
@@ -171,11 +176,14 @@ export function RepositoryWelcome() {
     }
     const preview = staleRepositories.slice(0, 5).map((repo) => `• ${repo.name}: ${repo.path}`).join("\n");
     const remaining = staleRepositories.length > 5 ? `\n…and ${staleRepositories.length - 5} more` : "";
-    if (!window.confirm(`GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`)) return;
-
     stalePromptBusyRef.current = true;
     void (async () => {
       try {
+        const confirmed = await appDialog.confirm(
+          `GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`,
+          "Remove stale recent repositories?",
+        );
+        if (!confirmed) return;
         for (const repository of staleRepositories) {
           await removeRecentMutation.mutateAsync(repository.path);
         }

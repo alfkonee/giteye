@@ -17,6 +17,7 @@ import {
 } from "./WorkingTreePathContextMenu";
 import { IgnorePathDialog } from "./IgnorePathDialog";
 import type { IgnoreScope } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 interface FileStatusListProps {
   title: string;
@@ -136,13 +137,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     }
   };
 
-  const handleStashFile = (file: GitStatusFile) => {
+  const handleStashFile = async (file: GitStatusFile) => {
     if (
       file.staged &&
       file.unstaged &&
-      !confirm(
+      !(await appDialog.confirm(
         `"${file.path}" has both staged and unstaged changes. Stashing the path will stash both. Continue?`,
-      )
+        "Stash both change sets?",
+      ))
     ) {
       return;
     }
@@ -154,7 +156,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
-  const handleDiscardFile = (file: GitStatusFile) => {
+  const handleDiscardFile = async (file: GitStatusFile) => {
     const status = parseFileStatus(file.status);
     const scope = staged
       ? file.unstaged
@@ -164,9 +166,11 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         ? "untracked file"
         : "unstaged file changes";
     if (
-      !confirm(
+      !(await appDialog.confirm(
         `Discard ${scope} for "${file.path}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
-      )
+        "Discard file changes?",
+        "danger",
+      ))
     ) {
       return;
     }
@@ -186,7 +190,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
    * carrying both staged and unstaged edits loses both. The confirmation has to
    * say so, matching the per-file and per-directory discard wording.
    */
-  const handleDiscardAll = () => {
+  const handleDiscardAll = async () => {
     if (files.length === 0) return;
     const includesPartialChanges = staged && files.some((file) => file.unstaged);
     const scope = includesPartialChanges
@@ -201,9 +205,11 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
       ? `\n\n${partialCount} of them ${partialCount === 1 ? "also has" : "also have"} unstaged edits, which will be discarded too.`
       : "";
     if (
-      !confirm(
+      !(await appDialog.confirm(
         `Discard ${scope} in all ${files.length} ${files.length === 1 ? "file" : "files"}?${partialNote}\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
-      )
+        "Discard all changes?",
+        "danger",
+      ))
     ) {
       return;
     }
@@ -244,13 +250,14 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
-  const handleStashTarget = (target: WorkingTreePathTarget) => {
+  const handleStashTarget = async (target: WorkingTreePathTarget) => {
     const includesPartialChanges = target.files.some((file) => file.staged && file.unstaged);
     if (
       includesPartialChanges &&
-      !confirm(
+      !(await appDialog.confirm(
         `"${target.path}" includes files with both staged and unstaged changes. Stashing this ${target.kind} will stash both. Continue?`,
-      )
+        "Stash both change sets?",
+      ))
     ) {
       return;
     }
@@ -263,7 +270,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
-  const handleDiscardTarget = (target: WorkingTreePathTarget) => {
+  const handleDiscardTarget = async (target: WorkingTreePathTarget) => {
     if (target.kind === "file") {
       handleDiscardFile(target.files[0]);
       return;
@@ -276,9 +283,11 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         ? "staged changes"
         : "unstaged changes";
     if (
-      !confirm(
+      !(await appDialog.confirm(
         `Discard ${scope} for ${target.files.length} files in "${target.path}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups; stash or commit first if you need a Git safety net.`,
-      )
+        "Discard folder changes?",
+        "danger",
+      ))
     ) {
       return;
     }

@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import type { Submodule, SubmoduleForeachStatus, Worktree } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 type WorktreeRow = {
   key: string;
@@ -407,32 +408,38 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     openRepository.mutate(worktreePath);
   };
 
-  const handleMoveWorktree = (row: WorktreeRow) => {
-    const newPath = window.prompt("Move worktree to this new path", row.path);
+  const handleMoveWorktree = async (row: WorktreeRow) => {
+    const newPath = await appDialog.prompt("Move the worktree to this new path.", row.path, "Move worktree");
     if (!newPath?.trim() || newPath.trim() === row.path) return;
-    if (!window.confirm(`Move worktree\n\nFrom: ${row.path}\nTo: ${newPath.trim()}?`)) return;
+    if (!(await appDialog.confirm(
+      `Move worktree\n\nFrom: ${row.path}\nTo: ${newPath.trim()}?`,
+      "Move worktree?",
+    ))) return;
     setActionError(null);
     moveWorktree.mutate({ path: row.path, newPath: newPath.trim() });
   };
 
-  const handleLockWorktree = (row: WorktreeRow) => {
-    const reason = window.prompt("Lock reason (optional)", row.lockReason ?? "");
+  const handleLockWorktree = async (row: WorktreeRow) => {
+    const reason = await appDialog.prompt("Enter an optional lock reason.", row.lockReason ?? "", "Lock worktree");
     if (reason === null) return;
     setActionError(null);
     lockWorktree.mutate({ path: row.path, reason: reason.trim() || null });
   };
 
-  const handleUnlockWorktree = (row: WorktreeRow) => {
-    if (!window.confirm(`Unlock worktree at ${row.path}?`)) return;
+  const handleUnlockWorktree = async (row: WorktreeRow) => {
+    if (!(await appDialog.confirm(`Unlock worktree at ${row.path}?`, "Unlock worktree?"))) return;
     setActionError(null);
     unlockWorktree.mutate(row.path);
   };
 
-  const handleRepairWorktree = (row: WorktreeRow) => {
+  const handleRepairWorktree = async (row: WorktreeRow) => {
     const detail = repairPreviewPath === row.path && repairPreviewLines.length > 0
       ? `\n\nLast repair preview:\n${previewList(repairPreviewLines)}`
       : "";
-    if (!window.confirm(`Repair Git metadata for worktree at ${row.path}?${detail}`)) return;
+    if (!(await appDialog.confirm(
+      `Repair Git metadata for worktree at ${row.path}?${detail}`,
+      "Repair worktree?",
+    ))) return;
     setActionError(null);
     repairWorktree.mutate(row.path, {
       onSuccess: (job) => {
@@ -442,18 +449,18 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     });
   };
 
-  const handlePreviewRepair = (row: WorktreeRow) => {
+  const handlePreviewRepair = async (row: WorktreeRow) => {
     setActionError(null);
-    repairWorktreeDryRun.mutate(row.path, {
-      onSuccess: (lines) => {
-        setRepairPreviewPath(row.path);
-        setRepairPreviewLines(lines);
-        if (lines.length === 0) {
-          window.alert("Repair dry run did not report any worktree link changes.");
-        }
-      },
-      onError: (error) => setActionError(formatMutationError(error)),
-    });
+    try {
+      const lines = await repairWorktreeDryRun.mutateAsync(row.path);
+      setRepairPreviewPath(row.path);
+      setRepairPreviewLines(lines);
+      if (lines.length === 0) {
+        await appDialog.alert("Repair dry run did not report any worktree link changes.", "No repair needed");
+      }
+    } catch (error) {
+      setActionError(formatMutationError(error));
+    }
   };
 
   const handleRemoveWorktree = async (row: WorktreeRow, force: boolean) => {
@@ -469,9 +476,17 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     }
 
     const details = worktreeRemovalDetails(row, dryRunLines);
-    if (!window.confirm(`${mode[0].toUpperCase()}${mode.slice(1)} worktree at ${worktreePath}?\n\n${details}`)) return;
+    if (!(await appDialog.confirm(
+      `${mode[0].toUpperCase()}${mode.slice(1)} worktree at ${worktreePath}?\n\n${details}`,
+      force ? "Force remove worktree?" : "Remove worktree?",
+      force ? "danger" : "warning",
+    ))) return;
     if (force && (row.modifiedFiles > 0 || row.stagedFiles > 0 || row.isLocked)) {
-      const typedPath = window.prompt(`Force removing this worktree can discard dirty or locked state. Type the full path to confirm:\n\n${worktreePath}`);
+      const typedPath = await appDialog.prompt(
+        `Force removing this worktree can discard dirty or locked state. Type the full path to confirm:\n\n${worktreePath}`,
+        "",
+        "Confirm force removal",
+      );
       if (typedPath !== worktreePath) {
         setActionError("Force remove canceled: typed path did not match the worktree path.");
         return;
@@ -481,24 +496,24 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     removeWorktree.mutate({ path: worktreePath, force });
   };
 
-  const handlePreviewPrune = () => {
+  const handlePreviewPrune = async () => {
     setActionError(null);
-    pruneWorktreesDryRun.mutate(undefined, {
-      onSuccess: (paths) => {
-        setPrunePreviewPaths(paths);
-        if (paths.length === 0) {
-          window.alert("No stale worktree metadata was found by the prune dry run.");
-        }
-      },
-      onError: (error) => setActionError(formatMutationError(error)),
-    });
+    try {
+      const paths = await pruneWorktreesDryRun.mutateAsync();
+      setPrunePreviewPaths(paths);
+      if (paths.length === 0) {
+        await appDialog.alert("No stale worktree metadata was found by the prune dry run.", "Nothing to prune");
+      }
+    } catch (error) {
+      setActionError(formatMutationError(error));
+    }
   };
 
-  const handlePruneWorktrees = () => {
+  const handlePruneWorktrees = async () => {
     const message = prunePreviewPaths.length > 0
       ? `Prune these stale worktree records?\n\n${previewList(prunePreviewPaths)}`
       : "Run git worktree prune? Use Preview prune first to see stale records before removing them.";
-    if (!window.confirm(message)) return;
+    if (!(await appDialog.confirm(message, "Prune stale worktrees?", "danger"))) return;
     setActionError(null);
     pruneWorktrees.mutate(undefined, {
       onSuccess: () => setPrunePreviewPaths([]),
@@ -551,40 +566,60 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     );
   };
 
-  const handleSubmoduleInitUpdate = (path: string | null, remoteDefault: boolean) => {
+  const handleSubmoduleInitUpdate = async (path: string | null, remoteDefault: boolean) => {
     const target = path ?? "all submodules";
-    const defaultText = remoteDefault ? " Choose OK to follow configured branch tracking." : "";
-    const remote = window.confirm(`Fetch remote tracking branches while updating ${target}?${defaultText}`);
+    const defaultText = remoteDefault ? " Choose Continue to follow configured branch tracking." : "";
+    const remote = await appDialog.confirm(
+      `Fetch remote tracking branches while updating ${target}?${defaultText}`,
+      "Follow remote tracking?",
+    );
     const recursive = true;
-    if (!window.confirm(`Run recursive init/update for ${target}${remote ? " with remote tracking" : ""}?`)) return;
+    if (!(await appDialog.confirm(
+      `Run recursive init/update for ${target}${remote ? " with remote tracking" : ""}?`,
+      "Update submodules?",
+    ))) return;
     setActionError(null);
     submoduleInitUpdate.mutate({ path, recursive, remote });
   };
 
-  const handleSetSubmoduleBranch = (row: SubmoduleRow) => {
+  const handleSetSubmoduleBranch = async (row: SubmoduleRow) => {
     const initial = row.branch === "—" ? "" : row.branch;
-    const branch = window.prompt("Branch to track for this submodule", initial);
+    const branch = await appDialog.prompt("Enter the branch to track for this submodule.", initial, "Track submodule branch");
     if (branch === null) return;
     const branchValue = branch.trim();
     if (!branchValue) {
-      window.alert("Enter a branch name to track. Clearing submodule branch tracking is not supported by the current backend.");
+      await appDialog.alert(
+        "Enter a branch name to track. Clearing submodule branch tracking is not supported by the current backend.",
+        "Branch name required",
+      );
       return;
     }
-    if (!window.confirm(`Track '${branchValue}' for ${row.path}?`)) return;
+    if (!(await appDialog.confirm(`Track '${branchValue}' for ${row.path}?`, "Change submodule tracking?"))) return;
     setActionError(null);
     submoduleSetBranch.mutate({ path: row.path, branch: branchValue });
   };
 
-  const handleBumpSubmodule = (row: SubmoduleRow) => {
-    if (!window.confirm(`Bump ${row.path} in the parent repository to its current submodule commit?`)) return;
+  const handleBumpSubmodule = async (row: SubmoduleRow) => {
+    if (!(await appDialog.confirm(
+      `Bump ${row.path} in the parent repository to its current submodule commit?`,
+      "Bump submodule pointer?",
+    ))) return;
     setActionError(null);
     bumpSubmodule.mutate({ path: row.path });
   };
 
-  const handlePinnedSubmoduleUpdate = (row: SubmoduleRow) => {
-    if (!window.confirm(`Update ${row.path} to the commit pinned by the parent repository?`)) return;
+  const handlePinnedSubmoduleUpdate = async (row: SubmoduleRow) => {
+    if (!(await appDialog.confirm(
+      `Update ${row.path} to the commit pinned by the parent repository?`,
+      "Update submodule?",
+    ))) return;
     setActionError(null);
     updateSubmodule.mutate({ path: row.path, recursive: row.recursive === "Yes" });
+  };
+
+  const handleSyncSubmodules = async () => {
+    if (!(await appDialog.confirm("Sync all submodule URLs recursively?", "Sync submodule URLs?"))) return;
+    syncSubmodules.mutate({ recursive: true });
   };
 
   return (
@@ -691,7 +726,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                   </label>
                   <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isSubmoduleMutating} onClick={openAddSubmoduleDialog}>{addSubmodule.isPending ? "Adding…" : "Add Submodule"}</button>
                   <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => handleSubmoduleInitUpdate(null, true)}>Init/update recursive</button>
-                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => { if (window.confirm("Sync all submodule URLs recursively?")) syncSubmodules.mutate({ recursive: true }); }}>Sync recursive</button>
+                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => void handleSyncSubmodules()}>Sync recursive</button>
                   <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || foreachStatusQuery.isFetching} onClick={() => { void foreachStatusQuery.refetch(); }}>Refresh foreach</button>
                 </div>
               </div>

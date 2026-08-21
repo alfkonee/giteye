@@ -23,6 +23,7 @@ import type {
   ReviewRequestSummary,
   ReviewSummary,
 } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 interface StackPrRow {
   number: number;
@@ -329,11 +330,13 @@ export function StackedPrBoard() {
   const handleUpdateBranch = () => {
     if (activePr) prActions.updateBranch.mutate(activePr.number);
   };
-  const handleMergeSelected = () => {
+  const handleMergeSelected = async () => {
     if (
       activePr &&
-      window.confirm(
+      await appDialog.confirm(
         `Squash-merge PR #${activePr.number} and delete its branch?`,
+        "Merge pull request?",
+        "danger",
       )
     ) {
       prActions.merge.mutate({ number: activePr.number, method: "squash" });
@@ -351,10 +354,17 @@ export function StackedPrBoard() {
 
   const handleLandStack = async () => {
     if (!canSafelyLandStack) {
-      window.alert(`Cannot land stack yet.\n\n${stackLandingUnavailableReason ?? "Refresh PR metadata and try again."}`);
+      await appDialog.alert(
+        `Cannot land stack yet.\n\n${stackLandingUnavailableReason ?? "Refresh PR metadata and try again."}`,
+        "Stack is not ready",
+      );
       return;
     }
-    if (!window.confirm(formatStackLandingPreflight(stackLandingOrder))) {
+    if (!(await appDialog.confirm(
+      formatStackLandingPreflight(stackLandingOrder),
+      "Land pull request stack?",
+      "danger",
+    ))) {
       return;
     }
     for (const pr of stackLandingOrder) {

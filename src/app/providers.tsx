@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { NoticeCenter } from "../components/common/NoticeCenter";
+import { AppDialogProvider } from "../components/common/AppDialogProvider";
 import { CommandLogConsole } from "../components/common/CommandLogConsole";
 import { CommandPalette } from "../components/common/CommandPalette";
 import { RustCallTracePanel } from "../components/common/RustCallTracePanel";
@@ -25,16 +26,18 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppSettingsSync />
-      <GitStateWatcher />
-      <GitJobEventListener />
-      <InterruptedJobRecovery />
-      <CommandPalette />
-      <CommandLogConsole />
-      <FrontendTraceCollector />
-      <RustCallTracePanel />
-      <NoticeCenter />
-      {children}
+      <AppDialogProvider>
+        <AppSettingsSync />
+        <GitStateWatcher />
+        <GitJobEventListener />
+        <InterruptedJobRecovery />
+        <CommandPalette />
+        <CommandLogConsole />
+        <FrontendTraceCollector />
+        <RustCallTracePanel />
+        <NoticeCenter />
+        {children}
+      </AppDialogProvider>
     </QueryClientProvider>
   );
 }

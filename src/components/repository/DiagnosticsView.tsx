@@ -22,6 +22,7 @@ import type {
   GitMaintenanceSummary,
   GitSignatureSummary,
 } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 function errorMessage(error: unknown) {
   if (!error) return null;
@@ -85,17 +86,18 @@ export function DiagnosticsView() {
     fsckMutation.error ?? maintenanceMutation.error ?? signatureMutation.error,
   );
 
-  const startBisect = () => {
-    if (!activeRepoPath || isBisectPending) return;
+  const startBisect = async () => {
+    const bad = badRevision.trim();
     const good = splitInput(goodRevisions);
-    const bad = optionalInput(badRevision);
     const paths = splitInput(pathspecs);
+    if (!bad || good.length === 0) return;
     const warning = [
-      "Start guided git bisect?",
-      "Git will check out commits while you mark revisions good, bad, or skipped.",
-      "Save or stash local work before continuing.",
+      `Start git bisect with bad revision "${bad}" and ${good.length} good revision${good.length === 1 ? "" : "s"}?`,
+      paths.length > 0 ? `Path limit: ${paths.join(", ")}` : "No path limit.",
+      "Bisect checks out commits and moves HEAD until you reset the bisect. Your working tree must be clean.",
+      "Recovery: use Reset bisect below (git bisect reset) to return to the original branch/commit.",
     ].join("\n\n");
-    if (!window.confirm(warning)) return;
+    if (!(await appDialog.confirm(warning, "Start git bisect?", "warning"))) return;
     bisectStart.mutate({ badRevision: bad, goodRevisions: good, paths });
   };
 
@@ -108,11 +110,13 @@ export function DiagnosticsView() {
     if (kind === "skip") bisectSkip.mutate(request);
   };
 
-  const resetBisect = () => {
-    if (!activeRepoPath || isBisectPending) return;
-    const revision = optionalInput(resetRevision);
+  const resetBisect = async () => {
+    const revision = resetRevision.trim() || null;
     const target = revision || "the original branch";
-    if (!window.confirm(`Reset git bisect and return to ${target}?`)) return;
+    if (!(await appDialog.confirm(
+      `Reset git bisect and return to ${target}?`,
+      "Reset git bisect?",
+    ))) return;
     bisectReset.mutate({ revision });
   };
 
@@ -121,13 +125,15 @@ export function DiagnosticsView() {
     fsckMutation.mutate({ full: fsckFull, strict: fsckStrict });
   };
 
-  const runMaintenance = () => {
+  const runMaintenance = async () => {
     if (!activeRepoPath || maintenanceMutation.isPending) return;
     const label = maintenanceMode === "gc" ? "git gc" : "git maintenance run";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Run ${label}?\n\nThis can take a while and rewrites Git's internal object storage/pack files. Do not close the app while it is running.\n\nRecovery: rely on current refs/reflog promptly; unreachable objects may expire after cleanup.`,
-      )
+        `Run ${label}?`,
+        "danger",
+      ))
     ) {
       return;
     }

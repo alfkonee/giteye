@@ -5,6 +5,7 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
 import { Sparkles, GitCommitHorizontal } from "lucide-react";
 import { Button, Textarea } from "../ui";
+import { appDialog } from "../common/AppDialogProvider";
 import { cn } from "../../lib/cn";
 
 export function CommitBox() {
@@ -59,15 +60,17 @@ export function CommitBox() {
     });
   };
 
-  const handleAmend = () => {
+  const handleAmend = async () => {
     if (!repoInfo?.headCommit) return;
     const messageDetail = message.trim()
-      ? `replace the HEAD message with:\n\n${message.trim()}`
-      : "reuse the current HEAD message";
+      ? "the replacement message shown below"
+      : "the existing HEAD message";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Amend HEAD on ${branchName}?\n\nThis rewrites the current branch tip and replaces the HEAD commit. It will include ${stagedCount} currently staged file${stagedCount === 1 ? "" : "s"} and ${messageDetail}.`,
-      )
+        "Amend HEAD?",
+        "danger",
+      ))
     ) {
       return;
     }

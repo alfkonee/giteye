@@ -5,6 +5,7 @@ import { useAppStore } from "../../stores/app-store";
 import { gitApi } from "../../lib/tauri-api";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 
+import { appDialog } from "../common/AppDialogProvider";
 const DESTRUCTIVE_COMMANDS = [
   "push --force", "push -f", "push --force-with-lease",
   "reset --hard", "clean -f", "clean -fd",
@@ -39,13 +40,16 @@ export function CustomCommandView() {
       setCommand("");
     },
   });
-
-  const handleRun = () => {
-    const trimmed = command.trim();
-    if (!trimmed || !activeRepoPath) return;
+  const handleRun = async () => {
+    const trimmed = command.trim().replace(/^git\s+/, "");
+    if (!trimmed) return;
 
     if (isDestructive(trimmed)) {
-      if (!window.confirm(`This is a destructive command that can permanently delete data:\n\n  git ${trimmed}\n\nRun anyway?`)) {
+      if (!(await appDialog.confirm(
+        `This is a destructive command that can permanently delete data:\n\n  git ${trimmed}\n\nRun anyway?`,
+        "Run destructive Git command?",
+        "danger",
+      ))) {
         return;
       }
     }

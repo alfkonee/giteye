@@ -6,6 +6,7 @@ import { formatDryRunPreview } from "../../lib/git-preview";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { Branch, GitTag, LfsCommandPreview, LfsMigrationMode, LfsMigrationRequest, LfsTrackPattern, LfsTransferOperation, LfsTransferRequest, Remote, StashEntry } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -83,12 +84,16 @@ function ActionButton({ children, disabled, onClick, tone = "default" }: { child
   );
 }
 
-function promptRemoteName(remotes: Remote[], action: string) {
+async function promptRemoteName(remotes: Remote[], action: string) {
   if (remotes.length === 0) {
-    window.alert("Add a remote before using this action.");
+    await appDialog.alert("Add a remote before using this action.", "No remote configured");
     return null;
   }
-  const remote = window.prompt(`${action} remote`, remotes[0]?.name ?? "origin")?.trim();
+  const remote = (await appDialog.prompt(
+    `${action} remote:`,
+    remotes[0]?.name ?? "origin",
+    "Choose remote",
+  ))?.trim();
   return remote || null;
 }
 
@@ -159,16 +164,28 @@ export function RemotesView() {
     );
   };
 
-  const editRemote = (remote: Remote) => {
-    const fetchUrl = window.prompt(`Fetch URL for ${remote.name}`, remote.fetchUrl ?? remote.url)?.trim();
+  const editRemote = async (remote: Remote) => {
+    const fetchUrl = (await appDialog.prompt(
+      `Fetch URL for ${remote.name}:`,
+      remote.fetchUrl ?? remote.url,
+      "Edit remote",
+    ))?.trim();
     if (!fetchUrl) return;
-    const pushUrl = window.prompt(`Push URL for ${remote.name}`, remote.pushUrl ?? remote.fetchUrl ?? remote.url)?.trim();
+    const pushUrl = (await appDialog.prompt(
+      `Push URL for ${remote.name}:`,
+      remote.pushUrl ?? remote.fetchUrl ?? remote.url,
+      "Edit remote",
+    ))?.trim();
     if (pushUrl === undefined) return;
     updateRemoteMutation.mutate({ name: remote.name, fetchUrl, pushUrl: pushUrl || null });
   };
 
-  const deleteRemote = (remote: Remote) => {
-    if (!window.confirm(`Delete remote "${remote.name}"? This removes the remote and its remote-tracking refs from this repository.`)) return;
+  const deleteRemote = async (remote: Remote) => {
+    if (!(await appDialog.confirm(
+      `Delete remote "${remote.name}"? This removes the remote and its remote-tracking refs from this repository.`,
+      "Delete remote?",
+      "danger",
+    ))) return;
     deleteRemoteMutation.mutate(remote.name);
   };
 
@@ -177,7 +194,10 @@ export function RemotesView() {
     try {
       previewLines = await pruneRemotePreviewMutation.mutateAsync(remote.name);
     } catch (error) {
-      window.alert(`Unable to preview remote prune for "${remote.name}": ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview remote prune for "${remote.name}": ${errorMessage(error)}`,
+        "Prune preview failed",
+      );
       return;
     }
 
@@ -186,21 +206,25 @@ export function RemotesView() {
       : "No stale remote-tracking refs reported by dry run.";
     const overflow = previewLines.length > 12 ? `\n…and ${previewLines.length - 12} more` : "";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Prune stale remote-tracking refs from "${remote.name}"?\n\nPreview:\n${preview}${overflow}\n\nRecovery: stale tracking refs can be recreated by fetching if the branch still exists on the remote; otherwise recover from a local branch or reflog tip.`,
-      )
+        "Prune stale branches?",
+      ))
     ) return;
     pruneRemoteMutation.mutate(remote.name);
   };
 
   const pushBranchToRemote = async (remote: Remote, forceWithLease: boolean) => {
     const defaultBranch = currentOrFirstBranch(localBranches, branchName);
-    const localBranch = window.prompt("Local branch to push", defaultBranch)?.trim();
+    const localBranch = (await appDialog.prompt("Choose the local branch to push.", defaultBranch, "Push branch"))?.trim();
     if (!localBranch) return;
-    const remoteBranch = window.prompt("Remote branch name", localBranch)?.trim();
+    const remoteBranch = (await appDialog.prompt("Choose the remote branch name.", localBranch, "Remote branch"))?.trim();
     if (remoteBranch === undefined) return;
     const target = `${remote.name}/${remoteBranch || localBranch}`;
-    const setUpstream = !forceWithLease && window.confirm(`Set "${localBranch}" to track ${target} after push?`);
+    const setUpstream = !forceWithLease && await appDialog.confirm(
+      `Set "${localBranch}" to track ${target} after push?`,
+      "Set tracking upstream?",
+    );
     const request = {
       remote: remote.name,
       localBranch,
@@ -215,13 +239,17 @@ export function RemotesView() {
         "Git did not report any ref updates for this push dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview push to ${target}: ${errorMessage(error)}`);
+      await appDialog.alert(`Unable to preview push to ${target}: ${errorMessage(error)}`, "Push preview failed");
       return;
     }
     const forceWarning = forceWithLease
       ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
       : "";
-    if (!window.confirm(`Push "${localBranch}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`)) return;
+    if (!(await appDialog.confirm(
+      `Push "${localBranch}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`,
+      forceWithLease ? "Force-with-lease push?" : "Push branch?",
+      forceWithLease ? "danger" : "warning",
+    ))) return;
     pushBranchMutation.mutate(request);
   };
 
@@ -241,10 +269,16 @@ export function RemotesView() {
         "Git did not report any ref updates for this push dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview push to ${remote.name}/${branchName}: ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview push to ${remote.name}/${branchName}: ${errorMessage(error)}`,
+        "Push preview failed",
+      );
       return;
     }
-    if (!window.confirm(`Push current branch "${branchName}" to ${remote.name}/${branchName}?\n\nPreview:\n${previewText}`)) return;
+    if (!(await appDialog.confirm(
+      `Push current branch "${branchName}" to ${remote.name}/${branchName}?\n\nPreview:\n${previewText}`,
+      "Push current branch?",
+    ))) return;
     pushMutation.mutate({ remote: remote.name, branch: branchName });
   };
 
@@ -373,7 +407,10 @@ export function StashesView() {
       previewStash.reset();
       preview = await previewStash.mutateAsync(stash.name);
     } catch (error) {
-      window.alert(`Unable to preview ${stash.name}: ${errorMessage(error) ?? "Unknown error"}`);
+      await appDialog.alert(
+        `Unable to preview ${stash.name}: ${errorMessage(error) ?? "Unknown error"}`,
+        "Stash preview failed",
+      );
       previewStash.reset();
       return;
     }
@@ -381,7 +418,11 @@ export function StashesView() {
     const actionLabel = action === "apply" ? "Apply" : "Pop";
     const removalWarning = action === "pop" ? "\n\nPop removes the stash entry after a successful application." : "";
     const previewText = formatPreviewForDialog(preview);
-    if (!window.confirm(`${actionLabel} ${stash.name}?\n\n${stash.message || "Stashed changes"}${removalWarning}\n\nPreview:\n${previewText}`)) {
+    if (!(await appDialog.confirm(
+      `${actionLabel} ${stash.name}?\n\n${stash.message || "Stashed changes"}${removalWarning}\n\nPreview:\n${previewText}`,
+      `${actionLabel} stash?`,
+      action === "pop" ? "danger" : "warning",
+    ))) {
       return;
     }
 
@@ -392,8 +433,12 @@ export function StashesView() {
     }
   };
 
-  const confirmDropStash = (stash: StashEntry) => {
-    if (!window.confirm(`Drop ${stash.name}?\n\n${stash.message || "Stashed changes"}\n\nThis removes the stash entry. Recovery may require reflog/manual Git recovery if this was accidental.`)) {
+  const confirmDropStash = async (stash: StashEntry) => {
+    if (!(await appDialog.confirm(
+      `Drop ${stash.name}?\n\n${stash.message || "Stashed changes"}\n\nThis removes the stash entry. Recovery may require reflog/manual Git recovery if this was accidental.`,
+      "Drop stash?",
+      "danger",
+    ))) {
       return;
     }
 
@@ -502,7 +547,7 @@ export function TagsView() {
   };
 
   const pushTagToRemote = async (tag: GitTag) => {
-    const remote = promptRemoteName(remotes, `Push "${tag.name}" to`);
+    const remote = await promptRemoteName(remotes, `Push "${tag.name}" to`);
     if (!remote) return;
     let previewText: string;
     try {
@@ -511,15 +556,18 @@ export function TagsView() {
         "Git did not report any ref updates for this tag push dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview tag push for "${tag.name}": ${errorMessage(error)}`);
+      await appDialog.alert(`Unable to preview tag push for "${tag.name}": ${errorMessage(error)}`, "Tag push preview failed");
       return;
     }
-    if (!window.confirm(`Push tag "${tag.name}" to ${remote}?\n\nPreview:\n${previewText}`)) return;
+    if (!(await appDialog.confirm(
+      `Push tag "${tag.name}" to ${remote}?\n\nPreview:\n${previewText}`,
+      "Push tag?",
+    ))) return;
     pushTag.mutate({ remote, name: tag.name });
   };
 
   const deleteTagFromRemote = async (tag: GitTag) => {
-    const remote = promptRemoteName(remotes, `Delete "${tag.name}" from`);
+    const remote = await promptRemoteName(remotes, `Delete "${tag.name}" from`);
     if (!remote) return;
     let previewText: string;
     try {
@@ -528,11 +576,26 @@ export function TagsView() {
         "Git did not report a ref deletion for this remote tag dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview remote tag deletion for "${tag.name}": ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview remote tag deletion for "${tag.name}": ${errorMessage(error)}`,
+        "Remote tag deletion preview failed",
+      );
       return;
     }
-    if (!window.confirm(`Delete remote tag "${tag.name}" from ${remote}?\n\nPreview:\n${previewText}\n\nThis does not delete the local tag. Recovery: push the local tag again, or recreate it at the intended commit before pushing.`)) return;
+    if (!(await appDialog.confirm(
+      `Delete remote tag "${tag.name}" from ${remote}?\n\nPreview:\n${previewText}\n\nThis does not delete the local tag. Recovery: push the local tag again, or recreate it at the intended commit before pushing.`,
+      "Delete remote tag?",
+      "danger",
+    ))) return;
     deleteRemoteTag.mutate({ remote, name: tag.name });
+  };
+  const deleteLocalTag = async (tag: GitTag) => {
+    if (!(await appDialog.confirm(
+      `Delete local tag "${tag.name}"?`,
+      "Delete local tag?",
+      "danger",
+    ))) return;
+    deleteTag.mutate(tag.name);
   };
 
   return (
@@ -557,9 +620,7 @@ export function TagsView() {
                 disabled={isMutating}
                 onPush={() => pushTagToRemote(tag)}
                 onDeleteRemote={() => deleteTagFromRemote(tag)}
-                onDelete={() => {
-                  if (window.confirm(`Delete local tag "${tag.name}"?`)) deleteTag.mutate(tag.name);
-                }}
+                onDelete={() => void deleteLocalTag(tag)}
               />
             ))}
           </div>
@@ -617,11 +678,16 @@ export function LfsView() {
       const warning = preview.destructive
         ? "\n\nWarning: the requested operation is destructive. Review the preview carefully."
         : "";
-      return window.confirm(
+      return await appDialog.confirm(
         `${action}?\n\n${preview.description}\n\nCommand:\n${preview.command.join(" ")}\n\nPreview:\n${formatPreviewForDialog(preview.lines)}${warning}`,
+        `${action}?`,
+        preview.destructive ? "danger" : "warning",
       );
     } catch (previewError) {
-      window.alert(`Unable to preview ${action.toLowerCase()}: ${errorMessage(previewError)}`);
+      await appDialog.alert(
+        `Unable to preview ${action.toLowerCase()}: ${errorMessage(previewError)}`,
+        "LFS preview failed",
+      );
       return false;
     } finally {
       previewBusyRef.current = false;
@@ -674,13 +740,26 @@ export function LfsView() {
       () => gitApi.previewLfsMigration(activeRepoPath, request),
       `Rewrite Git history with LFS migrate ${migrationMode}`,
     );
-    if (confirmed && window.confirm("This rewrites commit history and requires a clean worktree. GitEye will create a recovery branch before starting. Continue?")) {
+    if (confirmed && await appDialog.confirm(
+      "This rewrites commit history and requires a clean worktree. GitEye will create a recovery branch before starting. Continue?",
+      "Rewrite Git history?",
+      "danger",
+    )) {
       migrationMutation.mutate(request);
     }
   };
 
   const fieldClass = "min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]";
   const locks = [...(locksQuery.data?.ours ?? []), ...(locksQuery.data?.theirs ?? [])];
+  const unlockLfsFile = async (lock: { id: string; path: string; ours: boolean; owner: string | null }) => {
+    const force = !lock.ours;
+    if (force && !(await appDialog.confirm(
+      `Force unlock ${lock.path}, owned by ${lock.owner ?? "another user"}?`,
+      "Force unlock LFS file?",
+      "danger",
+    ))) return;
+    unlockMutation.mutate({ lockId: lock.id, remote: lockRemote.trim() || null, force });
+  };
 
   return (
     <section className="flex h-full flex-col bg-[var(--color-bg-primary)]">
@@ -784,10 +863,9 @@ export function LfsView() {
                 {locksQuery.isLoading ? <div className="p-4"><EmptyState message="Loading LFS locks…" /></div> : locks.length === 0 ? <div className="p-4"><EmptyState message="No LFS locks reported by the remote." /></div> : locks.map((lock) => (
                   <div key={lock.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-muted)] px-3 py-2 text-xs last:border-b-0">
                     <div className="min-w-0"><div className="truncate font-mono text-[var(--color-text-primary)]">{lock.path}</div><div className="text-[10px] text-[var(--color-text-muted)]">{lock.ours ? "Locked by you" : `Locked by ${lock.owner ?? "another user"}`}{lock.lockedAt ? ` · ${formatRelativeTime(lock.lockedAt)}` : ""} · ID {lock.id}</div></div>
-                    <ActionButton disabled={pending} tone={lock.ours ? "default" : "danger"} onClick={() => {
-                      const force = !lock.ours;
-                      if (!force || window.confirm(`Force unlock ${lock.path}, owned by ${lock.owner ?? "another user"}?`)) unlockMutation.mutate({ lockId: lock.id, remote: lockRemote.trim() || null, force });
-                    }}>{lock.ours ? "Unlock" : "Force unlock"}</ActionButton>
+                    <ActionButton disabled={pending} tone={lock.ours ? "default" : "danger"} onClick={() => void unlockLfsFile(lock)}>
+                      {lock.ours ? "Unlock" : "Force unlock"}
+                    </ActionButton>
                   </div>
                 ))}
               </div>

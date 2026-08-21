@@ -19,6 +19,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import type { RebaseTodoItem } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
 
 const splitLines = (content: string | null | undefined, emptyMessage: string) => {
   if (!content) {
@@ -309,7 +310,7 @@ export function RebaseConflictResolver() {
     setTodoDraft(nextTodo);
   };
 
-  const applyTodoDraft = () => {
+  const applyTodoDraft = async () => {
     if (!canEditTodo || !hasTodoDraftChanges) {
       return;
     }
@@ -317,8 +318,10 @@ export function RebaseConflictResolver() {
     const destructiveWarning = todoDraft.some((item) => item.action === "drop" || item.action === "exec")
       ? "\n\nWarning: this draft contains drop or exec actions. Review the preview before applying."
       : "";
-    const confirmed = window.confirm(
+    const confirmed = await appDialog.confirm(
       `Apply interactive rebase todo changes to Git?\n\n${formatTodoDraftSummary(lastSavedTodo, todoDraft)}${destructiveWarning}`,
+      "Apply rebase plan?",
+      "danger",
     );
     if (!confirmed) {
       return;
@@ -357,14 +360,15 @@ export function RebaseConflictResolver() {
     actions.markFileResolved.mutate(displayedConflictPath);
   };
 
-  const handleCheckoutConflictSide = (side: "ours" | "theirs") => {
+  const handleCheckoutConflictSide = async (side: "ours" | "theirs") => {
     if (!canMarkResolved || !displayedConflictPath) {
       return;
     }
-
     const sideLabel = side === "ours" ? "current" : "incoming";
-    const confirmed = window.confirm(
+    const confirmed = await appDialog.confirm(
       `Use the ${sideLabel} version for ${displayedConflictPath}?\n\nThis overwrites the result file with that side of the conflict and stages the file as resolved. Any manual edits currently in the result file will be lost.`,
+      `Use ${sideLabel} version?`,
+      "danger",
     );
     if (!confirmed) {
       return;
@@ -373,23 +377,34 @@ export function RebaseConflictResolver() {
     actions.checkoutConflictSide.mutate({ filePath: displayedConflictPath, side });
   };
 
-  const confirmAndAbort = () => {
-    if (window.confirm("Abort the active rebase?\n\nThis returns the repository to its pre-rebase state.")) {
+  const confirmAndAbort = async () => {
+    if (await appDialog.confirm(
+      "Abort the active rebase?\n\nThis returns the repository to its pre-rebase state.",
+      "Abort rebase?",
+      "danger",
+    )) {
       actions.abortRebase.mutate();
     }
   };
 
-  const confirmAndSkip = () => {
-    if (window.confirm("Skip this commit during the active rebase?\n\nThe commit changes will not be applied. Recovery: use the reflog/ORIG_HEAD if you need to inspect or recover the skipped state later.")) {
+  const confirmAndSkip = async () => {
+    if (await appDialog.confirm(
+      "Skip this commit during the active rebase?\n\nThe commit changes will not be applied. Recovery: use the reflog/ORIG_HEAD if you need to inspect or recover the skipped state later.",
+      "Skip commit?",
+      "danger",
+    )) {
       actions.skipRebase.mutate();
     }
   };
 
-  const confirmAndContinue = () => {
+  const confirmAndContinue = async () => {
     if (conflictCount > 0) {
       return;
     }
-    if (window.confirm("Continue the active rebase now that no conflicts are reported?\n\nRecovery: if the result is wrong after completion, use ORIG_HEAD/reflog to create a recovery branch or reset back.")) {
+    if (await appDialog.confirm(
+      "Continue the active rebase now that no conflicts are reported?\n\nRecovery: if the result is wrong after completion, use ORIG_HEAD/reflog to create a recovery branch or reset back.",
+      "Continue rebase?",
+    )) {
       actions.continueRebase.mutate();
     }
   };

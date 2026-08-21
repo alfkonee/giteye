@@ -8,6 +8,7 @@ import { formatAmendPreview, formatRebasePreview } from "../../lib/git-preview";
 import type { CommitSummary, ReflogEntry, ResetMode, ResetPreview, StartRebaseRequest } from "../../types/git";
 import type { DisplayRef } from "./commit-refs";
 import { MoreHorizontal } from "lucide-react";
+import { appDialog } from "../common/AppDialogProvider";
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
@@ -110,8 +111,12 @@ function defaultBranchName(prefix: string, hash: string) {
   return `${prefix}-${hash.slice(0, 8)}`;
 }
 
-function promptBranchName(defaultName: string, sourceLabel: string) {
-  const name = window.prompt(`New branch name from ${sourceLabel}`, defaultName)?.trim();
+async function promptBranchName(defaultName: string, sourceLabel: string) {
+  const name = (await appDialog.prompt(
+    `Create a new branch from ${sourceLabel}.`,
+    defaultName,
+    "New branch name",
+  ))?.trim();
   return name || null;
 }
 
@@ -183,35 +188,40 @@ function useHistorySurgeryActions() {
     previewRebaseMutation.error ??
     rebaseUpstreamMutation.error;
 
-  const cherryPick = (target: CommitActionTarget) => {
+  const cherryPick = async (target: CommitActionTarget) => {
     if (!activeRepoPath) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Cherry-pick ${shortHash(target)} onto ${repoInfo?.currentBranch ?? "the current branch"}?\n\nThis applies the commit as a new commit. Your working tree must be clean, and Git may stop for conflict resolution.\n\nRecovery if conflicts stop the operation: resolve and continue from the resolver/working tree, or abort the partial cherry-pick from Git if you do not want it.`,
-      )
+        "Cherry-pick commit?",
+      ))
     ) {
       return;
     }
     cherryPickMutation.mutate({ commitHash: target.hash });
   };
 
-  const revert = (target: CommitActionTarget) => {
+  const revert = async (target: CommitActionTarget) => {
     if (!activeRepoPath) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Revert ${shortHash(target)} on ${repoInfo?.currentBranch ?? "the current branch"}?\n\nThis creates a new commit that reverses that commit. Your working tree must be clean. It does not rewrite existing history, but conflicts may need resolution.\n\nRecovery if conflicts stop the operation: resolve and continue from the resolver/working tree, or abort the partial revert from Git if you do not want it.`,
-      )
+        "Revert commit?",
+      ))
     ) {
       return;
     }
     revertMutation.mutate({ commitHash: target.hash });
   };
 
-  const createBranchFromCommit = (target: CommitActionTarget) => {
+  const createBranchFromCommit = async (target: CommitActionTarget) => {
     if (!activeRepoPath) return;
-    const branchName = promptBranchName(defaultBranchName("branch", target.hash), shortHash(target));
+    const branchName = await promptBranchName(defaultBranchName("branch", target.hash), shortHash(target));
     if (!branchName) return;
-    const checkout = window.confirm(`Check out "${branchName}" after creating it from ${shortHash(target)}?`);
+    const checkout = await appDialog.confirm(
+      `Check out "${branchName}" after creating it from ${shortHash(target)}?`,
+      "Check out new branch?",
+    );
     createBranchMutation.mutate({ name: branchName, checkout, startPoint: target.hash });
   };
 
@@ -224,7 +234,10 @@ function useHistorySurgeryActions() {
         await previewResetMutation.mutateAsync({ commitHash: target.hash }),
       );
     } catch (error) {
-      window.alert(`Unable to preview reset to ${shortHash(target)}: ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview reset to ${shortHash(target)}: ${errorMessage(error)}`,
+        "Reset preview failed",
+      );
       return;
     }
 
@@ -233,9 +246,11 @@ function useHistorySurgeryActions() {
         ? "\n\nHARD RESET WILL DISCARD tracked working tree and index changes that differ from the target commit."
         : "";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Reset ${repoInfo?.currentBranch ?? "the current branch"} to ${shortHash(target)} using --${mode}?\n\n${resetModeEffect(mode)}${hardWarning}\n\nPreview:\n${previewText}\n\nThis rewrites the current branch tip. Recovery: use the reflog/ORIG_HEAD to create a recovery branch or reset back if this is wrong.`,
-      )
+        `Reset --${mode}?`,
+        mode === "hard" ? "danger" : "warning",
+      ))
     ) {
       return;
     }
@@ -247,71 +262,92 @@ function useHistorySurgeryActions() {
     });
   };
 
-  const promptReset = (target: CommitActionTarget) => {
-    const mode = window.prompt("Reset mode: soft, mixed, or hard", "mixed")?.trim().toLowerCase();
+  const promptReset = async (target: CommitActionTarget) => {
+    const mode = (await appDialog.prompt(
+      "Choose reset mode: soft, mixed, or hard.",
+      "mixed",
+      "Reset mode",
+    ))?.trim().toLowerCase();
     if (!mode) return;
     if (!isResetMode(mode)) {
-      window.alert("Reset mode must be soft, mixed, or hard.");
+      await appDialog.alert("Reset mode must be soft, mixed, or hard.", "Invalid reset mode");
       return;
     }
-    void resetToCommit(target, mode);
+    await resetToCommit(target, mode);
   };
 
   const amendHead = async (target: CommitActionTarget, isHeadCommit: boolean) => {
     if (!activeRepoPath) return;
     if (!isHeadCommit) {
-      window.alert("Only HEAD can be amended. Select the current HEAD commit or create a branch/reset first.");
+      await appDialog.alert(
+        "Only HEAD can be amended. Select the current HEAD commit or create a branch/reset first.",
+        "Cannot amend commit",
+      );
       return;
     }
-    const message = window.prompt("New amended commit message", fullCommitMessage(target));
+    const message = await appDialog.prompt(
+      "Enter the new amended commit message.",
+      fullCommitMessage(target),
+      "Amend HEAD",
+    );
     if (message === null) return;
     const request = { message: message.trim() || null };
     let previewText: string;
     try {
       previewText = formatAmendPreview(await previewAmendMutation.mutateAsync(request));
     } catch (error) {
-      window.alert(`Unable to preview amend for HEAD (${shortHash(target)}): ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview amend for HEAD (${shortHash(target)}): ${errorMessage(error)}`,
+        "Amend preview failed",
+      );
       return;
     }
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Amend HEAD (${shortHash(target)})?\n\nThis rewrites the current branch tip and replaces the HEAD commit with the currently staged changes.\n\nPreview:\n${previewText}`,
-      )
+        "Amend HEAD?",
+        "danger",
+      ))
     ) {
       return;
     }
     amendMutation.mutate(request);
   };
 
-  const checkoutReflogEntry = (entry: ReflogEntry) => {
+  const checkoutReflogEntry = async (entry: ReflogEntry) => {
     if (!activeRepoPath) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Check out reflog entry ${entry.selector} (${entry.shortHash || entry.hash.slice(0, 8)})?\n\nThis moves the worktree to that recorded HEAD state and may detach HEAD. Your working tree must be clean.`,
-      )
+        "Check out reflog entry?",
+      ))
     ) {
       return;
     }
     checkoutReflogMutation.mutate({ selector: entry.selector });
   };
 
-  const createBranchFromReflog = (entry: ReflogEntry) => {
+  const createBranchFromReflog = async (entry: ReflogEntry) => {
     if (!activeRepoPath) return;
     const label = `${entry.selector} (${entry.shortHash || entry.hash.slice(0, 8)})`;
-    const branchName = promptBranchName(defaultBranchName("recover", entry.hash), label);
+    const branchName = await promptBranchName(defaultBranchName("recover", entry.hash), label);
     if (!branchName) return;
-    const checkout = window.confirm(`Check out "${branchName}" after creating it from ${entry.selector}?`);
+    const checkout = await appDialog.confirm(
+      `Check out "${branchName}" after creating it from ${entry.selector}?`,
+      "Check out recovery branch?",
+    );
     branchFromReflogMutation.mutate({ selector: entry.selector, branchName, checkout });
   };
 
   const currentBranchLabel = repoInfo?.currentBranch ?? "the current branch";
 
-  const mergeRefIntoCurrent = (ref: string) => {
+  const mergeRefIntoCurrent = async (ref: string) => {
     if (!activeRepoPath) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Merge "${ref}" into ${currentBranchLabel}?\n\nThis records a merge on the current branch. Your working tree must be clean, and Git may stop for conflict resolution.\n\nRecovery if conflicts stop the operation: resolve and continue from the workspace conflict resolver, or abort the merge from Git if you do not want it.`,
-      )
+        "Merge reference?",
+      ))
     ) {
       return;
     }
@@ -331,14 +367,19 @@ function useHistorySurgeryActions() {
     try {
       previewText = formatRebasePreview(await previewRebaseMutation.mutateAsync(request));
     } catch (error) {
-      window.alert(`Unable to preview rebase of ${currentBranchLabel} onto ${ref}: ${errorMessage(error)}`);
+      await appDialog.alert(
+        `Unable to preview rebase of ${currentBranchLabel} onto ${ref}: ${errorMessage(error)}`,
+        "Rebase preview failed",
+      );
       return;
     }
 
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Rebase ${currentBranchLabel} onto "${ref}"?\n\nThis rewrites local branch history. Make sure important work is backed up or pushed before continuing.\n\nPreview:\n${previewText}\n\nRecovery: abort while the rebase is active, or use ORIG_HEAD/reflog after completion to create a recovery branch or reset back.`,
-      )
+        "Rebase current branch?",
+        "danger",
+      ))
     ) {
       return;
     }

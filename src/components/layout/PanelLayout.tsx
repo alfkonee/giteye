@@ -13,6 +13,7 @@ import { FileTree } from "../common/FileTree";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { ArrowLeft, FolderOpen, GitBranch, Loader2 } from "lucide-react";
 import { WorkingCommitDetails } from "../working-tree/WorkingCommitDetails";
+import { appDialog } from "../common/AppDialogProvider";
 import { WORKING_TREE_COMMIT_HASH, isWorkingTreeSelection } from "../../lib/working-tree-node";
 
 export function PanelLayout() {
@@ -76,18 +77,19 @@ export function PanelLayout() {
     unstageHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText });
   }, [activeRepoPath, unstageHunk]);
 
-  const handleDiscardHunk = useCallback((hunk: DiffHunkActionContext) => {
+  const handleDiscardHunk = useCallback(async (hunk: DiffHunkActionContext) => {
     if (!activeRepoPath) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Discard this hunk from "${hunk.filePath}"?\n\nThis cannot be undone from GitEye. Recovery may only be possible from editor/OS backups, so stash or commit first if you need a Git safety net.`,
-      )
+        "Discard hunk?",
+        "danger",
+      ))
     ) {
       return;
     }
     discardHunk({ filePath: hunk.filePath, hunkPatch: hunk.patchText, staged: Boolean(hunk.staged) });
   }, [activeRepoPath, discardHunk]);
-
   const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {

@@ -1,4 +1,5 @@
 import { formatDryRunPreview } from "./git-preview";
+import { appDialog } from "../components/common/AppDialogProvider";
 import type { PushBranchRequest } from "./tauri-api";
 
 export interface BranchPushTarget {
@@ -28,34 +29,37 @@ export async function runBranchPushFlow(
   const { branch, remoteNames, forceWithLease, dryRunPreview, submitPush } =
     options;
   const needsUpstream = !branch.upstream;
-  const remote = window
-    .prompt(
+  const remote = (
+    await appDialog.prompt(
       needsUpstream
         ? `Add upstream for "${branch.shortName}" — remote`
         : "Push to remote",
       branch.upstream?.split("/", 1)[0] ?? remoteNames[0] ?? "origin",
+      "Choose push remote",
     )
-    ?.trim();
+  )?.trim();
   if (!remote) return false;
   const upstreamBranch = branch.upstream?.startsWith(`${remote}/`)
     ? branch.upstream.slice(remote.length + 1)
     : branch.shortName;
-  const remoteBranch = window
-    .prompt(
+  const remoteBranch = (
+    await appDialog.prompt(
       needsUpstream
         ? `Add upstream for "${branch.shortName}" — remote branch`
         : "Remote branch name",
       upstreamBranch,
+      "Choose remote branch",
     )
-    ?.trim();
+  )?.trim();
   if (remoteBranch === undefined) return false;
   const target = `${remote}/${remoteBranch || branch.shortName}`;
   const setUpstream =
     !forceWithLease &&
     (needsUpstream ||
-      window.confirm(
+      (await appDialog.confirm(
         `Set "${branch.shortName}" to track ${target} after push?`,
-      ));
+        "Set tracking upstream?",
+      )));
   const request: PushBranchRequest = {
     remote,
     localBranch: branch.shortName,
@@ -70,10 +74,11 @@ export async function runBranchPushFlow(
       "Git did not report any ref updates for this push dry run.",
     );
   } catch (error) {
-    window.alert(
+    await appDialog.alert(
       `Unable to preview push to ${target}: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      "Push preview failed",
     );
     return false;
   }
@@ -81,9 +86,11 @@ export async function runBranchPushFlow(
     ? "\n\nThis can rewrite the remote branch if your lease is current. Recovery: keep the old remote tip from a collaborator, reflog, or host audit log and push a recovery branch if this is wrong."
     : "";
   if (
-    !window.confirm(
+    !(await appDialog.confirm(
       `Push "${branch.shortName}" to ${target}?${forceWarning}\n\nPreview:\n${previewText}`,
-    )
+      forceWithLease ? "Force-with-lease push?" : "Push branch?",
+      forceWithLease ? "danger" : "warning",
+    ))
   ) {
     return false;
   }

@@ -30,6 +30,8 @@ import type { Branch, FavoriteRepo, RecentRepo, RepositoryParent } from "../../t
 import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
+import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
+import { appDialog } from "../common/AppDialogProvider";
 
 interface ToolbarProps {
   repoName?: string;
@@ -82,6 +84,7 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const [repoSearch, setRepoSearch] = useState("");
   const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
   const notices = useNoticeStore((s) => s.notices);
   const operationTranscript = useNoticeStore((s) => s.operationTranscript);
   const transcriptOpen = useNoticeStore((s) => s.transcriptOpen);
@@ -99,7 +102,6 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
   const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
   const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
-  const deleteBranchMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
   const renameBranchMutation = useMutation(gitMutations.renameBranch(queryClient, activeRepoPath));
   const upstreamMutation = useMutation(gitMutations.setBranchUpstream(queryClient, activeRepoPath));
   const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
@@ -186,8 +188,12 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
     setContextBranch({ branch, x: event.clientX, y: event.clientY });
   };
 
-  const createBranchFrom = (branch: Branch) => {
-    const name = window.prompt(`New branch name from ${branch.shortName}`);
+  const createBranchFrom = async (branch: Branch) => {
+    const name = await appDialog.prompt(
+      `Create a new branch from ${branch.shortName}.`,
+      "",
+      "New branch name",
+    );
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createBranch.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
@@ -197,36 +203,41 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
     if (!branch.upstream) return;
     fastForwardBranchMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
   };
-  const mergeBranch = (branch: Branch) => {
+  const mergeBranch = async (branch: Branch) => {
     if (branch.isCurrent) return;
-    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    if (!(await appDialog.confirm(
+      `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
+      "Merge branch?",
+    ))) return;
     mergeBranchMutation.mutate(branch.shortName);
   };
 
   const deleteBranch = (branch: Branch) => {
     if (branch.isCurrent || branch.isRemote) return;
-    if (!window.confirm(`Delete local branch "${branch.shortName}"?`)) return;
-    deleteBranchMutation.mutate(branch.shortName);
+    setDeleteBranchTarget(branch);
   };
 
-  const renameBranch = (branch: Branch) => {
+  const renameBranch = async (branch: Branch) => {
     if (branch.isRemote) return;
-    const newName = window.prompt(`Rename "${branch.shortName}" to`, branch.shortName)?.trim();
+    const newName = (await appDialog.prompt(
+      `Rename "${branch.shortName}" to:`,
+      branch.shortName,
+      "Rename branch",
+    ))?.trim();
     if (!newName || newName === branch.shortName) return;
     renameBranchMutation.mutate({ oldName: branch.shortName, newName });
   };
-
-  const setBranchUpstream = (branch: Branch) => {
+  const setBranchUpstream = async (branch: Branch) => {
     if (branch.isRemote) return;
     const defaultUpstream = branch.upstream ?? (remoteNames[0] ? `${remoteNames[0]}/${branch.shortName}` : "");
-    const upstream = window.prompt(
-      `Upstream for "${branch.shortName}" (remote/branch, empty clears tracking)`,
+    const upstream = await appDialog.prompt(
+      `Set the upstream for "${branch.shortName}" as remote/branch. Leave empty to clear tracking.`,
       defaultUpstream,
+      "Set tracking upstream",
     );
     if (upstream === null) return;
     upstreamMutation.mutate({ branchName: branch.shortName, upstream: upstream.trim() || null });
   };
-
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
     await runBranchPushFlow({
@@ -283,10 +294,17 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         "Git did not report a ref deletion for this remote branch dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`);
+      await appDialog.alert(
+        `Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        "Remote deletion preview failed",
+      );
       return;
     }
-    if (!window.confirm(`Delete remote branch "${target}"?\n\nPreview:\n${previewText}\n\nThis removes it from the remote repository. Recovery: recreate it by pushing any local branch or reflog commit that still points at the deleted tip.`)) return;
+    if (!(await appDialog.confirm(
+      `Delete remote branch "${target}"?\n\nPreview:\n${previewText}\n\nThis removes it from the remote repository. Recovery: recreate it by pushing any local branch or reflog commit that still points at the deleted tip.`,
+      "Delete remote branch?",
+      "danger",
+    ))) return;
     deleteRemoteBranchMutation.mutate(parsed);
   };
 
@@ -640,6 +658,11 @@ export function Toolbar({ repoName, currentBranch, isClean, submoduleParent }: T
         }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
+      />
+      <BranchDeleteDialog
+        branch={deleteBranchTarget}
+        repoPath={activeRepoPath}
+        onClose={() => setDeleteBranchTarget(null)}
       />
     </div>
   );

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatDryRunPreview } from "../../lib/git-preview";
+import { runBranchPushFlow } from "../../lib/branch-push";
 import { gitApi } from "../../lib/tauri-api";
 import {
   getViewsForGroup,
@@ -26,6 +28,8 @@ import {
 import type { Branch, ViewType } from "../../types/git";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
+import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
+import { appDialog } from "../common/AppDialogProvider";
 import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
 
 export function Sidebar() {
@@ -49,6 +53,7 @@ export function Sidebar() {
     x: number;
     y: number;
   } | null>(null);
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
   const [localBranchesExpanded, setLocalBranchesExpanded] = useState(true);
   const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
   const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
@@ -110,9 +115,10 @@ export function Sidebar() {
   const mergeBranchMutation = useMutation(
     gitMutations.mergeBranch(queryClient, activeRepoPath),
   );
-  const deleteBranchMutation = useMutation(
-    gitMutations.deleteBranch(queryClient, activeRepoPath),
-  );
+  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
+  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
+  const deleteRemoteBranchMutation = useMutation(gitMutations.deleteRemoteBranch(queryClient, activeRepoPath));
+  const deleteRemoteBranchDryRunMutation = useMutation(gitMutations.deleteRemoteBranchDryRun(activeRepoPath));
   const githubOverviewQuery = useQuery(
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
@@ -221,8 +227,12 @@ export function Sidebar() {
   const describeActivation = (branch: Branch) =>
     describeBranchActivation(branch, branchesQuery.data ?? []);
 
-  const createBranchFrom = (branch: Branch) => {
-    const name = window.prompt(`New branch name from ${branch.shortName}`);
+  const createBranchFrom = async (branch: Branch) => {
+    const name = await appDialog.prompt(
+      `Create a new branch from ${branch.shortName}.`,
+      "",
+      "New branch name",
+    );
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createBranch.mutate({
@@ -239,31 +249,67 @@ export function Sidebar() {
       upstream: branch.upstream,
     });
   };
-  const mergeBranch = (branch: Branch) => {
+
+  const mergeBranch = async (branch: Branch) => {
     if (branch.isCurrent) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
-      )
-    )
-      return;
+        "Merge branch?",
+      ))
+    ) return;
     mergeBranchMutation.mutate(branch.shortName);
   };
 
   const deleteBranch = (branch: Branch) => {
     if (branch.isCurrent || branch.isRemote) return;
-    if (
-      !window.confirm(`Delete local branch "${branch.shortName}"?`)
-    )
-      return;
-    deleteBranchMutation.mutate(branch.shortName);
+    setDeleteBranchTarget(branch);
+  };
+
+  const remoteNames = Array.from(
+    new Set(remoteBranches.map((branch) => branch.shortName.split("/", 1)[0]).filter(Boolean)),
+  );
+  const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
+    if (branch.isRemote) return;
+    await runBranchPushFlow({
+      branch,
+      remoteNames,
+      forceWithLease,
+      dryRunPreview: (request) => pushBranchDryRunMutation.mutateAsync(request),
+      submitPush: (request) => pushBranchMutation.mutate(request),
+    });
+  };
+
+  const deleteRemoteBranch = async (branch: Branch) => {
+    if (!branch.isRemote) return;
+    const separator = branch.shortName.indexOf("/");
+    if (separator < 1) return;
+    const request = {
+      remote: branch.shortName.slice(0, separator),
+      branch: branch.shortName.slice(separator + 1),
+    };
+    const target = `${request.remote}/${request.branch}`;
+    try {
+      const preview = formatDryRunPreview(
+        await deleteRemoteBranchDryRunMutation.mutateAsync(request),
+        "Git did not report a ref deletion for this remote branch dry run.",
+      );
+      if (!(await appDialog.confirm(
+        `Delete remote branch “${target}”?\n\nPreview:\n${preview}`,
+        "Delete remote branch?",
+        "danger",
+      ))) return;
+      deleteRemoteBranchMutation.mutate(request);
+    } catch (error) {
+      await appDialog.alert(
+        `Unable to preview remote deletion for ${target}: ${String(error)}`,
+        "Remote deletion preview failed",
+      );
+    }
   };
 
   const shouldShowView = (definition: ViewDefinition) => {
-    if (!definition.collaboration) {
-      return true;
-    }
-
+    if (!definition.collaboration) return true;
     return definition.connectEntry || showCollaborationViews;
   };
 
@@ -511,12 +557,20 @@ export function Sidebar() {
           onCreateFromBranch={createBranchFrom}
           onFastForward={fastForwardBranch}
           onMerge={mergeBranch}
+          onPushBranch={(branch) => void pushBranch(branch, false)}
+          onForcePushBranch={(branch) => void pushBranch(branch, true)}
+          onDeleteRemoteBranch={(branch) => void deleteRemoteBranch(branch)}
           onAdvancedMergeRebase={(branch) => {
             setPendingAdvancedBranchName(branch.shortName);
             navigate("workspace");
           }}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
+        />
+        <BranchDeleteDialog
+          branch={deleteBranchTarget}
+          repoPath={activeRepoPath}
+          onClose={() => setDeleteBranchTarget(null)}
         />
       </div>
     </aside>

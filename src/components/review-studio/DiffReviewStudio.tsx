@@ -35,6 +35,7 @@ import {
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import { Avatar, Markdown } from "../ui";
+import { appDialog } from "../common/AppDialogProvider";
 import type {
   CheckRunSummary,
   PullRequestSummary,
@@ -600,9 +601,13 @@ export function DiffReviewStudio() {
   const canMutateCurrentPr = Boolean(
     currentPr && currentPr.state?.toLowerCase() === "open",
   );
-  const requestReview = () => {
+  const requestReview = async () => {
     if (!currentPr) return;
-    const input = window.prompt("Reviewer usernames or teams, comma-separated");
+    const input = await appDialog.prompt(
+      "Enter reviewer usernames or teams, comma-separated.",
+      "",
+      "Request review",
+    );
     const reviewers =
       input
         ?.split(",")
@@ -611,29 +616,33 @@ export function DiffReviewStudio() {
     if (reviewers.length === 0) return;
     requestReviewMutation.mutate({ number: currentPr.number, reviewers });
   };
-  const submitReview = (event: "approve" | "request_changes" | "comment") => {
+  const submitReview = async (event: "approve" | "request_changes" | "comment") => {
     if (!currentPr) return;
-    const body =
+    const body = await appDialog.prompt(
       event === "approve"
-        ? (window.prompt("Optional approval note") ?? undefined)
-        : window.prompt(
-            event === "request_changes"
-              ? "Describe requested changes"
-              : "Review comment",
-          );
-    if (event !== "approve" && !body?.trim()) return;
+        ? "Add an optional approval note."
+        : event === "request_changes"
+          ? "Describe requested changes."
+          : "Enter your review comment.",
+      "",
+      event === "approve" ? "Approve pull request" : event === "request_changes" ? "Request changes" : "Comment on pull request",
+    );
+    if (body === null) return;
+    if (event !== "approve" && !body.trim()) return;
     submitReviewMutation.mutate({
       number: currentPr.number,
       event,
-      body: body?.trim() || undefined,
+      body: body.trim() || undefined,
     });
   };
-  const editLabels = (mode: "add" | "remove") => {
+  const editLabels = async (mode: "add" | "remove") => {
     if (!currentPr) return;
-    const input = window.prompt(
+    const input = await appDialog.prompt(
       mode === "add"
-        ? "Labels to add, comma-separated"
-        : "Labels to remove, comma-separated",
+        ? "Enter labels to add, comma-separated."
+        : "Enter labels to remove, comma-separated.",
+      "",
+      mode === "add" ? "Add labels" : "Remove labels",
     );
     const nextLabels =
       input
@@ -645,17 +654,18 @@ export function DiffReviewStudio() {
     if (mode === "add") addLabelMutation.mutate(variables);
     else removeLabelMutation.mutate(variables);
   };
-  const finalizePullRequest = () => {
+  const finalizePullRequest = async () => {
     if (!currentPr) return;
     const bypassCopy = finalizeWithAdmin
       ? " This will ask GitHub to bypass required checks/reviews with --admin."
       : "";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Complete PR #${currentPr.number} with ${mergeMethodLabels[mergeMethod]}?${bypassCopy}`,
-      )
-    )
-      return;
+        "Complete pull request?",
+        finalizeWithAdmin ? "danger" : "warning",
+      ))
+    ) return;
     mergePrMutation.mutate({
       number: currentPr.number,
       method: mergeMethod,
@@ -663,10 +673,13 @@ export function DiffReviewStudio() {
       deleteBranch: deleteHeadBranch,
     });
   };
-  const closePullRequest = () => {
+  const closePullRequest = async () => {
     if (!currentPr) return;
-    if (!window.confirm(`Close PR #${currentPr.number} without merging?`))
-      return;
+    if (!(await appDialog.confirm(
+      `Close PR #${currentPr.number} without merging?`,
+      "Close pull request?",
+      "danger",
+    ))) return;
     closePrMutation.mutate(currentPr.number);
   };
   const submitLineComment = () => {

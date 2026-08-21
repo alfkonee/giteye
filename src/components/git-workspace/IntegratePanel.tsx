@@ -6,6 +6,7 @@ import { formatRebasePreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
 import type { MergeStrategyOption, StartRebaseRequest } from "../../types/git";
 
+import { appDialog } from "../common/AppDialogProvider";
 const MERGE_STRATEGY_OPTIONS: Array<{ value: "" | MergeStrategyOption; label: string }> = [
   { value: "", label: "Default recursive strategy" },
   { value: "ours", label: "Prefer ours (-X ours)" },
@@ -93,10 +94,10 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
     rerereMutation.error ??
     rerereQuery.error;
 
-  const submitMerge = () => {
-    if (!mergeSource) return;
+  const submitMerge = async () => {
+    if (!mergeSource || mergeMutation.isPending) return;
     if (noFf && squash) {
-      window.alert("Git cannot combine --no-ff and --squash. Pick one merge mode.");
+      await appDialog.alert("Git cannot combine --no-ff and --squash. Pick one merge mode.", "Invalid merge options");
       return;
     }
     const options =
@@ -104,9 +105,10 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
         .filter(Boolean)
         .join(" ") || "default options";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Merge "${mergeSource}" into "${current || "the current branch"}" using ${options}? The working tree must be clean.`,
-      )
+        "Merge branch?",
+      ))
     ) {
       return;
     }
@@ -133,16 +135,19 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
     try {
       previewText = formatRebasePreview(await previewRebaseMutation.mutateAsync(request));
     } catch (error) {
-      window.alert(
+      await appDialog.alert(
         `Unable to preview rebase of ${branchLabel}: ${error instanceof Error ? error.message : String(error)}`,
+        "Rebase preview failed",
       );
       return;
     }
 
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Rebase ${branchLabel} onto ${target}?\n\nThis rewrites local branch history. Make sure important work is backed up or pushed before continuing.\n\nPreview:\n${previewText}\n\nRecovery: abort while the rebase is active, or use ORIG_HEAD/reflog after completion to create a recovery branch or reset back.`,
-      )
+        "Rebase branch?",
+        "danger",
+      ))
     ) {
       return;
     }

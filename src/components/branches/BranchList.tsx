@@ -5,12 +5,25 @@ import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-d
 import { cn } from "../../lib/cn";
 import { runBranchPushFlow } from "../../lib/branch-push";
 import { formatDryRunPreview } from "../../lib/git-preview";
-import { GitBranch, GitMerge, Plus, Trash2, Check, UploadCloud, ArrowRight, FastForward } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  FastForward,
+  GitBranch,
+  GitMerge,
+  Plus,
+  Tag,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { BranchSwitchDialog } from "./BranchSwitchDialog";
 import { BranchContextMenu } from "./BranchContextMenu";
-import type { Branch } from "../../types/git";
+import { BranchPruneButton } from "./BranchPruneDialog";
+import { BranchDeleteDialog } from "./BranchDeleteDialog";
+import { appDialog } from "../common/AppDialogProvider";
 import { findTrackingLocalBranch, useBranchActivation } from "../../lib/branch-activation";
+import type { Branch } from "../../types/git";
 
 function remoteNamesFromBranches(branches: Branch[]) {
   return Array.from(
@@ -37,11 +50,12 @@ export function BranchList() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setPendingAdvancedBranchName = useAppStore((s) => s.setPendingAdvancedBranchName);
+  const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
   const queryClient = useQueryClient();
   const { data: branches, isLoading } = useQuery(gitQueries.branches(activeRepoPath));
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: tags = [] } = useQuery(gitQueries.tags(activeRepoPath));
   const createMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
-  const deleteMutation = useMutation(gitMutations.deleteBranch(queryClient, activeRepoPath));
   const fastForwardMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
   const mergeMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
   const renameMutation = useMutation(gitMutations.renameBranch(queryClient, activeRepoPath));
@@ -62,6 +76,9 @@ export function BranchList() {
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
+  // Local deletion is owned by BranchDeleteDialog so it can optionally delete
+  // the configured tracking remote in the same reviewed flow.
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
@@ -69,7 +86,6 @@ export function BranchList() {
   const branchMutationError =
     branchActivation.error ??
     createMutation.error ??
-    deleteMutation.error ??
     renameMutation.error ??
     upstreamMutation.error ??
     fastForwardMutation.error ??
@@ -81,7 +97,6 @@ export function BranchList() {
   const branchMutationPending =
     branchActivation.isPending ||
     createMutation.isPending ||
-    deleteMutation.isPending ||
     renameMutation.isPending ||
     upstreamMutation.isPending ||
     fastForwardMutation.isPending ||
@@ -113,43 +128,52 @@ export function BranchList() {
     setContextBranch({ branch, x: event.clientX, y: event.clientY });
   };
 
-  const createBranchFrom = (branch: Branch) => {
-    const name = window.prompt(`New branch name from ${branch.shortName}`);
+  const createBranchFrom = async (branch: Branch) => {
+    const name = await appDialog.prompt(
+      `Create a new branch from ${branch.shortName}.`,
+      "",
+      "New branch name",
+    );
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createMutation.mutate({ name: trimmedName, checkout: false, startPoint: branch.shortName });
   };
-
   const fastForwardBranch = (branch: Branch) => {
     if (!branch.upstream) return;
     fastForwardMutation.mutate({ branchName: branch.shortName, upstream: branch.upstream });
   };
-  const mergeBranch = (branch: Branch) => {
+
+  const mergeBranch = async (branch: Branch) => {
     if (branch.isCurrent) return;
-    if (!window.confirm(`Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`)) return;
+    if (!(await appDialog.confirm(
+      `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
+      "Merge branch?",
+    ))) return;
     mergeMutation.mutate(branch.shortName);
   };
-
   const deleteBranch = (branch: Branch) => {
     if (branch.isCurrent || branch.isRemote) return;
-    if (confirm(`Delete local branch "${branch.shortName}"?`)) {
-      deleteMutation.mutate(branch.shortName);
-    }
+    setDeleteBranchTarget(branch);
   };
 
-  const renameBranch = (branch: Branch) => {
+  const renameBranch = async (branch: Branch) => {
     if (branch.isRemote) return;
-    const newName = window.prompt(`Rename "${branch.shortName}" to`, branch.shortName)?.trim();
+    const newName = (await appDialog.prompt(
+      `Rename "${branch.shortName}" to:`,
+      branch.shortName,
+      "Rename branch",
+    ))?.trim();
     if (!newName || newName === branch.shortName) return;
     renameMutation.mutate({ oldName: branch.shortName, newName });
   };
 
-  const setBranchUpstream = (branch: Branch) => {
+  const setBranchUpstream = async (branch: Branch) => {
     if (branch.isRemote) return;
     const defaultUpstream = branch.upstream ?? (remoteNames[0] ? `${remoteNames[0]}/${branch.shortName}` : "");
-    const upstream = window.prompt(
-      `Upstream for "${branch.shortName}" (remote/branch, empty clears tracking)`,
+    const upstream = await appDialog.prompt(
+      `Set the upstream for "${branch.shortName}" as remote/branch. Leave empty to clear tracking.`,
       defaultUpstream,
+      "Set tracking upstream",
     );
     if (upstream === null) return;
     upstreamMutation.mutate({ branchName: branch.shortName, upstream: upstream.trim() || null });
@@ -178,13 +202,19 @@ export function BranchList() {
         "Git did not report a ref deletion for this remote branch dry run.",
       );
     } catch (error) {
-      window.alert(`Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`);
+      await appDialog.alert(
+        `Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        "Remote deletion preview failed",
+      );
       return;
     }
-    if (!window.confirm(`Delete remote branch "${target}"?\n\nPreview:\n${previewText}\n\nThis removes it from the remote repository. Recovery: recreate it by pushing any local branch or reflog commit that still points at the deleted tip.`)) return;
+    if (!(await appDialog.confirm(
+      `Delete remote branch "${target}"?\n\nPreview:\n${previewText}\n\nThis removes it from the remote repository. Recovery: recreate it by pushing any local branch or reflog commit that still points at the deleted tip.`,
+      "Delete remote branch?",
+      "danger",
+    ))) return;
     deleteRemoteBranchMutation.mutate(parsed);
   };
-
 
   if (isLoading) {
     return (
@@ -196,14 +226,23 @@ export function BranchList() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Branches</h2>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="p-1 rounded hover:bg-[var(--color-bg-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Branches & tags</h2>
+          <p className="truncate text-[10.5px] text-[var(--color-text-muted)]">
+            Double-click to activate a branch or inspect a tag.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <BranchPruneButton repoPath={activeRepoPath} />
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon"
+            title="Create branch"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div className="border-b border-[var(--color-border)] px-4 py-1.5 text-[11px] text-[var(--color-text-muted)]">
         Right-click branches for rename, upstream tracking, force-with-lease push, and remote deletion.
@@ -353,6 +392,34 @@ export function BranchList() {
             })}
           </>
         )}
+
+        {tags.length > 0 ? (
+          <>
+            <div className="flex items-center gap-2 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">
+              <span>Tags</span>
+              <span className="tabular-nums normal-case">{tags.length}</span>
+            </div>
+            {tags.map((tag) => (
+              <button
+                key={tag.name}
+                type="button"
+                onDoubleClick={() => {
+                  setSelectedCommitHash(tag.commitHash);
+                  setActiveView("workspace");
+                }}
+                onClick={() => setSelectedCommitHash(tag.commitHash)}
+                className="group flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface)]"
+                title={`Tag ${tag.name} · ${tag.shortHash} · double-click to inspect commit`}
+              >
+                <Tag className="h-3.5 w-3.5 shrink-0 text-[var(--color-warning)]" />
+                <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+                <span className="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">
+                  {tag.shortHash}
+                </span>
+              </button>
+            ))}
+          </>
+        ) : null}
       </div>
 
       <BranchSwitchDialog
@@ -382,6 +449,11 @@ export function BranchList() {
         }}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
+      />
+      <BranchDeleteDialog
+        branch={deleteBranchTarget}
+        repoPath={activeRepoPath}
+        onClose={() => setDeleteBranchTarget(null)}
       />
     </div>
   );
