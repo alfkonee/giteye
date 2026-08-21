@@ -8,19 +8,78 @@ use crate::models::github::{
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{LazyLock, Mutex};
-use std::thread;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, LazyLock, Mutex,
+};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+
+const MAX_GH_STDERR_BYTES: usize = 256 * 1024;
 
 static GITHUB_OVERVIEW_CACHE: LazyLock<Mutex<HashMap<String, RepositoryGithubOverview>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static GITHUB_REQUEST_GENERATIONS: LazyLock<Mutex<HashMap<String, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-const GH_TIMEOUT: Duration = Duration::from_secs(3);
-const GH_AUTH_TIMEOUT: Duration = Duration::from_secs(2);
+/// Cost class of a `gh` invocation. Drives the timeout budget and retry policy,
+/// so a large `pr diff` is no longer killed by the same 3s budget as a `pr list`.
+#[derive(Clone, Copy)]
+enum GhOp {
+    /// Light authentication probes (`gh auth status`): no retry, short budget.
+    Auth,
+    /// Read-only list/view/api calls: safe to retry on timeout.
+    Read,
+    /// Large-payload reads (`gh pr diff`): longest budget, retried on timeout.
+    Diff,
+    /// Mutating calls (merge, review, comment, close): no retry to avoid double-apply.
+    Mutation,
+}
+
+impl GhOp {
+    fn timeout(self) -> Duration {
+        match self {
+            Self::Auth => Duration::from_secs(2),
+            Self::Read => Duration::from_secs(6),
+            Self::Diff => Duration::from_secs(12),
+            Self::Mutation => Duration::from_secs(10),
+        }
+    }
+
+    fn retries(self) -> u32 {
+        match self {
+            Self::Auth | Self::Mutation => 0,
+            Self::Read | Self::Diff => 2,
+        }
+    }
+
+    fn stdout_limit(self) -> usize {
+        match self {
+            Self::Auth => 256 * 1024,
+            Self::Read => 8 * 1024 * 1024,
+            Self::Diff => 16 * 1024 * 1024,
+            Self::Mutation => 4 * 1024 * 1024,
+        }
+    }
+}
+
+/// Terminal failure of a single `gh` process, before retry is considered.
+#[derive(Debug)]
+enum GhRunError {
+    /// The process exceeded its deadline.
+    Timeout,
+    /// The request generation advanced (user navigated away): do not retry.
+    Cancelled,
+    /// stdout or stderr exceeded its operation-specific retention cap.
+    OutputLimit { stream: &'static str, limit: usize },
+    /// The process exited non-zero; stderr trimmed.
+    NonZero(String),
+    /// Spawn/io failure.
+    Spawn(String),
+}
 
 #[derive(Clone)]
 struct GithubRequestContext {
@@ -215,7 +274,7 @@ pub fn get_pull_request_diff(repo_path: &Path, number: u64) -> Result<PullReques
         "gh",
         &["pr", "diff", &number_string, "--repo", &repository],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Diff,
     ) {
         Ok(diff_text) => diff_text,
         Err(error) => {
@@ -289,7 +348,7 @@ pub fn checkout_pull_request(repo_path: &Path, number: u64) -> Result<(), AppErr
         "gh",
         &["pr", "checkout", &number_string],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Mutation,
     )?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
@@ -302,7 +361,7 @@ pub fn update_pull_request_branch(repo_path: &Path, number: u64) -> Result<(), A
         "gh",
         &["pr", "update-branch", &number_string],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Mutation,
     )?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
@@ -341,7 +400,7 @@ pub fn request_pull_request_review(
         args.push(reviewer.as_str());
     }
 
-    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    run_required_process("gh", &args, repo_path, GhOp::Mutation)?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
@@ -378,7 +437,7 @@ pub fn submit_pull_request_review(
         args.push(body);
     }
 
-    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    run_required_process("gh", &args, repo_path, GhOp::Mutation)?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
@@ -434,7 +493,7 @@ pub fn submit_pull_request_line_comment(
         side_field.as_str(),
     ];
 
-    run_required_process("gh", &args, repo_path, GH_TIMEOUT)?;
+    run_required_process("gh", &args, repo_path, GhOp::Mutation)?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
@@ -469,7 +528,7 @@ fn fetch_pull_request_head_oid(
             "headRefOid",
         ],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
     )?;
     let value: Value = serde_json::from_str(&output)
         .map_err(|err| AppError::SerializationError(err.to_string()))?;
@@ -523,7 +582,7 @@ fn edit_pull_request_labels(
             label_list.as_str(),
         ],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Mutation,
     )?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
@@ -552,7 +611,7 @@ pub fn merge_pull_request(
         args.push("--admin".to_string());
     }
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    run_required_process("gh", &arg_refs, repo_path, GH_TIMEOUT)?;
+    run_required_process("gh", &arg_refs, repo_path, GhOp::Mutation)?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
 }
@@ -575,7 +634,7 @@ pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError>
         "gh",
         &["pr", "close", &number_string],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Mutation,
     )?;
     clear_github_overview_cache(&owner, &repo);
     Ok(())
@@ -640,7 +699,7 @@ fn gh_is_authenticated(repo_path: &Path) -> bool {
         "gh",
         &["auth", "status", "--hostname", "github.com"],
         repo_path,
-        GH_AUTH_TIMEOUT,
+        GhOp::Auth,
     )
     .is_some()
 }
@@ -661,7 +720,7 @@ fn fetch_account(
         "gh",
         &["api", "user"],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
         request_context,
     )?;
     let user: UserResponse = serde_json::from_str(&output).ok()?;
@@ -712,7 +771,7 @@ fn fetch_pull_requests(
             "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
         ],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
         request_context,
     );
 
@@ -776,7 +835,7 @@ fn fetch_pull_request(
             "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
         ],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
     )?;
 
     let pr = serde_json::from_str::<GhPullRequest>(&output).ok()?;
@@ -802,7 +861,13 @@ fn fetch_pull_request_detail(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Option<(Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> {
+) -> Option<(
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+)> {
     #[derive(Deserialize)]
     struct GhPullRequestDetail {
         body: Option<String>,
@@ -812,7 +877,7 @@ fn fetch_pull_request_detail(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}");
-    let output = run_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    let output = run_process("gh", &["api", &endpoint], repo_path, GhOp::Read)?;
     let detail = serde_json::from_str::<GhPullRequestDetail>(&output).ok()?;
     Some((
         detail.body,
@@ -838,7 +903,7 @@ fn fetch_pull_request_files(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/files?per_page=100");
-    let json = run_required_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    let json = run_required_process("gh", &["api", &endpoint], repo_path, GhOp::Read)?;
     Ok(serde_json::from_str::<Vec<GhFile>>(&json)
         .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
@@ -872,7 +937,7 @@ fn fetch_review_comments(
     }
 
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/comments?per_page=100");
-    let json = run_required_process("gh", &["api", &endpoint], repo_path, GH_TIMEOUT)?;
+    let json = run_required_process("gh", &["api", &endpoint], repo_path, GhOp::Read)?;
     Ok(serde_json::from_str::<Vec<GhComment>>(&json)
         .map_err(|error| AppError::SerializationError(error.to_string()))?
         .into_iter()
@@ -925,10 +990,10 @@ fn fetch_check_runs(
     ]);
 
     let json = if let Some(request_context) = request_context {
-        run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+        run_process_for_request("gh", &args, repo_path, GhOp::Read, request_context)
             .ok_or_else(|| AppError::GitError("Failed to fetch pull request checks".to_string()))?
     } else {
-        run_required_process("gh", &args, repo_path, GH_TIMEOUT)?
+        run_required_process("gh", &args, repo_path, GhOp::Read)?
     };
 
     Ok(serde_json::from_str::<Vec<GhCheckRun>>(&json)
@@ -969,10 +1034,10 @@ fn fetch_reviews(
     let endpoint = format!("repos/{owner}/{repo}/pulls/{number}/reviews");
     let args = ["api", endpoint.as_str()];
     let json = if let Some(request_context) = request_context {
-        run_process_for_request("gh", &args, repo_path, GH_TIMEOUT, request_context)
+        run_process_for_request("gh", &args, repo_path, GhOp::Read, request_context)
             .ok_or_else(|| AppError::GitError("Failed to fetch pull request reviews".to_string()))?
     } else {
-        run_required_process("gh", &args, repo_path, GH_TIMEOUT)?
+        run_required_process("gh", &args, repo_path, GhOp::Read)?
     };
 
     Ok(serde_json::from_str::<Vec<GhReview>>(&json)
@@ -1001,7 +1066,7 @@ fn fetch_activity(
         "gh",
         &["api", &endpoint],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
         request_context,
     );
 
@@ -1041,7 +1106,7 @@ fn fetch_pull_request_activity(
             &endpoint,
         ],
         repo_path,
-        GH_TIMEOUT,
+        GhOp::Read,
     )?;
 
     Ok(serde_json::from_str::<Vec<Value>>(&json)
@@ -1074,10 +1139,12 @@ fn timeline_title(event: &Value) -> Option<String> {
     let kind = json_string(event, "event").unwrap_or_default();
     match kind.as_str() {
         "commented" | "reviewed" => json_string(event, "body"),
-        "labeled" => nested_string(event, "label", "name")
-            .map(|name| format!("added the {name} label")),
-        "unlabeled" => nested_string(event, "label", "name")
-            .map(|name| format!("removed the {name} label")),
+        "labeled" => {
+            nested_string(event, "label", "name").map(|name| format!("added the {name} label"))
+        }
+        "unlabeled" => {
+            nested_string(event, "label", "name").map(|name| format!("removed the {name} label"))
+        }
         "review_requested" => nested_string(event, "requested_reviewer", "login")
             .or_else(|| nested_string(event, "requested_team", "name"))
             .map(|who| format!("requested review from {who}")),
@@ -1091,8 +1158,9 @@ fn timeline_title(event: &Value) -> Option<String> {
             (Some(from), Some(to)) => Some(format!("changed the title from {from} to {to}")),
             _ => Some("changed the title".to_string()),
         },
-        "merged" => json_string(event, "commit_id")
-            .map(|sha| format!("merged commit {}", short_sha(&sha))),
+        "merged" => {
+            json_string(event, "commit_id").map(|sha| format!("merged commit {}", short_sha(&sha)))
+        }
         "head_ref_force_pushed" => json_string(event, "ref")
             .map(|reference| format!("force-pushed the {} branch", trim_ref(&reference))),
         "head_ref_deleted" => json_string(event, "ref")
@@ -1103,8 +1171,9 @@ fn timeline_title(event: &Value) -> Option<String> {
         "reopened" => Some("reopened this pull request".to_string()),
         "converted_to_draft" => Some("marked this pull request as draft".to_string()),
         "ready_for_review" => Some("marked this pull request as ready for review".to_string()),
-        "committed" => json_string(event, "commit_id")
-            .map(|sha| format!("added commit {}", short_sha(&sha))),
+        "committed" => {
+            json_string(event, "commit_id").map(|sha| format!("added commit {}", short_sha(&sha)))
+        }
         "referenced" | "cross-referenced" => json_string(event, "commit_id")
             .map(|sha| format!("referenced this pull request in {}", short_sha(&sha))),
         "subscribed" | "unsubscribed" => None,
@@ -1119,7 +1188,11 @@ fn nested_string(value: &Value, key: &str, nested: &str) -> Option<String> {
 }
 
 fn short_sha(sha: &str) -> String {
-    if sha.len() > 7 { sha[..7].to_string() } else { sha.to_string() }
+    if sha.len() > 7 {
+        sha[..7].to_string()
+    } else {
+        sha.to_string()
+    }
 }
 
 fn trim_ref(value: &str) -> String {
@@ -1218,8 +1291,138 @@ fn run_required_process(
     program: &str,
     args: &[&str],
     repo_path: &Path,
-    timeout: Duration,
+    op: GhOp,
 ) -> Result<String, AppError> {
+    run_gh(program, args, repo_path, op, None).map_err(|error| gh_error_to_app(program, op, error))
+}
+
+fn run_process(program: &str, args: &[&str], repo_path: &Path, op: GhOp) -> Option<String> {
+    run_gh(program, args, repo_path, op, None).ok()
+}
+
+fn run_process_for_request(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    op: GhOp,
+    request_context: &GithubRequestContext,
+) -> Option<String> {
+    run_gh(program, args, repo_path, op, Some(request_context)).ok()
+}
+
+fn gh_error_to_app(program: &str, op: GhOp, error: GhRunError) -> AppError {
+    match error {
+        GhRunError::Timeout => AppError::GitError(format!(
+            "{program} command timed out after {}s",
+            op.timeout().as_secs()
+        )),
+        GhRunError::Cancelled => AppError::GitError(format!("{program} request was cancelled")),
+        GhRunError::OutputLimit { stream, limit } => {
+            let display_limit = if limit >= 1024 * 1024 {
+                format!("{} MiB", limit / (1024 * 1024))
+            } else {
+                format!("{} KiB", limit / 1024)
+            };
+            AppError::GitError(format!(
+                "{program} {stream} exceeded the {display_limit} output limit"
+            ))
+        }
+        GhRunError::NonZero(stderr) => AppError::GitError(stderr),
+        GhRunError::Spawn(message) => AppError::GitError(message),
+    }
+}
+
+/// Runs `gh` with a per-operation timeout and bounded retry.
+///
+/// Only `Timeout` failures are retried (a deadline is the transient case); a
+/// non-zero exit or a stale generation returns immediately, so mutations are
+/// never double-applied and a cancelled background refresh never restarts.
+fn run_gh(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    op: GhOp,
+    request_context: Option<&GithubRequestContext>,
+) -> Result<String, GhRunError> {
+    let timeout = op.timeout();
+    let retries = op.retries();
+    let mut last_error = GhRunError::Timeout;
+
+    for attempt in 0..=retries {
+        match run_gh_once(
+            program,
+            args,
+            repo_path,
+            timeout,
+            op.stdout_limit(),
+            request_context,
+        ) {
+            Ok(output) => return Ok(output),
+            Err(GhRunError::Timeout) if attempt < retries => {
+                last_error = GhRunError::Timeout;
+                thread::sleep(backoff_delay(attempt));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(last_error)
+}
+
+fn backoff_delay(attempt: u32) -> Duration {
+    Duration::from_millis(150 * (1u64 << attempt))
+}
+
+#[derive(Debug)]
+struct BoundedPipe {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn spawn_pipe_reader<R: Read + Send + 'static>(
+    mut pipe: R,
+    limit: usize,
+    limit_reached: Arc<AtomicBool>,
+) -> JoinHandle<std::io::Result<BoundedPipe>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::with_capacity(limit.min(64 * 1024));
+        let mut truncated = false;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            let read = pipe.read(&mut chunk)?;
+            if read == 0 {
+                break;
+            }
+            let remaining = limit.saturating_sub(bytes.len());
+            let kept = remaining.min(read);
+            bytes.extend_from_slice(&chunk[..kept]);
+            if kept < read {
+                truncated = true;
+                limit_reached.store(true, Ordering::Release);
+            }
+        }
+        Ok(BoundedPipe { bytes, truncated })
+    })
+}
+
+fn join_pipe_reader(
+    reader: JoinHandle<std::io::Result<BoundedPipe>>,
+    stream: &str,
+) -> Result<BoundedPipe, GhRunError> {
+    reader
+        .join()
+        .map_err(|_| GhRunError::Spawn(format!("gh {stream} reader panicked")))?
+        .map_err(|error| GhRunError::Spawn(format!("failed to read gh {stream}: {error}")))
+}
+
+fn run_gh_once(
+    program: &str,
+    args: &[&str],
+    repo_path: &Path,
+    timeout: Duration,
+    stdout_limit: usize,
+    request_context: Option<&GithubRequestContext>,
+) -> Result<String, GhRunError> {
     let mut command = Command::new(program);
     GitCli::configure_command_environment(&mut command);
     let mut child = command
@@ -1229,115 +1432,96 @@ fn run_required_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| AppError::GitError(e.to_string()))?;
+        .map_err(|e| GhRunError::Spawn(e.to_string()))?;
+    let stdout_limit_reached = Arc::new(AtomicBool::new(false));
+    let stderr_limit_reached = Arc::new(AtomicBool::new(false));
+    let stdout_reader = spawn_pipe_reader(
+        child
+            .stdout
+            .take()
+            .ok_or_else(|| GhRunError::Spawn("gh stdout unavailable".to_string()))?,
+        stdout_limit,
+        Arc::clone(&stdout_limit_reached),
+    );
+    let stderr_reader = spawn_pipe_reader(
+        child
+            .stderr
+            .take()
+            .ok_or_else(|| GhRunError::Spawn("gh stderr unavailable".to_string()))?,
+        MAX_GH_STDERR_BYTES,
+        Arc::clone(&stderr_limit_reached),
+    );
 
     let deadline = Instant::now() + timeout;
     loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| AppError::GitError(e.to_string()))?;
-                if output.status.success() {
-                    return String::from_utf8(output.stdout)
-                        .map_err(|e| AppError::SerializationError(e.to_string()));
-                }
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(AppError::GitError(stderr.trim().to_string()));
-            }
-            Ok(None) if Instant::now() >= deadline => {
+        if let Some(request_context) = request_context {
+            if !github_request_active(request_context) {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(AppError::GitError(format!(
-                    "{program} command timed out after {}s",
-                    timeout.as_secs()
-                )));
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GhRunError::Cancelled);
             }
-            Ok(None) => thread::sleep(Duration::from_millis(25)),
-            Err(e) => return Err(AppError::GitError(e.to_string())),
         }
-    }
-}
-fn run_process(
-    program: &str,
-    args: &[&str],
-    repo_path: &Path,
-    timeout: Duration,
-) -> Option<String> {
-    let mut command = Command::new(program);
-    GitCli::configure_command_environment(&mut command);
-    let mut child = command
-        .args(args)
-        .current_dir(repo_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                let output = child.wait_with_output().ok()?;
-
-                if !output.status.success() {
-                    return None;
-                }
-                return String::from_utf8(output.stdout).ok();
-            }
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
-            Ok(None) => thread::sleep(Duration::from_millis(25)),
-            Err(_) => return None,
-        }
-    }
-}
-
-fn run_process_for_request(
-    program: &str,
-    args: &[&str],
-    repo_path: &Path,
-    timeout: Duration,
-    request_context: &GithubRequestContext,
-) -> Option<String> {
-    let mut command = Command::new(program);
-    GitCli::configure_command_environment(&mut command);
-    let mut child = command
-        .args(args)
-        .current_dir(repo_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-
-    let deadline = Instant::now() + timeout;
-    loop {
-        if !github_request_active(request_context) {
+        if stdout_limit_reached.load(Ordering::Acquire)
+            || stderr_limit_reached.load(Ordering::Acquire)
+        {
+            let stream = if stdout_limit_reached.load(Ordering::Acquire) {
+                "stdout"
+            } else {
+                "stderr"
+            };
+            let limit = if stream == "stdout" {
+                stdout_limit
+            } else {
+                MAX_GH_STDERR_BYTES
+            };
             let _ = child.kill();
             let _ = child.wait();
-            return None;
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(GhRunError::OutputLimit { stream, limit });
         }
 
         match child.try_wait() {
-            Ok(Some(_)) => {
-                let output = child.wait_with_output().ok()?;
-                if !output.status.success() {
-                    return None;
+            Ok(Some(status)) => {
+                let stdout = join_pipe_reader(stdout_reader, "stdout")?;
+                let stderr = join_pipe_reader(stderr_reader, "stderr")?;
+                if stdout.truncated {
+                    return Err(GhRunError::OutputLimit {
+                        stream: "stdout",
+                        limit: stdout_limit,
+                    });
                 }
-                return String::from_utf8(output.stdout).ok();
+                if stderr.truncated {
+                    return Err(GhRunError::OutputLimit {
+                        stream: "stderr",
+                        limit: MAX_GH_STDERR_BYTES,
+                    });
+                }
+                if status.success() {
+                    return String::from_utf8(stdout.bytes)
+                        .map_err(|e| GhRunError::Spawn(e.to_string()));
+                }
+                return Err(GhRunError::NonZero(
+                    String::from_utf8_lossy(&stderr.bytes).trim().to_string(),
+                ));
             }
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GhRunError::Timeout);
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
-            Err(_) => return None,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(GhRunError::Spawn(e.to_string()));
+            }
         }
     }
 }
@@ -1352,11 +1536,16 @@ fn canonical_repo_key(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_github_overview, clear_github_overview_cache, merge_method_flag,
-        normalize_review_comment_side, parse_github_remote, store_github_overview,
+        cached_github_overview, clear_github_overview_cache, join_pipe_reader, merge_method_flag,
+        normalize_review_comment_side, parse_github_remote, spawn_pipe_reader,
+        store_github_overview,
     };
     use crate::errors::AppError;
     use crate::models::github::RepositoryGithubOverview;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
 
     #[test]
     fn parses_github_remote_urls() {
@@ -1383,6 +1572,21 @@ mod tests {
         assert_eq!(normalize_review_comment_side("RIGHT").unwrap(), "RIGHT");
         assert_eq!(normalize_review_comment_side("left").unwrap(), "LEFT");
         assert!(normalize_review_comment_side("BOTH").is_err());
+    }
+
+    #[test]
+    fn pipe_reader_drains_but_retains_only_the_limit() {
+        let limit_reached = Arc::new(AtomicBool::new(false));
+        let reader = spawn_pipe_reader(
+            std::io::Cursor::new(vec![b'x'; 1024]),
+            64,
+            Arc::clone(&limit_reached),
+        );
+        let captured = join_pipe_reader(reader, "test").expect("bounded capture");
+
+        assert_eq!(captured.bytes.len(), 64);
+        assert!(captured.truncated);
+        assert!(limit_reached.load(Ordering::Acquire));
     }
 
     #[test]

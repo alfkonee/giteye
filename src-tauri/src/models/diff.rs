@@ -9,4 +9,7 @@ pub struct DiffResult {
     pub additions: u32,
     pub deletions: u32,
     pub is_binary: bool,
+    /// True when `diff_text` was capped at `MAX_DIFF_BYTES` and is incomplete.
+    #[serde(default)]
+    pub truncated: bool,
 }

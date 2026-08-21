@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "bun test",
     "preview": "vite preview",
     "qa:seed": "bun scripts/seed-qa-repositories.mjs",
     "tauri": "bun scripts/tauri-dev.mjs",

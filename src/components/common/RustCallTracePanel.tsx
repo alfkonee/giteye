@@ -15,6 +15,7 @@ import {
   type TraceKind,
   type TraceLevel,
 } from "../../lib/invoke-trace";
+import { useShortcut } from "../../lib/shortcuts";
 
 const TRACE_ROW_HEIGHT = 30;
 
@@ -27,13 +28,11 @@ export function RustCallTracePanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [clock, setClock] = useState(Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  useShortcut("toggle-command-log", () => setOpen((current) => !current));
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "`") {
-        event.preventDefault();
-        setOpen((current) => !current);
-      } else if (event.key === "Escape" && open) {
+      if (event.key === "Escape" && open) {
         setOpen(false);
       }
     };
