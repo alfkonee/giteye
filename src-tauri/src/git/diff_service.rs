@@ -334,7 +334,13 @@ fn is_untracked(repo_path: &Path, file_path: &str) -> Result<bool, AppError> {
 }
 
 pub fn get_commit_diff(repo_path: &Path, hash: &str) -> Result<DiffResult, AppError> {
-    let bounded = run_bounded_diff(repo_path, &["show", "--format=", hash], &[0])?;
+    let bounded = run_bounded_diff(
+        repo_path,
+        // `-m --first-parent`: plain `git show` emits a *combined* diff for
+        // merges, which is empty for clean merges. See get_commit_details.
+        &["show", "--format=", "-m", "--first-parent", hash],
+        &[0],
+    )?;
 
     let is_binary = bounded.text.contains("Binary files");
     let (additions, deletions) = count_diff_stats(&bounded.text);

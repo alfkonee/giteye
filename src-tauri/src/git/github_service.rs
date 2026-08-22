@@ -640,6 +640,41 @@ pub fn close_pull_request(repo_path: &Path, number: u64) -> Result<(), AppError>
     Ok(())
 }
 
+pub fn create_pull_request(
+    repo_path: &Path,
+    head: &str,
+    base: Option<&str>,
+    title: &str,
+    body: Option<&str>,
+    draft: bool,
+) -> Result<String, AppError> {
+    let (owner, repo) = github_repository(repo_path)?;
+    let mut args: Vec<String> = vec![
+        "pr".to_string(),
+        "create".to_string(),
+        "--head".to_string(),
+        head.to_string(),
+        "--title".to_string(),
+        title.to_string(),
+    ];
+    if let Some(base) = base {
+        args.push("--base".to_string());
+        args.push(base.to_string());
+    }
+    if let Some(body) = body {
+        args.push("--body".to_string());
+        args.push(body.to_string());
+    }
+    if draft {
+        args.push("--draft".to_string());
+    }
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = run_required_process("gh", &arg_refs, repo_path, GhOp::Mutation)?;
+    clear_github_overview_cache(&owner, &repo);
+    Ok(output.trim().to_string())
+}
+
+
 fn github_repository(repo_path: &Path) -> Result<(String, String), AppError> {
     let remote_url = GitCli::run(repo_path, &["remote", "get-url", "origin"])
         .map_err(|e| AppError::GitError(e.to_string()))?;

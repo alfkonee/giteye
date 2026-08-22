@@ -16,6 +16,7 @@ const OPENROUTER_DEFAULT_MODEL: &str = "openai/gpt-4o-mini";
 const MAX_COMMIT_DIFF_CHARS: usize = 60_000;
 const DEFAULT_COMMIT_MESSAGE_PROMPT: &str = "You are a commit message assistant. Generate a concise, conventional commit message based on the diff. Use the format: <type>: <subject>. Types: feat, fix, refactor, docs, test, chore. Keep subject under 72 characters. If the diff is large, summarize the primary change.";
 const DEFAULT_CONFLICT_RESOLUTION_PROMPT: &str = "You are a merge conflict resolution assistant. Given the base version, our changes, and their changes, produce the resolved code. Preserve correct syntax. Explain only if ambiguous; otherwise output only the resolved code.";
+const DEFAULT_PULL_REQUEST_PROMPT: &str = "You are a pull request assistant. Given a branch name and the commit subjects it introduces relative to its base, write a pull request title and description.\n\nRespond in exactly two sections:\n\nTITLE:\n<concise, conventional title under 80 characters>\n\nBODY:\n<GitHub markdown description: one-sentence summary, a bulleted list of the changes, and nothing extraneous>\n\nDo not add any other text.";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AiProvider {
@@ -902,6 +903,71 @@ pub fn suggest_commit_message(
     );
 
     call_ai(&config, &prompts.commit_message, &user)
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDraft {
+    pub title: String,
+    pub body: String,
+}
+
+pub fn suggest_pull_request(
+    app_handle: &tauri::AppHandle,
+    branch_name: &str,
+    commits: &[String],
+) -> Result<PullRequestDraft, AppError> {
+    let config = resolve_effective_config(app_handle)?;
+
+    let commit_section = if commits.is_empty() {
+        "No commits ahead of base were found; infer intent from the branch name only.".to_string()
+    } else {
+        commits
+            .iter()
+            .map(|subject| format!("- {subject}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let user = format!(
+        "Branch: {branch_name}\n\nCommits relative to base:\n{commit_section}"
+    );
+
+    let raw = call_ai(&config, DEFAULT_PULL_REQUEST_PROMPT, &user)?;
+    parse_pull_request_draft(&raw)
+}
+
+fn parse_pull_request_draft(raw: &str) -> Result<PullRequestDraft, AppError> {
+    let title_line = raw
+        .lines()
+        .find(|line| line.trim().starts_with("TITLE:"))
+        .and_then(|line| line.trim().strip_prefix("TITLE:"));
+    let body_start = raw
+        .lines()
+        .position(|line| line.trim().starts_with("BODY:"))
+        .map(|index| index + 1);
+
+    let title = title_line
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string);
+    let body = body_start
+        .and_then(|start| {
+            let lines = raw.lines().skip(start).collect::<Vec<_>>();
+            if lines.is_empty() {
+                None
+            } else {
+                Some(lines.join("\n").trim().to_string())
+            }
+        })
+        .filter(|body| !body.is_empty());
+
+    match (title, body) {
+        (Some(title), Some(body)) => Ok(PullRequestDraft { title, body }),
+        _ => Err(AppError::GitError(
+            "AI did not return a valid pull request title and body.".to_string(),
+        )),
+    }
 }
 
 #[derive(Deserialize)]
