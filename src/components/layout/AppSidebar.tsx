@@ -23,7 +23,8 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
   const { data: identity } = useQuery(gitQueries.gitIdentity(activeRepoPath));
   const globalView = route.area === "global" ? route.view : "repo-hub";
   const displayName = identity?.effectiveName ?? "GitEye";
-  const displayEmail = identity?.effectiveEmail ?? "No identity configured";
+  const hasIdentity = Boolean(identity?.effectiveEmail);
+  const displayEmail = hasIdentity ? (identity?.effectiveEmail ?? "") : "No identity configured";
   const initials =
     displayName
       .split(/\s+/)
@@ -95,7 +96,7 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
             className={cn("giteye-side-nav", showNotifications && "bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]")}
           >
             <Bell className="h-4 w-4" />
-            Notifications
+            Activity
             {operationTranscript.length > 0 && (
               <span className="ml-auto giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
                 {Math.min(operationTranscript.length, 99)}
@@ -160,10 +161,17 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
           </button>
           <div className="flex items-center gap-2.5 px-1">
             <span className="giteye-avatar h-8 w-8">{initials}</span>
-            <span className="min-w-0 flex-1">
+            <button
+              type="button"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => setGlobalView("settings")}
+              title={hasIdentity ? `${displayName} · ${displayEmail}` : "Configure your Git identity in Settings"}
+            >
               <span className="block truncate text-xs font-semibold text-[var(--color-text-primary)]">{displayName}</span>
-              <span className="block truncate text-[11px] text-[var(--color-text-muted)]">{displayEmail}</span>
-            </span>
+              <span className={cn("block truncate text-[11px]", hasIdentity ? "text-[var(--color-text-muted)]" : "text-[var(--color-accent)] underline-offset-2 hover:underline")}>
+                {hasIdentity ? displayEmail : "Set up identity →"}
+              </span>
+            </button>
             <button
               type="button"
               className="giteye-topbar-btn h-7 w-7"
@@ -180,11 +188,11 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
       {showNotifications && (
         <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
           <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Notifications</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Activity</h2>
             <button
               type="button"
               onClick={() => setShowNotifications(false)}
-              aria-label="Close notifications"
+              aria-label="Close activity"
               className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
             >
               <X className="h-4 w-4" />

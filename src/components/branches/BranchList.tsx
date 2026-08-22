@@ -591,7 +591,7 @@ export function BranchList() {
               </button>
             )}
           </div>
-        ))}
+        )))}
 
         {remoteBranches.length > 0 && (
           <>

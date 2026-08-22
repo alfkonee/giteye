@@ -13,7 +13,6 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  SlidersHorizontal,
   Star,
 } from "lucide-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -82,8 +81,6 @@ export function RepositoryWelcome() {
   const handledStalePathsRef = useRef(new Set<string>());
   const stalePromptBusyRef = useRef(false);
   const [showOpenPanel, setShowOpenPanel] = useState(false);
-  const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showAllFavorites, setShowAllFavorites] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -129,11 +126,12 @@ export function RepositoryWelcome() {
 
   const repoSearchLower = repoSearch.trim().toLowerCase();
   const allFavoritePaths = new Set((favorites ?? []).map((repo) => repo.path));
-  const recentRepos = (recents ?? []).filter(
-    (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
-  );
-  const filteredRecentRepos = favoritesOnly ? recentRepos.filter((repo) => allFavoritePaths.has(repo.path)) : recentRepos;
-  const groupedRecentRepos = groupRelatedRepositories(filteredRecentRepos);
+  const recentRepos = (recents ?? [])
+    .filter((repo) => !allFavoritePaths.has(repo.path))
+    .filter(
+      (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
+    );
+  const groupedRecentRepos = groupRelatedRepositories(recentRepos);
   const displayedRecentRepos = showAllRecents ? groupedRecentRepos : groupedRecentRepos.slice(0, 5);
   const favoriteRepos = groupRelatedRepositories((favorites ?? []).filter(
     (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
@@ -356,34 +354,6 @@ export function RepositoryWelcome() {
                     >
                       <List className="h-3.5 w-3.5" />
                     </button>
-                  </div>
-                  <div className="relative shrink-0">
-                    <button
-                      type="button"
-                      className="giteye-btn giteye-btn-secondary giteye-btn-icon"
-                      aria-expanded={showFilterMenu}
-                      aria-label="Filter repositories"
-                      title="Filter repositories"
-                      onClick={() => setShowFilterMenu((visible) => !visible)}
-                    >
-                      <SlidersHorizontal className="h-4 w-4" />
-                    </button>
-                    {showFilterMenu && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowFilterMenu(false)} />
-                        <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-2 shadow-[var(--shadow-elevated)]">
-                          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]">
-                            <input
-                              type="checkbox"
-                              checked={favoritesOnly}
-                              onChange={(event) => setFavoritesOnly(event.target.checked)}
-                              className="accent-[var(--color-accent)]"
-                            />
-                            Favorites only
-                          </label>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
 

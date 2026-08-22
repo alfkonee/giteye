@@ -66,8 +66,8 @@ import type {
   IgnoreScope,
   IgnoreRuleResult,
   GitRecoveryState,
-  type LocalBranchPruneCandidate,
-  type LocalBranchPruneResult,
+  LocalBranchPruneCandidate,
+  LocalBranchPruneResult,
 } from "../types/git";
 
 export type CheckoutBranchStrategy = "move" | "stash";
