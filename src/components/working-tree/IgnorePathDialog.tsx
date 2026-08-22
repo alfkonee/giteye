@@ -4,8 +4,7 @@ import { EyeOff, FileWarning, Users, X } from "lucide-react";
 import type { IgnoreScope } from "../../types/git";
 import { parseFileStatus } from "../../types/git";
 import { buildIgnoreSuggestions } from "../../lib/gitignore";
-import { Button } from "../ui/Button";
-import { Input } from "../ui/Input";
+import { Button, Input } from "../ui";
 import { cn } from "../../lib/cn";
 import type { WorkingTreePathTarget } from "./WorkingTreePathContextMenu";
 
@@ -69,7 +68,7 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
         </div>
 
         {trackedCount > 0 && (
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.08)] px-3 py-2.5 text-xs text-[var(--color-warning)]">
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-3 py-2.5 text-xs text-[var(--color-warning)]">
             <FileWarning className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
               {trackedCount === 1
@@ -193,7 +192,7 @@ function OptionRow({
       className={cn(
         "rounded-lg border px-3 py-2 transition-colors",
         checked
-          ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10"
+          ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]"
           : "border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-hover)]",
       )}
     >

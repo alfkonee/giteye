@@ -20,6 +20,7 @@ interface BranchContextMenuProps {
   onFastForward: (branch: Branch) => void;
   onMerge: (branch: Branch) => void;
   onAdvancedMergeRebase?: (branch: Branch) => void;
+  onCreatePullRequest?: (branch: Branch) => void;
   onDelete?: (branch: Branch) => void;
   onClose: () => void;
 }
@@ -33,6 +34,7 @@ export function BranchContextMenu({
   onFastForward,
   onMerge,
   onAdvancedMergeRebase,
+  onCreatePullRequest,
   onDelete,
   onRename,
   onSetUpstream,
@@ -178,6 +180,15 @@ export function BranchContextMenu({
           tone="danger"
           disabled={!canUseLocalBranchTools || !onForcePushBranch}
           onSelect={() => onForcePushBranch?.(branch)}
+          onClose={onClose}
+        />
+
+        <div className="giteye-context-separator" />
+        <BranchMenuItem
+          label="Create pull request…"
+          detail={branch.isRemote ? "local branches only" : branch.shortName}
+          disabled={!canUseLocalBranchTools || !onCreatePullRequest}
+          onSelect={() => onCreatePullRequest?.(branch)}
           onClose={onClose}
         />
 

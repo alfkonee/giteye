@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { PanelLayout } from "./PanelLayout";
 import { AppChrome } from "./AppChrome";
 import { RepositoryTabs } from "./RepositoryTabs";
+import { useAppChromeSlots } from "./AppSidebar";
 import { useAppStore } from "../../stores/app-store";
 import { useJobStore, isTerminalStatus } from "../../stores/job-store";
 import { ErrorCallout } from "../common/ErrorCallout";
@@ -20,6 +21,7 @@ export function AppShell() {
   const { data: rebaseState } = useQuery(
     gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
   );
+  const chrome = useAppChromeSlots();
 
   const repoInfo = snapshot?.repositoryInfo;
   const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
@@ -27,7 +29,7 @@ export function AppShell() {
   const chromeTitle = repoInfo?.currentBranch ? `GitEye · ${repoName} · ${repoInfo.currentBranch}` : `GitEye · ${repoName}`;
 
   return (
-    <AppChrome title={chromeTitle} subtitle={viewLabel(activeView)}>
+    <AppChrome title={chromeTitle} subtitle={viewLabel(activeView)} leading={chrome.leading} trailing={chrome.trailing}>
       <div className="flex h-full min-h-0 w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
         <RepositoryTabs />
         <Toolbar

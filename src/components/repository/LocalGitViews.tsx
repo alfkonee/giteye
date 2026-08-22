@@ -7,6 +7,8 @@ import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { Branch, GitTag, LfsCommandPreview, LfsMigrationMode, LfsMigrationRequest, LfsTrackPattern, LfsTransferOperation, LfsTransferRequest, Remote, StashEntry } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
+import { EmptyState } from "../common/EmptyState";
+import { Button } from "../ui";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -61,28 +63,8 @@ function Header({ icon, title, detail, action }: { icon: ReactNode; title: strin
   );
 }
 
-function EmptyState({ message }: { message: string }) {
-  return <div className="rounded-lg border border-dashed border-[var(--color-border)] p-8 text-center text-sm text-[var(--color-text-muted)]">{message}</div>;
-}
 
-function ActionButton({ children, disabled, onClick, tone = "default" }: { children: ReactNode; disabled?: boolean; onClick: () => void; tone?: "default" | "danger" | "primary" }) {
-  const toneClass = tone === "primary"
-    ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white hover:opacity-90"
-    : tone === "danger"
-      ? "border-[color:rgba(248,81,73,0.45)] text-[var(--color-danger)] hover:bg-[color:rgba(248,81,73,0.08)]"
-      : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]";
 
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
-    >
-      {children}
-    </button>
-  );
-}
 
 async function promptRemoteName(remotes: Remote[], action: string) {
   if (remotes.length === 0) {
@@ -288,18 +270,18 @@ export function RemotesView() {
         icon={<Globe2 className="h-5 w-5" />}
         title="Remotes"
         detail={branchName ? `Current branch: ${branchName}` : "Fetch, pull, push, prune, and edit configured Git remotes."}
-        action={<ActionButton disabled={!activeRepoPath || isMutating} onClick={() => fetchMutation.mutate(undefined)}><RefreshCw className="h-3.5 w-3.5" /> Fetch all</ActionButton>}
+        action={<Button variant="secondary" size="sm" disabled={!activeRepoPath || isMutating} onClick={() => fetchMutation.mutate(undefined)}><RefreshCw className="h-3.5 w-3.5" /> Fetch all</Button>}
       />
       <main className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mb-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
           <div className="grid gap-3 md:grid-cols-[minmax(120px,180px)_minmax(260px,1fr)_auto]">
             <input value={remoteName} onChange={(event) => setRemoteName(event.target.value)} placeholder="Remote name (origin)" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
             <input value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} placeholder="Remote URL" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
-            <ActionButton disabled={!activeRepoPath || isMutating || !remoteName.trim() || !remoteUrl.trim()} onClick={addRemote} tone="primary"><Plus className="h-3.5 w-3.5" />Add remote</ActionButton>
+            <Button variant="primary" size="sm" disabled={!activeRepoPath || isMutating || !remoteName.trim() || !remoteUrl.trim()} onClick={addRemote}><Plus className="h-3.5 w-3.5" />Add remote</Button>
           </div>
         </div>
-        {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
-        {remotesQuery.isLoading ? <EmptyState message="Loading remotes…" /> : remotes.length === 0 ? <EmptyState message="No Git remotes configured for this repository." /> : (
+        {error ? <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
+        {remotesQuery.isLoading ? <EmptyState title="Loading remotes…" /> : remotes.length === 0 ? <EmptyState title="No Git remotes configured for this repository." /> : (
           <div className="grid gap-3">
             {remotes.map((remote) => (
               <RemoteCard
@@ -360,14 +342,14 @@ function RemoteCard({
           </dl>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          <ActionButton disabled={disabled} onClick={onFetch}><RefreshCw className="h-3.5 w-3.5" />Fetch</ActionButton>
-          <ActionButton disabled={disabled || !branchName} onClick={onPull}><DownloadCloud className="h-3.5 w-3.5" />Pull</ActionButton>
-          <ActionButton disabled={disabled || !branchName} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push current</ActionButton>
-          <ActionButton disabled={disabled} onClick={onPushBranch}><GitBranch className="h-3.5 w-3.5" />Push branch</ActionButton>
-          <ActionButton disabled={disabled} onClick={onForcePushBranch} tone="danger"><UploadCloud className="h-3.5 w-3.5" />Force lease</ActionButton>
-          <ActionButton disabled={disabled} onClick={onPrune}>Prune</ActionButton>
-          <ActionButton disabled={disabled} onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</ActionButton>
-          <ActionButton disabled={disabled} onClick={onDelete} tone="danger"><Trash2 className="h-3.5 w-3.5" />Delete</ActionButton>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onFetch}><RefreshCw className="h-3.5 w-3.5" />Fetch</Button>
+          <Button variant="secondary" size="sm" disabled={disabled || !branchName} onClick={onPull}><DownloadCloud className="h-3.5 w-3.5" />Pull</Button>
+          <Button variant="secondary" size="sm" disabled={disabled || !branchName} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push current</Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onPushBranch}><GitBranch className="h-3.5 w-3.5" />Push branch</Button>
+          <Button variant="danger" size="sm" disabled={disabled} onClick={onForcePushBranch}><UploadCloud className="h-3.5 w-3.5" />Force lease</Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onPrune}>Prune</Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onEdit}><Pencil className="h-3.5 w-3.5" />Edit</Button>
+          <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}><Trash2 className="h-3.5 w-3.5" />Delete</Button>
         </div>
       </div>
     </article>
@@ -461,11 +443,11 @@ export function StashesView() {
               <input type="checkbox" checked={includeUntracked} onChange={(event) => setIncludeUntracked(event.target.checked)} />
               Include untracked
             </label>
-            <ActionButton disabled={!activeRepoPath || isMutating} onClick={create} tone="primary"><Plus className="h-3.5 w-3.5" />Create stash</ActionButton>
+            <Button variant="primary" size="sm" disabled={!activeRepoPath || isMutating} onClick={create}><Plus className="h-3.5 w-3.5" />Create stash</Button>
           </div>
         </div>
-        {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
-        {stashesQuery.isLoading ? <EmptyState message="Loading stashes…" /> : stashes.length === 0 ? <EmptyState message="No stashes in this repository." /> : (
+        {error ? <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
+        {stashesQuery.isLoading ? <EmptyState title="Loading stashes…" /> : stashes.length === 0 ? <EmptyState title="No stashes in this repository." /> : (
           <div className="grid gap-3">
             {stashes.map((stash) => <StashCard key={stash.name} stash={stash} disabled={isMutating} onApply={() => void previewAndConfirmStash(stash, "apply")} onPop={() => void previewAndConfirmStash(stash, "pop")} onDrop={() => confirmDropStash(stash)} />)}
           </div>
@@ -485,9 +467,9 @@ function StashCard({ stash, disabled, onApply, onPop, onDrop }: { stash: StashEn
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">{stash.branch ? `${stash.branch} · ` : ""}{stash.shortHash}</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <ActionButton disabled={disabled} onClick={onApply}>Apply</ActionButton>
-          <ActionButton disabled={disabled} onClick={onPop}>Pop</ActionButton>
-          <ActionButton disabled={disabled} onClick={onDrop} tone="danger"><Trash2 className="h-3.5 w-3.5" />Drop</ActionButton>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onApply}>Apply</Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onPop}>Pop</Button>
+          <Button variant="danger" size="sm" disabled={disabled} onClick={onDrop}><Trash2 className="h-3.5 w-3.5" />Drop</Button>
         </div>
       </div>
     </article>
@@ -607,11 +589,11 @@ export function TagsView() {
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Tag name" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
             <input value={target} onChange={(event) => setTarget(event.target.value)} placeholder="Target (default HEAD)" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
             <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Annotation message (optional)" className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
-            <ActionButton disabled={!activeRepoPath || isMutating || !name.trim()} onClick={create} tone="primary"><Plus className="h-3.5 w-3.5" />Create</ActionButton>
+            <Button variant="primary" size="sm" disabled={!activeRepoPath || isMutating || !name.trim()} onClick={create}><Plus className="h-3.5 w-3.5" />Create</Button>
           </div>
         </div>
-        {error ? <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
-        {tagsQuery.isLoading ? <EmptyState message="Loading tags…" /> : sortedTags.length === 0 ? <EmptyState message="No local tags in this repository." /> : (
+        {error ? <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
+        {tagsQuery.isLoading ? <EmptyState title="Loading tags…" /> : sortedTags.length === 0 ? <EmptyState title="No local tags in this repository." /> : (
           <div className="grid gap-3">
             {sortedTags.map((tag) => (
               <TagCard
@@ -767,7 +749,7 @@ export function LfsView() {
         icon={<HardDrive className="h-4 w-4" />}
         title="Git LFS"
         detail={lfsStatus?.available ? `${lfsStatus.version ?? "Git LFS available"}${lfsStatus.gitVersion ? ` · ${lfsStatus.gitVersion}` : ""}` : "Large file storage status"}
-        action={<ActionButton disabled={pending || !activeRepoPath} onClick={() => installMutation.mutate()} tone="primary">Install local hooks</ActionButton>}
+        action={<Button variant="primary" size="sm" disabled={pending || !activeRepoPath} onClick={() => installMutation.mutate()}>Install local hooks</Button>}
       />
       {(error || mutationError || locksQuery.error || lfsStatus?.error) && (
         <div className="border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-danger)]">
@@ -776,9 +758,9 @@ export function LfsView() {
       )}
       <div className="flex-1 overflow-y-auto p-4">
         {isLoading ? (
-          <EmptyState message="Loading Git LFS status…" />
+          <EmptyState title="Loading Git LFS status…" />
         ) : !lfsStatus?.available ? (
-          <EmptyState message="Git LFS is not available for this repository. Install git-lfs, then install local hooks here." />
+          <EmptyState title="Git LFS is not available for this repository. Install git-lfs, then install local hooks here." />
         ) : (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -803,7 +785,7 @@ export function LfsView() {
                   placeholder="*.psd or assets/**"
                    className={`${fieldClass} flex-1`}
                 />
-                <ActionButton disabled={pending || !pattern.trim()} onClick={trackPattern} tone="primary">Track</ActionButton>
+                <Button variant="primary" size="sm" disabled={pending || !pattern.trim()} onClick={trackPattern}>Track</Button>
              </div>
               <div className="mt-4 space-y-2">
                 {lfsStatus.trackedPatterns.length > 0 ? (
@@ -816,7 +798,7 @@ export function LfsView() {
                     />
                   ))
                 ) : (
-                  <EmptyState message="No Git LFS patterns configured." />
+                  <EmptyState title="No Git LFS patterns configured." />
                 )}
               </div>
             </div>
@@ -838,12 +820,12 @@ export function LfsView() {
                       </div>
                        <div className="flex items-center gap-2 self-center text-[var(--color-text-secondary)]">
                          <span>{file.size ?? "—"}</span>
-                         <ActionButton disabled={pending || locks.some((lock) => lock.path === file.path)} onClick={() => lockMutation.mutate({ path: file.path, remote: lockRemote.trim() || null })}><LockKeyhole className="h-3 w-3" />Lock</ActionButton>
+                         <Button variant="secondary" size="sm" disabled={pending || locks.some((lock) => lock.path === file.path)} onClick={() => lockMutation.mutate({ path: file.path, remote: lockRemote.trim() || null })}><LockKeyhole className="h-3 w-3" />Lock</Button>
                        </div>
                     </div>
                   ))
                 ) : (
-                  <div className="p-4"><EmptyState message="No Git LFS files found." /></div>
+                  <div className="p-4"><EmptyState title="No Git LFS files found." /></div>
                 )}
               </div>
             </div>
@@ -852,20 +834,20 @@ export function LfsView() {
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div><h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]"><LockKeyhole className="h-4 w-4 text-[var(--color-accent)]" />File locks</h3><p className="text-xs text-[var(--color-text-muted)]">Coordinate edits to lockable LFS files through the configured remote.</p></div>
-                <ActionButton disabled={pending || locksQuery.isFetching} onClick={() => locksQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />Refresh</ActionButton>
+                <Button variant="secondary" size="sm" disabled={pending || locksQuery.isFetching} onClick={() => locksQuery.refetch()}><RefreshCw className="h-3.5 w-3.5" />Refresh</Button>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_180px_auto]">
                 <input className={fieldClass} value={lockPath} onChange={(event) => setLockPath(event.target.value)} placeholder="Path to lock" />
                 <input className={fieldClass} value={lockRemote} onChange={(event) => setLockRemote(event.target.value)} placeholder="Remote (origin)" />
-                <ActionButton disabled={pending || !lockPath.trim()} onClick={() => lockMutation.mutate({ path: lockPath.trim(), remote: lockRemote.trim() || null }, { onSuccess: () => setLockPath("") })} tone="primary">Lock file</ActionButton>
+                <Button variant="primary" size="sm" disabled={pending || !lockPath.trim()} onClick={() => lockMutation.mutate({ path: lockPath.trim(), remote: lockRemote.trim() || null }, { onSuccess: () => setLockPath("") })}>Lock file</Button>
               </div>
               <div className="mt-4 overflow-hidden rounded-lg border border-[var(--color-border-muted)]">
-                {locksQuery.isLoading ? <div className="p-4"><EmptyState message="Loading LFS locks…" /></div> : locks.length === 0 ? <div className="p-4"><EmptyState message="No LFS locks reported by the remote." /></div> : locks.map((lock) => (
+                {locksQuery.isLoading ? <div className="p-4"><EmptyState title="Loading LFS locks…" /></div> : locks.length === 0 ? <div className="p-4"><EmptyState title="No LFS locks reported by the remote." /></div> : locks.map((lock) => (
                   <div key={lock.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-muted)] px-3 py-2 text-xs last:border-b-0">
                     <div className="min-w-0"><div className="truncate font-mono text-[var(--color-text-primary)]">{lock.path}</div><div className="text-[10px] text-[var(--color-text-muted)]">{lock.ours ? "Locked by you" : `Locked by ${lock.owner ?? "another user"}`}{lock.lockedAt ? ` · ${formatRelativeTime(lock.lockedAt)}` : ""} · ID {lock.id}</div></div>
-                    <ActionButton disabled={pending} tone={lock.ours ? "default" : "danger"} onClick={() => void unlockLfsFile(lock)}>
+                    <Button variant={lock.ours ? "secondary" : "danger"} size="sm" disabled={pending} onClick={() => void unlockLfsFile(lock)}>
                       {lock.ours ? "Unlock" : "Force unlock"}
-                    </ActionButton>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -880,7 +862,7 @@ export function LfsView() {
                   <div className={`grid gap-2 ${transferOperation === "pull" ? "" : "grid-cols-2"}`}><input className={fieldClass} value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="Remote" />{transferOperation !== "pull" ? <input className={fieldClass} value={transferRef} onChange={(event) => setTransferRef(event.target.value)} placeholder={transferOperation === "push" && !transferAll ? "Ref (required)" : "Ref (optional)"} disabled={transferOperation === "push" && transferAll} /> : null}</div>
                   {transferOperation !== "push" ? <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={transferInclude} onChange={(event) => setTransferInclude(event.target.value)} placeholder="Include paths" /><input className={fieldClass} value={transferExclude} onChange={(event) => setTransferExclude(event.target.value)} placeholder="Exclude paths" /></div> : null}
                   {transferOperation !== "pull" ? <LfsCheckbox checked={transferAll} onChange={setTransferAll} label="All refs / objects" /> : null}
-                  <ActionButton disabled={pending || (transferOperation === "push" && (!remote.trim() || (!transferAll && !transferRef.trim())))} onClick={startTransfer} tone="primary">Preview and start</ActionButton>
+                  <Button variant="primary" size="sm" disabled={pending || (transferOperation === "push" && (!remote.trim() || (!transferAll && !transferRef.trim())))} onClick={startTransfer}>Preview and start</Button>
                 </div>
               </div>
 
@@ -889,15 +871,15 @@ export function LfsView() {
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">Verify LFS pointers or remove old local objects after a dry run.</p>
                 <div className="mt-3 grid gap-2">
                   <input className={fieldClass} value={fsckRevision} onChange={(event) => setFsckRevision(event.target.value)} placeholder="Fsck revision (default HEAD)" />
-                  <ActionButton disabled={pending} onClick={startFsck}>Preview and run fsck</ActionButton>
+                  <Button variant="secondary" size="sm" disabled={pending} onClick={startFsck}>Preview and run fsck</Button>
                   <div className="my-1 border-t border-[var(--color-border-muted)]" />
                   <LfsCheckbox checked={pruneVerifyRemote} onChange={setPruneVerifyRemote} label="Verify objects exist remotely" />
                   <LfsCheckbox checked={pruneForce} onChange={setPruneForce} label="Force prune" />
-                  <ActionButton disabled={pending} onClick={startPrune} tone="danger">Preview and prune</ActionButton>
+                  <Button variant="danger" size="sm" disabled={pending} onClick={startPrune}>Preview and prune</Button>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[color:rgba(248,81,73,0.35)] bg-[var(--color-bg-secondary)] p-4">
+              <div className="rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] p-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold"><Wrench className="h-4 w-4 text-[var(--color-danger)]" />History migration</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">Rewrite selected history. A clean worktree is required and a recovery branch is created automatically.</p>
                 <div className="mt-3 grid gap-2">
@@ -905,7 +887,7 @@ export function LfsView() {
                   <input className={fieldClass} value={migrationInclude} onChange={(event) => setMigrationInclude(event.target.value)} placeholder="Include pattern (required)" />
                   <input className={fieldClass} value={migrationExclude} onChange={(event) => setMigrationExclude(event.target.value)} placeholder="Exclude pattern" />
                   <p className="text-[10px] text-[var(--color-text-muted)]">Migration is limited to the checked-out branch and does not fetch remote refs, keeping execution identical to the preview.</p>
-                  <ActionButton disabled={pending || !migrationInclude.trim()} onClick={startMigration} tone="danger">Preview history rewrite</ActionButton>
+                  <Button variant="danger" size="sm" disabled={pending || !migrationInclude.trim()} onClick={startMigration}>Preview history rewrite</Button>
                 </div>
               </div>
             </div>
@@ -931,7 +913,7 @@ function LfsPatternRow({ trackedPattern, disabled, onUntrack }: { trackedPattern
         <div className="truncate font-mono text-[var(--color-text-primary)]">{trackedPattern.pattern}</div>
         <div className="truncate text-[10px] text-[var(--color-text-muted)]">{trackedPattern.source ?? "local attributes"}</div>
       </div>
-      <ActionButton disabled={disabled} onClick={onUntrack} tone="danger">Untrack</ActionButton>
+      <Button variant="danger" size="sm" disabled={disabled} onClick={onUntrack}>Untrack</Button>
     </div>
   );
 }
@@ -959,9 +941,9 @@ function TagCard({
           <p className="mt-1 font-mono text-xs text-[var(--color-text-muted)]">{tag.shortHash}{tag.tagger ? ` · ${tag.tagger}` : ""}{tag.timestamp ? ` · ${formatRelativeTime(tag.timestamp)}` : ""}</p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <ActionButton disabled={disabled} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push</ActionButton>
-          <ActionButton disabled={disabled} onClick={onDeleteRemote} tone="danger">Delete remote</ActionButton>
-          <ActionButton disabled={disabled} onClick={onDelete} tone="danger"><Trash2 className="h-3.5 w-3.5" />Delete local</ActionButton>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onPush}><UploadCloud className="h-3.5 w-3.5" />Push</Button>
+          <Button variant="danger" size="sm" disabled={disabled} onClick={onDeleteRemote}>Delete remote</Button>
+          <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}><Trash2 className="h-3.5 w-3.5" />Delete local</Button>
         </div>
       </div>
     </article>

@@ -16,6 +16,7 @@ import {
   type TraceLevel,
 } from "../../lib/invoke-trace";
 import { useShortcut } from "../../lib/shortcuts";
+import { Button } from "../ui";
 
 const TRACE_ROW_HEIGHT = 30;
 
@@ -103,21 +104,25 @@ export function RustCallTracePanel() {
           <option value="navigation">Navigation</option>
           <option value="verbose">Verbose UI</option>
         </select>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-7"
           onClick={() => {
             const enabled = !recording;
             setRecording(enabled);
             setInvokeTraceRecording(enabled);
           }}
-          className="giteye-btn giteye-btn-secondary giteye-btn-sm h-7"
           title={recording ? "Pause recording" : "Resume recording"}
+          icon={recording ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
         >
-          {recording ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
           {recording ? "Pause" : "Resume"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="h-7"
           onClick={() => {
             const payload = JSON.stringify(
               { schemaVersion: 1, exportedAt: new Date().toISOString(), traceLevel: level, traces },
@@ -131,32 +136,38 @@ export function RustCallTracePanel() {
             anchor.click();
             URL.revokeObjectURL(url);
           }}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7"
           title="Export traces as JSON"
           aria-label="Export traces as JSON"
+          icon={<Download className="h-3.5 w-3.5" />}
         >
-          <Download className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+          Export traces as JSON
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="h-7"
           onClick={() => {
             clearInvokeTraces();
             setSelectedId(null);
           }}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7"
           title="Clear traces"
+          icon={<Trash2 className="h-3.5 w-3.5" />}
         >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+          Clear traces
+        </Button>
         <kbd className="giteye-kbd">Ctrl+`</kbd>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="h-7"
           onClick={() => setOpen(false)}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon h-7"
           aria-label="Close application trace"
+          icon={<X className="h-4 w-4" />}
         >
-          <X className="h-4 w-4" />
-        </button>
+          Close application trace
+        </Button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(560px,1fr)_minmax(320px,0.72fr)]">
@@ -240,7 +251,7 @@ function TraceBlock({ label, value, error = false }: { label: string; value: str
   return (
     <div className="mt-3">
       <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{label}</div>
-      <pre className={cn("max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--color-border-muted)] bg-[#05070b] p-2 font-mono text-[11px] leading-5 text-slate-300", error && "text-rose-300")}>{value}</pre>
+      <pre className={cn("max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-console)] p-2 font-mono text-[11px] leading-5 text-[var(--color-text-secondary)]", error && "text-[var(--color-danger)]")}>{value}</pre>
     </div>
   );
 }

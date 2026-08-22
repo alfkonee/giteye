@@ -209,7 +209,7 @@ export function GitWorkspace() {
       </header>
 
       {activeOperation ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.1)] px-2.5 py-1 text-[11px] text-[var(--color-warning)]">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2.5 py-1 text-[11px] text-[var(--color-warning)]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span className="font-semibold uppercase tracking-[0.06em]">{activeOperation} in progress</span>
           <span className="text-[var(--color-text-secondary)]">

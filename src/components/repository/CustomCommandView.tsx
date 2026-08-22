@@ -6,6 +6,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 
 import { appDialog } from "../common/AppDialogProvider";
+import { Button } from "../ui";
 const DESTRUCTIVE_COMMANDS = [
   "push --force", "push -f", "push --force-with-lease",
   "reset --hard", "clean -f", "clean -fd",
@@ -87,24 +88,24 @@ export function CustomCommandView() {
           className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]"
           autoFocus
         />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<RotateCcw className="h-3.5 w-3.5" />}
+          iconOnly
           onClick={() => setCommand("")}
           disabled={!command || runMutation.isPending}
-          className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:opacity-30"
           title="Clear command"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
+        />
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleRun}
           disabled={!command.trim() || runMutation.isPending}
-          className="flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           {runMutation.isPending ? <LoadingSpinner size="sm" /> : <Play className="h-3 w-3" />}
           Run
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 font-mono text-[13px]">

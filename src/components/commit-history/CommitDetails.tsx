@@ -1,11 +1,11 @@
-import { useState, type MouseEvent } from "react";
+import { useState, type MouseEvent, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CommitDetails as CommitDetailsType } from "../../types/git";
 import { truncateHash } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
-import { Calendar, User, ChevronRight, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
+import { Calendar, User, ChevronRight, ChevronDown, Hash, MessageSquare, Files, GitCommitHorizontal } from "lucide-react";
 import { FileTree } from "../common/FileTree";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 import { buildDisplayRefs, RefPill } from "./commit-refs";
@@ -21,12 +21,19 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(true);
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const displayRefs = buildDisplayRefs(commit.refs ?? [], branches);
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setContextMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleFilesScroll = (event: UIEvent<HTMLDivElement>) => {
+    if (commit.body && event.currentTarget.scrollTop > 0) {
+      setDescriptionExpanded(false);
+    }
   };
 
   return (
@@ -108,20 +115,32 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
-
       {commit.body && (
         <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+          <button
+            type="button"
+            onClick={() => setDescriptionExpanded((open) => !open)}
+            className="mb-1.5 flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+            aria-expanded={descriptionExpanded}
+            title={descriptionExpanded ? "Collapse description" : "Expand description"}
+          >
             <MessageSquare className="h-3 w-3" />
             Description
-          </div>
-          <pre className="whitespace-pre-wrap rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/50 p-2 font-sans text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
-            {commit.body}
-          </pre>
+            {descriptionExpanded ? (
+              <ChevronDown className="ml-auto h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="ml-auto h-3.5 w-3.5" />
+            )}
+          </button>
+          {descriptionExpanded && (
+            <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/50 p-2 font-sans text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+              {commit.body}
+            </pre>
+          )}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={handleFilesScroll}>
         <div className="px-3 py-2">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
             <Files className="h-3.5 w-3.5" />

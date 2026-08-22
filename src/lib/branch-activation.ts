@@ -7,9 +7,13 @@ import type { Branch } from "../types/git";
 import type { CheckoutBranchStrategy } from "./tauri-api";
 
 /** Local name a remote-tracking ref maps onto: `origin/feature/x` → `feature/x`. */
+export function localNameForRemoteRef(remoteRef: string): string {
+  const separator = remoteRef.indexOf("/");
+  return separator < 1 ? "" : remoteRef.slice(separator + 1);
+}
+
 export function localNameForRemoteBranch(remote: Branch): string {
-  const separator = remote.shortName.indexOf("/");
-  return separator < 1 ? "" : remote.shortName.slice(separator + 1);
+  return localNameForRemoteRef(remote.shortName);
 }
 
 /**

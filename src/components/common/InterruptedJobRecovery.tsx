@@ -4,7 +4,7 @@ import { AlertTriangle, RotateCcw, XCircle } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { isTerminalStatus, useJobStore } from "../../stores/job-store";
 import { gitApi } from "../../lib/tauri-api";
-
+import { Button } from "../ui";
 export function InterruptedJobRecovery() {
   const activeRepoPath = useAppStore((state) => state.activeRepoPath);
   const openCommandLog = useJobStore((state) => state.setCommandLogOpen);
@@ -49,9 +49,9 @@ export function InterruptedJobRecovery() {
   const canRecover = Boolean(recovery?.operation) && (recovery?.lockPaths.length ?? 0) === 0 && !recoverMutation.isPending && !recoveryInProgress;
 
   return (
-    <aside className="fixed bottom-4 left-1/2 z-[85] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-amber-500/50 bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-elevated)]" aria-live="assertive">
+    <aside className="fixed bottom-4 left-1/2 z-[85] w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-[var(--color-warning-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-elevated)]" aria-live="assertive">
       <div className="flex gap-3">
-        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-400" aria-hidden="true" />
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--color-warning)]" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold">Git operation interrupted</h2>
           <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
@@ -59,7 +59,7 @@ export function InterruptedJobRecovery() {
             Inspect the repository before continuing or aborting.
           </p>
           {recovery?.lockPaths.length ? (
-            <p className="mt-2 text-sm text-amber-300">
+            <p className="mt-2 text-sm text-[var(--color-warning)]">
               Git index lock detected: {recovery.lockPaths.join(", ")}. Close the process that owns it before recovering.
             </p>
           ) : recovery?.operation ? (
@@ -72,33 +72,31 @@ export function InterruptedJobRecovery() {
             </p>
           )}
           {recoverMutation.error ? (
-            <p className="mt-2 text-sm text-red-400">{String(recoverMutation.error)}</p>
+            <p className="mt-2 text-sm text-[var(--color-danger)]">{String(recoverMutation.error)}</p>
           ) : null}
           {recoveryInProgress ? (
             <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Recovery in progress…</p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm hover:bg-[var(--color-bg-tertiary)]"
+            <Button
+              variant="secondary"
               onClick={() => {
                 selectJob(job.jobId);
                 openCommandLog(true, job.jobId);
               }}
             >
               Inspect job
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
+            </Button>
+            <Button
+              variant="primary"
               disabled={!canRecover}
               onClick={() => recoverMutation.mutate("continue")}
+              icon={<RotateCcw className="size-3.5" aria-hidden="true" />}
             >
-              <RotateCcw className="size-3.5" aria-hidden="true" /> Continue
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md border border-red-500/60 px-3 py-1.5 text-sm text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+              Continue
+            </Button>
+            <Button
+              variant="danger"
               disabled={!canRecover}
               onClick={() => {
                 if (!abortArmed) {
@@ -107,17 +105,17 @@ export function InterruptedJobRecovery() {
                 }
                 recoverMutation.mutate("abort");
               }}
+              icon={<XCircle className="size-3.5" aria-hidden="true" />}
             >
-              <XCircle className="size-3.5" aria-hidden="true" /> {abortArmed ? "Confirm abort" : "Abort operation"}
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm hover:bg-[var(--color-bg-tertiary)] disabled:cursor-not-allowed disabled:opacity-50"
+              {abortArmed ? "Confirm abort" : "Abort operation"}
+            </Button>
+            <Button
+              variant="secondary"
               disabled={dismissMutation.isPending}
               onClick={() => dismissMutation.mutate()}
             >
               Dismiss after inspection
-            </button>
+            </Button>
           </div>
         </div>
       </div>

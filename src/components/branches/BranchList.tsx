@@ -11,18 +11,22 @@ import {
   FastForward,
   GitBranch,
   GitMerge,
+  LayoutGrid,
+  List,
   Plus,
   Tag,
   Trash2,
   UploadCloud,
 } from "lucide-react";
+import { formatRelativeTime, stalenessTone } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { BranchSwitchDialog } from "./BranchSwitchDialog";
 import { BranchContextMenu } from "./BranchContextMenu";
 import { BranchPruneButton } from "./BranchPruneDialog";
 import { BranchDeleteDialog } from "./BranchDeleteDialog";
 import { appDialog } from "../common/AppDialogProvider";
-import { findTrackingLocalBranch, useBranchActivation } from "../../lib/branch-activation";
+import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
+import { findTrackingLocalBranch, describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
 import type { Branch } from "../../types/git";
 
 function remoteNamesFromBranches(branches: Branch[]) {
@@ -43,6 +47,191 @@ function splitRemoteBranch(branch: Branch) {
     remote: branch.shortName.slice(0, separator),
     branch: branch.shortName.slice(separator + 1),
   };
+}
+
+type BranchViewMode = "list" | "grid";
+
+const BRANCH_VIEW_MODE_KEY = "giteye.branches.viewMode";
+
+function initialBranchViewMode(): BranchViewMode {
+  try {
+    return localStorage.getItem(BRANCH_VIEW_MODE_KEY) === "grid" ? "grid" : "list";
+  } catch {
+    return "list";
+  }
+}
+
+/** Staleness chip for a ref's last commit date; neutral when unknown. */
+function StalenessChip({ date, label }: { date?: string | null; label: string }) {
+  const staleness = stalenessTone(date);
+  const title = staleness
+    ? `${label} ${staleness.days === 0 ? "today" : `${staleness.days} day${staleness.days === 1 ? "" : "s"} ago`}`
+    : `${label}: unknown`;
+  return (
+    <span
+      className="giteye-chip shrink-0 tabular-nums"
+      data-tone={
+        staleness
+          ? staleness.tone === "fresh"
+            ? "success"
+            : staleness.tone === "recent"
+              ? "accent"
+              : staleness.tone === "aging"
+                ? "warning"
+                : "danger"
+          : undefined
+      }
+      title={title}
+    >
+      {staleness ? formatRelativeTime(date!) : "no commits"}
+    </span>
+  );
+}
+
+interface BranchCardProps {
+  branch: Branch;
+  trackedBy?: string | null;
+  activationTitle: string;
+  activationPending?: boolean;
+  onActivate: () => void;
+  onContextMenu: (event: MouseEvent, branch: Branch) => void;
+  onMerge?: () => void;
+  onPush?: () => void;
+  onDelete?: () => void;
+}
+
+/**
+ * Card in the branches grid view: name, tracking state, last-commit details,
+ * created/staleness info, and the same hover actions as the list rows.
+ */
+function BranchCard({
+  branch,
+  trackedBy,
+  activationTitle,
+  activationPending,
+  onActivate,
+  onContextMenu,
+  onMerge,
+  onPush,
+  onDelete,
+}: BranchCardProps) {
+  const ahead = branch.ahead ?? 0;
+  const behind = branch.behind ?? 0;
+
+  return (
+    <div
+      className={cn(
+        "group flex flex-col gap-2 rounded-lg border p-2.5 transition-colors",
+        branch.isCurrent
+          ? "border-[var(--color-accent)]/40 bg-[var(--color-bg-hover)]"
+          : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/60 hover:bg-[var(--color-bg-surface)]",
+      )}
+      onDoubleClick={onActivate}
+      onContextMenu={(event) => onContextMenu(event, branch)}
+      title={activationTitle}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <GitBranch
+          className={cn(
+            "h-3.5 w-3.5 shrink-0",
+            branch.isCurrent ? "text-[var(--color-accent)]" : "text-[var(--color-text-muted)]",
+          )}
+        />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-xs",
+            branch.isCurrent
+              ? "font-medium text-[var(--color-text-primary)]"
+              : "text-[var(--color-text-secondary)]",
+          )}
+        >
+          {branch.shortName}
+        </span>
+        {branch.isCurrent && (
+          <Check className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" aria-label="Current branch" />
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1">
+        <StalenessChip
+          date={branch.lastCommitDate}
+          label={branch.isRemote ? "Updated" : "Last commit"}
+        />
+        {branch.upstream && (ahead > 0 || behind > 0) && (
+          <span className="giteye-chip shrink-0 tabular-nums" data-tone={behind > 0 ? "warning" : "accent"}>
+            {ahead > 0 ? `${ahead}↑` : ""}
+            {behind > 0 ? `${behind}↓` : ""}
+          </span>
+        )}
+      </div>
+
+      {branch.lastCommitSubject && (
+        <p className="min-w-0 truncate text-[11px] text-[var(--color-text-secondary)]" title={branch.lastCommitSubject}>
+          {branch.lastCommitSubject}
+        </p>
+      )}
+      <p className="min-w-0 truncate text-[10px] text-[var(--color-text-muted)]">
+        {[
+          branch.lastCommitAuthor,
+          branch.lastCommitDate ? formatRelativeTime(branch.lastCommitDate) : null,
+          !branch.isRemote && branch.createdAt
+            ? `created ${formatRelativeTime(branch.createdAt)}`
+            : null,
+          branch.isRemote && trackedBy ? `tracked by ${trackedBy}` : null,
+          branch.isRemote ? null : branch.upstream ? `tracks ${branch.upstream}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "\u00A0"}
+      </p>
+
+      {(onMerge || onPush || onDelete) && (
+        <div className="mt-auto flex items-center gap-1 border-t border-[var(--color-border-muted)] pt-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {onMerge && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onMerge();
+              }}
+              disabled={activationPending}
+              className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"
+              title="Merge into current branch"
+            >
+              <GitMerge className="h-3 w-3" />
+            </button>
+          )}
+          {onPush && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onPush();
+              }}
+              disabled={activationPending}
+              className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-accent)]"
+              title="Push branch"
+            >
+              <UploadCloud className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+              disabled={activationPending}
+              className="ml-auto rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-danger)]"
+              title={branch.isRemote ? "Delete remote branch" : "Delete local branch"}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 
@@ -75,10 +264,20 @@ export function BranchList() {
 
   const [newBranchName, setNewBranchName] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [viewMode, setViewMode] = useState<BranchViewMode>(initialBranchViewMode);
+  const switchViewMode = (mode: BranchViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(BRANCH_VIEW_MODE_KEY, mode);
+    } catch {
+      // Storage may be unavailable; the in-memory mode still works.
+    }
+  };
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
   // Local deletion is owned by BranchDeleteDialog so it can optionally delete
   // the configured tracking remote in the same reviewed flow.
   const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
+  const [prBranch, setPrBranch] = useState<Branch | null>(null);
 
   const localBranches = branches?.filter((branch) => !branch.isRemote) ?? [];
   const remoteBranches = branches?.filter((branch) => branch.isRemote) ?? [];
@@ -235,6 +434,40 @@ export function BranchList() {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <BranchPruneButton repoPath={activeRepoPath} />
+          <div
+            className="flex items-center overflow-hidden rounded-md border border-[var(--color-border-muted)]"
+            role="group"
+            aria-label="Branch layout"
+          >
+            <button
+              type="button"
+              onClick={() => switchViewMode("list")}
+              aria-pressed={viewMode === "list"}
+              title="List view"
+              className={cn(
+                "p-1.5 transition-colors",
+                viewMode === "list"
+                  ? "bg-[var(--color-bg-hover)] text-[var(--color-accent)]"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => switchViewMode("grid")}
+              aria-pressed={viewMode === "grid"}
+              title="Card grid view with branch details"
+              className={cn(
+                "p-1.5 transition-colors",
+                viewMode === "grid"
+                  ? "bg-[var(--color-bg-hover)] text-[var(--color-accent)]"
+                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button
             onClick={() => setShowCreate(!showCreate)}
             className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon"
@@ -273,7 +506,24 @@ export function BranchList() {
           <span>Local</span>
           <span className="tabular-nums normal-case">{localBranches.length}</span>
         </div>
-        {localBranches.map((branch) => (
+        {viewMode === "grid" ? (
+          <div className="grid gap-2 px-3 py-2 [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
+            {localBranches.map((branch) => (
+              <BranchCard
+                key={branch.name}
+                branch={branch}
+                activationTitle={describeBranchActivation(branch, branches ?? [])}
+                activationPending={branchActivation.isPending}
+                onActivate={() => branchActivation.activateBranch(branch)}
+                onContextMenu={openBranchContextMenu}
+                onMerge={!branch.isCurrent ? () => void mergeBranch(branch) : undefined}
+                onPush={() => pushBranch(branch, false)}
+                onDelete={!branch.isCurrent ? () => deleteBranch(branch) : undefined}
+              />
+            ))}
+          </div>
+        ) : (
+          localBranches.map((branch) => (
           <div
             key={branch.name}
             className={cn(
@@ -447,8 +697,14 @@ export function BranchList() {
           setPendingAdvancedBranchName(branch.shortName);
           setActiveView("workspace");
         }}
+        onCreatePullRequest={setPrBranch}
         onDelete={deleteBranch}
         onClose={() => setContextBranch(null)}
+      />
+      <CreatePullRequestDialog
+        branch={prBranch}
+        repoPath={activeRepoPath}
+        onClose={() => setPrBranch(null)}
       />
       <BranchDeleteDialog
         branch={deleteBranchTarget}

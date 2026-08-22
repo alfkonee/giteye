@@ -7,6 +7,8 @@ import { useAppStore } from "../../stores/app-store";
 import type { MergeStrategyOption, StartRebaseRequest } from "../../types/git";
 
 import { appDialog } from "../common/AppDialogProvider";
+import { Button } from "../ui";
+
 const MERGE_STRATEGY_OPTIONS: Array<{ value: "" | MergeStrategyOption; label: string }> = [
   { value: "", label: "Default recursive strategy" },
   { value: "ours", label: "Prefer ours (-X ours)" },
@@ -162,12 +164,12 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
   return (
     <div className="h-full overflow-y-auto p-3">
       {actionError ? (
-        <div className="mb-3 rounded-md border border-[var(--color-danger)]/40 bg-[color:rgba(248,81,73,0.1)] px-3 py-2 text-xs text-[var(--color-danger)]">
+        <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
           {actionError instanceof Error ? actionError.message : String(actionError)}
         </div>
       ) : null}
       {prefillRef ? (
-        <div className="mb-3 rounded-md border border-[var(--color-accent)]/30 bg-[color:rgba(31,111,235,0.12)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+        <div className="mb-3 rounded-md border border-[var(--color-info-border)] bg-[var(--color-info-bg)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
           Prefilled from <span className="font-semibold text-[var(--color-text-primary)]">{prefillRef}</span>. Edit the
           fields before running an operation if needed.
         </div>
@@ -208,14 +210,15 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
               </option>
             ))}
           </select>
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="sm"
             disabled={!mergeSource || isPending}
             onClick={submitMerge}
-            className="giteye-btn giteye-btn-primary giteye-btn-sm mt-3 w-full"
+            className="mt-3 w-full"
           >
             Merge with options
-          </button>
+          </Button>
         </section>
 
         <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
@@ -256,14 +259,15 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
             <input type="checkbox" checked={autostash} onChange={(event) => setAutostash(event.target.checked)} />
             Autostash local changes when Git can do so
           </label>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={!rebaseUpstream.trim() || isPending || Boolean(activeOperation)}
             onClick={() => void submitRebase()}
-            className="giteye-btn giteye-btn-sm mt-3 w-full border border-[var(--color-warning)] bg-[color:rgba(210,153,34,0.12)] font-semibold text-[var(--color-warning)]"
+            className="mt-3 w-full border-[var(--color-warning)] bg-[var(--color-warning-bg)] text-[var(--color-warning)]"
           >
             Start rebase
-          </button>
+          </Button>
           {activeOperation ? (
             <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
               Finish the active {activeOperation} before starting another history-moving operation.
@@ -276,11 +280,11 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)]">
               <ListChecks className="h-4 w-4" /> rerere cache
             </div>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               disabled={isPending || rerereQuery.isLoading}
               onClick={() => rerereMutation.mutate(!rerereQuery.data?.enabled)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
             >
               {rerereQuery.data?.enabled ? (
                 <ToggleRight className="h-4 w-4 text-[var(--color-success)]" />
@@ -288,7 +292,7 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
                 <ToggleLeft className="h-4 w-4 text-[var(--color-text-muted)]" />
               )}
               {rerereQuery.data?.enabled ? "enabled" : "disabled"}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-[var(--color-text-secondary)]">
             Reuse Recorded Resolution lets Git remember conflict resolutions and reapply them when the same conflict

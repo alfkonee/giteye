@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Command,
   Folder,
-  FolderOpen,
   GitBranch,
   Globe,
   Layers,
@@ -30,7 +29,9 @@ import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
 import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
 import { appDialog } from "../common/AppDialogProvider";
+import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
 import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
+import { AppSidebar } from "./AppSidebar";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -41,7 +42,6 @@ export function Sidebar() {
   const setPendingAdvancedBranchName = useAppStore(
     (s) => s.setPendingAdvancedBranchName,
   );
-  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
   const setSelectedSubmodulePath = useAppStore(
     (s) => s.setSelectedSubmodulePath,
@@ -54,6 +54,7 @@ export function Sidebar() {
     y: number;
   } | null>(null);
   const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
+  const [prBranch, setPrBranch] = useState<Branch | null>(null);
   const [localBranchesExpanded, setLocalBranchesExpanded] = useState(true);
   const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
   const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
@@ -153,12 +154,10 @@ export function Sidebar() {
     },
   });
 
-  const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
   const pullRequestCount = githubOverviewQuery.data?.pullRequests.length;
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
-  const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
   const conflictCount =
     snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
@@ -320,7 +319,6 @@ export function Sidebar() {
         key={definition.id}
         icon={<Icon className="h-4 w-4" />}
         label={definition.label}
-        description={definition.connectEntry ? definition.description : undefined}
         count={viewCounts[definition.id]}
         countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
@@ -357,25 +355,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside aria-label="Repository navigation" className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/92 backdrop-blur-sm">
-      <div className="border-b border-[var(--color-border-muted)] px-3 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] shadow-[var(--shadow-soft)]">
-            <FolderOpen className="h-4 w-4 text-[var(--color-accent)]" />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
-              {repoInfo?.name ?? "No Repository"}
-            </div>
-            {activeBranch && (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--color-text-muted)]">
-                <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                <span className="truncate">{activeBranch}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+    <AppSidebar>
 
       <div className="flex-1 overflow-y-auto py-1.5">
         {viewGroups.map((group) => {
@@ -513,14 +493,6 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-        <SidebarNavItem
-          icon={<FolderOpen className="h-4 w-4" />}
-          label="Repo Hub"
-          onClick={() => {
-            setNarrowSidebarOpen(false);
-            setGlobalView("repo-hub");
-          }}
-        />
 
         <button
           type="button"
@@ -564,8 +536,14 @@ export function Sidebar() {
             setPendingAdvancedBranchName(branch.shortName);
             navigate("workspace");
           }}
+          onCreatePullRequest={setPrBranch}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
+        />
+        <CreatePullRequestDialog
+          branch={prBranch}
+          repoPath={activeRepoPath}
+          onClose={() => setPrBranch(null)}
         />
         <BranchDeleteDialog
           branch={deleteBranchTarget}
@@ -573,7 +551,7 @@ export function Sidebar() {
           onClose={() => setDeleteBranchTarget(null)}
         />
       </div>
-    </aside>
+    </AppSidebar>
   );
 }
 
@@ -782,7 +760,6 @@ interface SidebarCountBadge {
 
 function SidebarNavItem({
   icon,
-  description,
   label,
   active = false,
   indent = false,
@@ -796,7 +773,6 @@ function SidebarNavItem({
 }: {
   icon: ReactNode;
   label: string;
-  description?: string;
   active?: boolean;
   indent?: boolean;
   count?: number;
@@ -840,16 +816,6 @@ function SidebarNavItem({
         <span className={cn("block truncate", active && "font-semibold text-[var(--color-text-primary)]")}>
           {label}
         </span>
-        {description && (
-          <span
-            className={cn(
-              "block truncate text-[10px]",
-              active ? "text-[var(--color-text-muted)]" : "text-[var(--color-text-muted)]",
-            )}
-          >
-            {description}
-          </span>
-        )}
       </span>
       {countBadges ? (
         <span className="flex shrink-0 items-center gap-1">

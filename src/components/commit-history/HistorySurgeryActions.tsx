@@ -1,19 +1,33 @@
-import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatAmendPreview, formatRebasePreview } from "../../lib/git-preview";
-import type { CommitSummary, ReflogEntry, ResetMode, ResetPreview, StartRebaseRequest } from "../../types/git";
+import type { Branch, CommitSummary, ReflogEntry, ResetMode, ResetPreview, StartRebaseRequest } from "../../types/git";
+import { localNameForRemoteRef, planBranchActivation } from "../../lib/branch-activation";
 import type { DisplayRef } from "./commit-refs";
 import { MoreHorizontal } from "lucide-react";
 import { appDialog } from "../common/AppDialogProvider";
+import { Button } from "../ui";
+
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
   body?: string | null;
 };
+
+/**
+ * What the menu can offer for a remote branch ref sitting on a right-clicked
+ * commit: create-and-check-out a tracking local branch when none exists, or
+ * fast-forward the local side that tracks it.
+ */
+type RemoteRefEntry =
+  | { kind: "checkout"; refLabel: string; localName: string }
+  | { kind: "fast-forward"; refLabel: string; localName: string; behind: number }
+  | { kind: "synced"; refLabel: string; localName: string }
+  | { kind: "diverged"; refLabel: string; localName: string; ahead: number; behind: number };
 
 interface CommitActionStripProps {
   target: CommitActionTarget;
@@ -27,7 +41,7 @@ interface ReflogRecoveryPanelProps {
   open: boolean;
 }
 const COMMIT_MENU_WIDTH = 300;
-const COMMIT_MENU_HEIGHT = 330;
+const COMMIT_MENU_HEIGHT = 460;
 const COMMIT_MENU_EDGE_GAP = 8;
 
 function clampMenuPosition(x: number, y: number) {
@@ -156,6 +170,10 @@ function useHistorySurgeryActions() {
   const checkoutReflogMutation = useMutation(gitMutations.checkoutReflogEntry(queryClient, activeRepoPath));
   const branchFromReflogMutation = useMutation(gitMutations.createBranchFromReflogEntry(queryClient, activeRepoPath));
   const mergeRefMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
+  const fastForwardMutation = useMutation(
+    gitMutations.fastForwardBranch(queryClient, activeRepoPath),
+  );
+  const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
   const previewRebaseMutation = useMutation(gitMutations.previewRebase(activeRepoPath));
   const rebaseUpstreamMutation = useMutation(gitMutations.rebaseUpstream(queryClient, activeRepoPath));
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -172,6 +190,7 @@ function useHistorySurgeryActions() {
     checkoutReflogMutation.isPending ||
     branchFromReflogMutation.isPending ||
     mergeRefMutation.isPending ||
+    fastForwardMutation.isPending ||
     previewRebaseMutation.isPending ||
     rebaseUpstreamMutation.isPending;
   const error =
@@ -185,6 +204,7 @@ function useHistorySurgeryActions() {
     checkoutReflogMutation.error ??
     branchFromReflogMutation.error ??
     mergeRefMutation.error ??
+    fastForwardMutation.error ??
     previewRebaseMutation.error ??
     rebaseUpstreamMutation.error;
 
@@ -392,6 +412,32 @@ function useHistorySurgeryActions() {
     setActiveView("workspace");
   };
 
+  const checkoutRemoteRef = async (refLabel: string) => {
+    if (!activeRepoPath) return;
+    const localName = localNameForRemoteRef(refLabel);
+    if (!localName) {
+      await appDialog.alert(
+        `"${refLabel}" does not name a branch under a remote.`,
+        "Cannot check out remote ref",
+      );
+      return;
+    }
+    if (
+      !(await appDialog.confirm(
+        `No local branch tracks "${refLabel}".\n\nCreate local branch "${localName}" from it and check it out?`,
+        "Create tracking branch?",
+      ))
+    ) {
+      return;
+    }
+    createBranchMutation.mutate({ name: localName, checkout: true, startPoint: refLabel });
+  };
+
+  const fastForwardLocalToRef = (localName: string, upstream: string) => {
+    if (!activeRepoPath) return;
+    fastForwardMutation.mutate({ branchName: localName, upstream });
+  };
+
   const isHead = (target: CommitActionTarget) => repoInfo?.headCommit === target.hash;
 
   return {
@@ -410,49 +456,12 @@ function useHistorySurgeryActions() {
     mergeRefIntoCurrent,
     rebaseCurrentOntoRef,
     openAdvancedIntegrate,
+    branches,
+    checkoutRemoteRef,
+    fastForwardLocalToRef,
   };
 }
 
-function ActionButton({
-  children,
-  disabled,
-  onClick,
-  tone = "default",
-  title,
-}: {
-  children: ReactNode;
-  disabled?: boolean;
-  onClick: () => void;
-  tone?: "default" | "danger" | "primary";
-  title?: string;
-}) {
-  const toneClass =
-    tone === "primary"
-      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white hover:opacity-90"
-      : tone === "danger"
-        ? "border-[color:rgba(248,81,73,0.45)] text-[var(--color-danger)] hover:bg-[color:rgba(248,81,73,0.08)]"
-        : "border-[var(--color-border-muted)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]";
-
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    onClick();
-  };
-
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={handleClick}
-      className={cn(
-        "inline-flex items-center justify-center rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45",
-        toneClass,
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 export function CommitActionStrip({ target, isHeadCommit, compact = false, refs }: CommitActionStripProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
@@ -494,6 +503,50 @@ export function CommitActionStrip({ target, isHeadCommit, compact = false, refs 
   );
 }
 
+function remoteRefEntries(
+  refs: DisplayRef[] | undefined,
+  branches: Branch[] | undefined,
+): RemoteRefEntry[] {
+  if (!refs?.length || !branches?.length) return [];
+
+  const entries: RemoteRefEntry[] = [];
+  for (const ref of refs) {
+    if (!ref.isRemote) continue;
+    const remote = branches.find(
+      (branch) => branch.isRemote && branch.shortName === ref.label,
+    );
+    if (!remote) continue;
+
+    const plan = planBranchActivation(remote, branches);
+    switch (plan.kind) {
+      case "create-tracking":
+        entries.push({ kind: "checkout", refLabel: ref.label, localName: plan.localName });
+        break;
+      case "fast-forward":
+        entries.push({
+          kind: "fast-forward",
+          refLabel: ref.label,
+          localName: plan.local.shortName,
+          behind: plan.behind,
+        });
+        break;
+      case "already-synced":
+        entries.push({ kind: "synced", refLabel: ref.label, localName: plan.local.shortName });
+        break;
+      case "diverged":
+        entries.push({
+          kind: "diverged",
+          refLabel: ref.label,
+          localName: plan.local.shortName,
+          ahead: plan.ahead,
+          behind: plan.behind,
+        });
+        break;
+    }
+  }
+  return entries;
+}
+
 export function CommitActionContextMenu({
   target,
   isHeadCommit,
@@ -509,8 +562,9 @@ export function CommitActionContextMenu({
   y: number;
   onClose: () => void;
 }) {
-  const integrationRefs = integrableRefs(refs);
   const actions = useHistorySurgeryActions();
+  const integrationRefs = integrableRefs(refs);
+  const remoteEntries = remoteRefEntries(refs, actions.branches);
   const head = isHeadCommit ?? actions.isHead(target);
   const position = clampMenuPosition(x, y);
 
@@ -603,6 +657,65 @@ export function CommitActionContextMenu({
               onSelect={() => actions.openAdvancedIntegrate(integrationRefs[0].label)}
               onClose={onClose}
             />
+          </>
+        ) : null}
+        {remoteEntries.length > 0 ? (
+          <>
+            <div className="giteye-context-separator" />
+            <div className="px-2.5 pb-0.5 pt-1 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[var(--color-text-muted)]">
+              Remote branches on this commit
+            </div>
+            {remoteEntries.map((entry) => {
+              if (entry.kind === "checkout") {
+                return (
+                  <CommitMenuItem
+                    key={`checkout-${entry.refLabel}`}
+                    label={`Checkout ${entry.refLabel}`}
+                    detail={
+                      entry.localName
+                        ? `creates "${entry.localName}" tracking it`
+                        : "cannot derive a local branch name"
+                    }
+                    disabled={actions.isBusy || !entry.localName}
+                    onSelect={() => void actions.checkoutRemoteRef(entry.refLabel)}
+                    onClose={onClose}
+                  />
+                );
+              }
+              const label = `Fast-forward ${entry.localName}`;
+              if (entry.kind === "fast-forward") {
+                return (
+                  <CommitMenuItem
+                    key={`ff-${entry.refLabel}`}
+                    label={label}
+                    detail={
+                      entry.behind > 0
+                        ? `to ${entry.refLabel} (${entry.behind} behind)`
+                        : `to ${entry.refLabel}`
+                    }
+                    disabled={actions.isBusy}
+                    onSelect={() =>
+                      actions.fastForwardLocalToRef(entry.localName, entry.refLabel)
+                    }
+                    onClose={onClose}
+                  />
+                );
+              }
+              return (
+                <CommitMenuItem
+                  key={`${entry.kind}-${entry.refLabel}`}
+                  label={label}
+                  detail={
+                    entry.kind === "synced"
+                      ? `already matches ${entry.refLabel}`
+                      : `diverged from ${entry.refLabel} (${entry.ahead} ahead, ${entry.behind} behind)`
+                  }
+                  disabled
+                  onSelect={() => undefined}
+                  onClose={onClose}
+                />
+              );
+            })}
           </>
         ) : null}
         <div className="giteye-context-separator" />
@@ -722,7 +835,7 @@ export function ReflogRecoveryPanel({ open }: ReflogRecoveryPanelProps) {
         {reflogQuery.isFetching ? <span className="text-[11px] text-[var(--color-text-muted)]">Loading…</span> : null}
       </div>
       {reflogQuery.error ? (
-        <p className="rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-2 py-1.5 text-[11px] text-[var(--color-danger)]">
+        <p className="rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-2 py-1.5 text-[11px] text-[var(--color-danger)]">
           Failed to load reflog: {errorMessage(reflogQuery.error)}
         </p>
       ) : entries.length === 0 ? (
@@ -741,12 +854,28 @@ export function ReflogRecoveryPanel({ open }: ReflogRecoveryPanelProps) {
                 </div>
               </div>
               <div className="flex gap-1">
-                <ActionButton disabled={actions.isBusy} onClick={() => actions.createBranchFromReflog(entry)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={actions.isBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    actions.createBranchFromReflog(entry);
+                  }}
+                >
                   Branch
-                </ActionButton>
-                <ActionButton disabled={actions.isBusy} onClick={() => actions.checkoutReflogEntry(entry)} tone="danger">
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={actions.isBusy}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    actions.checkoutReflogEntry(entry);
+                  }}
+                >
                   Checkout
-                </ActionButton>
+                </Button>
               </div>
             </div>
           ))}

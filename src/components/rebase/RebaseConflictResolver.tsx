@@ -17,9 +17,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
-import { cn } from "../../lib/cn";
 import type { RebaseTodoItem } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
+import { Button } from "../ui";
+
 
 const splitLines = (content: string | null | undefined, emptyMessage: string) => {
   if (!content) {
@@ -151,7 +152,7 @@ function DiffPane({ title, rev, lines, tone }: { title: string; rev: string; lin
 }
 
 function ActionPill({ label, active }: { label: string; active?: boolean }) {
-  return <button className={`rounded-md border px-2 py-1 text-xs ${active ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/20 text-[var(--color-accent)]" : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"}`}>{label}</button>;
+  return <button className={`rounded-md border px-2 py-1 text-xs ${active ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"}`}>{label}</button>;
 }
 
 function TodoRow({
@@ -172,7 +173,7 @@ function TodoRow({
   onMove?: (direction: -1 | 1) => void;
 }) {
   return (
-    <div className={`grid grid-cols-[28px_84px_minmax(0,1fr)_54px_72px] items-center gap-2 border-t border-[var(--color-border-muted)] px-4 py-3 text-xs ${!item.completed ? "bg-[var(--color-bg-selected)]/15" : ""}`}>
+    <div className={`grid grid-cols-[28px_84px_minmax(0,1fr)_54px_72px] items-center gap-2 border-t border-[var(--color-border-muted)] px-4 py-3 text-xs ${!item.completed ? "bg-[var(--color-bg-selected-muted)]" : ""}`}>
       <span className="font-mono text-[var(--color-text-muted)]">{index + 1}</span>
       {item.completed ? (
         <span className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[var(--color-text-muted)]">{item.action}</span>
@@ -189,8 +190,8 @@ function TodoRow({
       <span className={`truncate px-2 ${item.completed ? "text-[var(--color-text-muted)] line-through" : "text-[var(--color-text-secondary)]"}`}>{item.message}</span>
       <span className="font-mono text-[var(--color-text-muted)]">{shortHash(item.commit)}</span>
       <span className="flex justify-end gap-1">
-        <button type="button" disabled={disabled || !canMoveUp || item.completed} onClick={() => onMove?.(-1)} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40">↑</button>
-        <button type="button" disabled={disabled || !canMoveDown || item.completed} onClick={() => onMove?.(1)} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40">↓</button>
+        <Button variant="ghost" size="sm" disabled={disabled || !canMoveUp || item.completed} onClick={() => onMove?.(-1)}>↑</Button>
+        <Button variant="ghost" size="sm" disabled={disabled || !canMoveDown || item.completed} onClick={() => onMove?.(1)}>↓</Button>
       </span>
     </div>
   );
@@ -216,7 +217,7 @@ function EmptyRebaseState({ activeRepoPath, loading, error }: { activeRepoPath: 
         <main className="grid place-items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-6 shadow-[var(--shadow-panel)]">
           <div className="max-w-md text-center"><RefreshCw className="mx-auto h-10 w-10 text-[var(--color-text-muted)]" /><h2 className="mt-4 text-lg font-semibold">No rebase in progress</h2><p className="mt-2 text-sm text-[var(--color-text-muted)]">Start or resume a rebase in this repository to load todo items, conflicted files, and conflict content.</p></div>
         </main>
-        <aside className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]"><div className="mb-3 flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" /> AI Assistant <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">Beta</span></div><div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 text-sm text-[var(--color-text-secondary)]"><p>AI conflict assistance shell is available here.</p><p className="mt-3">No assistant analysis, recommendations, or apply actions are wired in this view.</p><button disabled className="mt-4 inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-surface)] px-3 py-2 text-xs text-[var(--color-text-muted)]"><Wand2 className="h-4 w-4" /> Generate resolution</button></div></aside>
+        <aside className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]"><div className="mb-3 flex items-center gap-2 font-semibold"><Bot className="h-5 w-5" /> AI Assistant <span className="rounded bg-[var(--color-bg-surface)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">Beta</span></div><div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4 text-sm text-[var(--color-text-secondary)]"><p>AI conflict assistance shell is available here.</p><p className="mt-3">No assistant analysis, recommendations, or apply actions are wired in this view.</p><Button variant="ghost" size="sm" disabled icon={<Wand2 className="h-4 w-4" />} className="mt-4">Generate resolution</Button></div></aside>
       </div>
     </section>
   );
@@ -416,7 +417,7 @@ export function RebaseConflictResolver() {
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <header className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-3">
-        <div><div className="flex items-center gap-2"><h1 className="text-xl font-semibold tracking-tight">Rebase &amp; Conflict Resolver</h1><span className="rounded bg-[color:rgba(137,87,229,0.18)] px-2 py-1 text-xs text-purple-400">Rebasing</span></div><p className="text-sm text-[var(--color-text-secondary)]">You&apos;re rebasing {totalSteps} commits onto <span className="font-mono">{rebaseState?.onto ?? "upstream"}</span></p></div>
+        <div><div className="flex items-center gap-2"><h1 className="text-xl font-semibold tracking-tight">Rebase &amp; Conflict Resolver</h1><span className="rounded bg-[color:rgba(137,87,229,0.18)] px-2 py-1 text-xs text-[var(--color-purple)]">Rebasing</span></div><p className="text-sm text-[var(--color-text-secondary)]">You&apos;re rebasing {totalSteps} commits onto <span className="font-mono">{rebaseState?.onto ?? "upstream"}</span></p></div>
         <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-2 text-xs"><span className="text-[var(--color-text-muted)]">Branch:</span><ActionPill label={rebaseState?.headName ?? "current branch"} active /><span className="text-[var(--color-text-muted)]">Onto: {rebaseState?.onto ?? "upstream"}</span></div>
       </header>
 
@@ -427,19 +428,19 @@ export function RebaseConflictResolver() {
             <div className="flex items-center justify-between px-4 py-3 text-xs text-[var(--color-text-secondary)]">
               <span>{completedTodo.length} completed · {todoDraft.length} remaining</span>
               <span className="flex items-center gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   disabled={!canEditTodo || !hasAutosquashItems}
                   onClick={applyAutosquash}
-                  className="rounded bg-[var(--color-bg-surface)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Autosquash
-                </button>
-                <button type="button" disabled={!hasTodoDraftChanges || actions.updateTodo.isPending} onClick={revertTodoDraft} className="rounded border border-[var(--color-border)] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50">Revert draft</button>
-                <button type="button" disabled={!canEditTodo || !hasTodoDraftChanges || actions.updateTodo.isPending} onClick={applyTodoDraft} className="rounded bg-[var(--color-accent)] px-2 py-1 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{actions.updateTodo.isPending ? "Applying…" : "Apply"}</button>
+                </Button>
+                <Button variant="ghost" size="sm" disabled={!hasTodoDraftChanges || actions.updateTodo.isPending} onClick={revertTodoDraft}>Revert draft</Button>
+                <Button variant="primary" size="sm" disabled={!canEditTodo || !hasTodoDraftChanges || actions.updateTodo.isPending} onClick={applyTodoDraft}>{actions.updateTodo.isPending ? "Applying…" : "Apply"}</Button>
               </span>
             </div>
-            {hasTodoDraftChanges ? <div className="border-t border-[var(--color-warning)]/30 bg-[color:rgba(210,153,34,0.08)] px-4 py-2 text-xs text-[var(--color-warning)]">Draft todo changes are local until you click Apply.</div> : null}
+            {hasTodoDraftChanges ? <div className="border-t border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-4 py-2 text-xs text-[var(--color-warning)]">Draft todo changes are local until you click Apply.</div> : null}
             {actions.updateTodo.error ? <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-xs text-[var(--color-danger)]">{actions.updateTodo.error instanceof Error ? actions.updateTodo.error.message : String(actions.updateTodo.error)}</div> : null}
             {liveTodo.length > 0 ? liveTodo.map((item, index) => {
               const draftIndex = index - completedTodo.length;
@@ -462,16 +463,27 @@ export function RebaseConflictResolver() {
 
           <section className="min-h-0 flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
             <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3"><h2 className="font-semibold">Conflicted files <span className="rounded bg-[var(--color-bg-surface)] px-2 text-xs">{conflictCount}</span></h2><MoreHorizontal className="h-4 w-4" /></div>
-            <div className="p-3">{displayedConflicts.map((file) => <button key={file} type="button" onClick={() => setSelectedConflictPath(file)} className={`mb-2 flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${file === displayedConflictPath ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15 text-[var(--color-accent)]" : "border-transparent text-[var(--color-text-secondary)]"}`}><FileText className="h-4 w-4" /><span className="flex-1 truncate">{file}</span><span className="rounded bg-[var(--color-accent)] px-1.5 text-xs text-white">1</span></button>)}{displayedConflicts.length === 0 && <div className="rounded-md border border-[var(--color-border-muted)] p-4 text-sm text-[var(--color-text-muted)]">No conflicted files reported.</div>}</div>
+            <div className="p-3">{displayedConflicts.map((file) => <button key={file} type="button" onClick={() => setSelectedConflictPath(file)} className={`mb-2 flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm ${file === displayedConflictPath ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-transparent text-[var(--color-text-secondary)]"}`}><FileText className="h-4 w-4" /><span className="flex-1 truncate">{file}</span><span className="rounded bg-[var(--color-accent)] px-1.5 text-xs text-white">1</span></button>)}{displayedConflicts.length === 0 && <div className="rounded-md border border-[var(--color-border-muted)] p-4 text-sm text-[var(--color-text-muted)]">No conflicted files reported.</div>}</div>
           </section>
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4"><div className="text-sm font-semibold">Rebasing onto {rebaseState?.onto ?? "upstream"}</div><div className="mt-1 text-sm text-[var(--color-text-secondary)]">Step {currentStep} of {totalSteps} ({conflictCount} conflict{conflictCount === 1 ? "" : "s"})</div><div className="mt-3 h-2 rounded-full bg-[var(--color-bg-surface)]"><div className="h-2 rounded-full bg-[var(--color-success)]" style={{ width: progressWidth }} /></div></section>
         </aside>
 
         <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3"><div className="flex items-center gap-2"><FileText className="h-4 w-4" /><span className="font-semibold">{displayedConflictPath ?? "No conflicted file selected"}</span><span className="rounded bg-[color:rgba(210,153,34,0.18)] px-2 py-1 text-xs text-[var(--color-warning)]">{conflictCount} conflict{conflictCount === 1 ? "" : "s"}</span></div><div className="flex items-center gap-2"><button disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("ours")} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use current</button><button disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("theirs")} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use incoming</button><button disabled={!canMarkResolved || isActionPending} onClick={handleMarkResolved} className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Mark resolved</button></div></div>
+          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <span className="font-semibold">{displayedConflictPath ?? "No conflicted file selected"}</span>
+              <span className="rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2 py-1 text-xs text-[var(--color-warning)]">{conflictCount} conflict{conflictCount === 1 ? "" : "s"}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("ours")}>Use current</Button>
+              <Button variant="ghost" size="sm" disabled={!canMarkResolved || isActionPending} onClick={() => handleCheckoutConflictSide("theirs")}>Use incoming</Button>
+              <Button variant="primary" size="sm" disabled={!canMarkResolved || isActionPending} onClick={handleMarkResolved}>Mark resolved</Button>
+            </div>
+          </div>
           {displayedConflictPath ? <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto lg:grid-cols-3"><DiffPane title="Current (HEAD)" rev={shortHash(rebaseState?.origHead)} lines={displayedCurrent} tone="deleted" /><DiffPane title={`Incoming (${rebaseState?.headName ?? "rebased commit"})`} rev={shortHash(rebaseState?.onto)} lines={displayedIncoming} tone="added" /><DiffPane title="Result (edited)" rev="" lines={displayedResult} tone="result" /></div> : <div className="grid min-h-0 flex-1 place-items-center p-8 text-center text-sm text-[var(--color-text-muted)]">Select a conflicted file to compare both sides.</div>}
           <section className="grid border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] md:grid-cols-[1.1fr_0.9fr]">
-            <div className="border-r border-[var(--color-border)] p-3"><div className="mb-3 flex gap-4 text-sm"><b>Conflict workflow</b><span className="text-[var(--color-text-secondary)]">Commit Message</span></div><div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-warning)]"><AlertTriangle className="h-4 w-4" /> Review the result pane, mark resolved, then continue.</div>{[["Inspect current changes", "Compare the HEAD side of the conflict", true], ["Inspect incoming changes", "Compare the rebased commit side", false], ["Edit result in your editor", "Save the resolved file before continuing", false]].map(([title, body, active]) => <div key={title as string} className={`mb-2 flex items-center gap-3 rounded-lg border p-3 text-sm ${active ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)]"}`}><CheckCircle2 className={active ? "h-4 w-4 text-[var(--color-accent)]" : "h-4 w-4 text-[var(--color-text-muted)]"} /><div><div>{title}</div><div className="text-xs text-[var(--color-text-muted)]">{body}</div></div></div>)}</div>
+            <div className="border-r border-[var(--color-border)] p-3"><div className="mb-3 flex gap-4 text-sm"><b>Conflict workflow</b><span className="text-[var(--color-text-secondary)]">Commit Message</span></div><div className="mb-3 flex items-center gap-2 text-sm text-[var(--color-warning)]"><AlertTriangle className="h-4 w-4" /> Review the result pane, mark resolved, then continue.</div>{[["Inspect current changes", "Compare the HEAD side of the conflict", true], ["Inspect incoming changes", "Compare the rebased commit side", false], ["Edit result in your editor", "Save the resolved file before continuing", false]].map(([title, body, active]) => <div key={title as string} className={`mb-2 flex items-center gap-3 rounded-lg border p-3 text-sm ${active ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)]"}`}><CheckCircle2 className={active ? "h-4 w-4 text-[var(--color-accent)]" : "h-4 w-4 text-[var(--color-text-muted)]"} /><div><div>{title}</div><div className="text-xs text-[var(--color-text-muted)]">{body}</div></div></div>)}</div>
             <div className="p-3">
               <div className="mb-3 flex items-center gap-2 font-semibold">
                 <Bot className="h-5 w-5" /> AI Assistant
@@ -491,20 +503,16 @@ export function RebaseConflictResolver() {
                     <p className="mt-1 text-xs text-[var(--color-text-muted)]">{aiConfig?.apiKeyConfigured ? `Using ${aiProviderLabel} · ${aiConfig.model}` : "Configure provider and API key in Settings."}</p>
                   </>
                 )}
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => { setAiResolution(null); setAiError(null); aiResolutionMutation.mutate(); }}
                   disabled={!conflictContent || aiResolutionMutation.isPending}
-                  className={cn(
-                    "mt-4 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs",
-                    conflictContent
-                      ? "border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-                      : "cursor-not-allowed border-[var(--color-border)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]",
-                    "disabled:cursor-not-allowed disabled:opacity-50",
-                  )}
+                  icon={<Wand2 className="h-4 w-4" />}
+                  className="mt-4"
                 >
-                  <Wand2 className="h-4 w-4" />
                   {aiResolutionMutation.isPending ? "Generating…" : "Generate resolution"}
-                </button>
+                </Button>
               </div>
             </div>
           </section>
@@ -521,7 +529,12 @@ export function RebaseConflictResolver() {
       <footer className="grid grid-cols-1 items-center gap-4 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 lg:grid-cols-[220px_1fr_auto]">
         <div className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3"><RefreshCw className="h-6 w-6 text-[var(--color-accent)]" /><div><div className="font-semibold">Rebase in progress</div><div className="text-xs text-[var(--color-text-muted)]">On commit {currentStep} of {totalSteps}</div></div></div>
         <div className="flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-warning)]"><ShieldAlert className="h-5 w-5" /> {conflictCount > 0 ? "Resolve all conflicts to continue" : "No conflicts reported; ready to continue"}</div>
-        <div className="flex items-center gap-3"><button disabled={!canMutateRebase || isActionPending} onClick={confirmAndAbort} className="rounded-md border border-[var(--color-danger)]/60 px-5 py-2.5 text-sm font-semibold text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50">{actions.abortRebase.isPending ? "Aborting…" : "Abort Rebase"}</button><button disabled={!canMutateRebase || isActionPending} onClick={confirmAndSkip} className="rounded-md border border-[var(--color-border)] px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">{actions.skipRebase.isPending ? "Skipping…" : "Skip Commit"}</button><button disabled={!canMarkResolved || isActionPending} onClick={handleMarkResolved} className="rounded-md border border-[var(--color-border)] px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">{actions.markFileResolved.isPending ? "Marking…" : "Mark Resolved"}</button><button disabled={!canMutateRebase || isActionPending || conflictCount > 0} onClick={confirmAndContinue} className="rounded-md bg-[var(--color-success)] px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{actions.continueRebase.isPending ? "Continuing…" : "Continue Rebase"}</button></div>
+        <div className="flex items-center gap-3">
+          <Button variant="danger" disabled={!canMutateRebase || isActionPending} onClick={confirmAndAbort}>{actions.abortRebase.isPending ? "Aborting…" : "Abort Rebase"}</Button>
+          <Button variant="secondary" disabled={!canMutateRebase || isActionPending} onClick={confirmAndSkip}>{actions.skipRebase.isPending ? "Skipping…" : "Skip Commit"}</Button>
+          <Button variant="secondary" disabled={!canMarkResolved || isActionPending} onClick={handleMarkResolved}>{actions.markFileResolved.isPending ? "Marking…" : "Mark Resolved"}</Button>
+          <Button variant="primary" disabled={!canMutateRebase || isActionPending || conflictCount > 0} onClick={confirmAndContinue}>{actions.continueRebase.isPending ? "Continuing…" : "Continue Rebase"}</Button>
+        </div>
       </footer>
     </section>
   );

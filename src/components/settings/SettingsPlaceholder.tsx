@@ -10,6 +10,7 @@ import type { SshKey, Theme } from "../../types/git";
 import { AiModelCombobox } from "./AiModelCombobox";
 import { ToolchainSettings } from "../toolchain/ToolchainSetup";
 import { useNoticeStore } from "../../stores/notice-store";
+import { Button } from "../ui";
 
 type SettingsTab = "general" | "appearance" | "toolchain" | "ai" | "security";
 
@@ -272,14 +273,14 @@ export function SettingsPlaceholder() {
             <p className="mt-1 text-[12px] text-[var(--color-text-muted)]">Configure your global Git environment, visual interface, and AI assistance integrations.</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1">
-            <button type="button" className="giteye-btn giteye-btn-secondary" onClick={() => void discardChanges()}>
+            <Button variant="secondary" onClick={() => void discardChanges()}>
               <Undo2 className="h-4 w-4" />
               Discard Changes
-            </button>
-            <button type="button" className="giteye-btn giteye-btn-primary" onClick={() => void savePreferences()} disabled={savingPreferences}>
+            </Button>
+            <Button variant="primary" onClick={() => void savePreferences()} disabled={savingPreferences}>
               <Save className="h-4 w-4" />
               {savingPreferences ? "Saving…" : "Save Preferences"}
-            </button>
+            </Button>
           </div>
         </div>
         <nav className="mt-4 flex items-center gap-1" role="tablist" aria-label="Settings sections">
@@ -287,14 +288,14 @@ export function SettingsPlaceholder() {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
             return (
-              <button
+              <Button
                 key={tab.id}
-                type="button"
+                variant="ghost"
                 role="tab"
                 aria-selected={selected}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex items-center gap-2 border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
+                  "flex items-center gap-2 rounded-none border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
                   selected
                     ? "border-[var(--color-accent)] text-[var(--color-text-primary)]"
                     : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
@@ -302,7 +303,7 @@ export function SettingsPlaceholder() {
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
-              </button>
+              </Button>
             );
           })}
         </nav>
@@ -436,8 +437,8 @@ export function SettingsPlaceholder() {
                   </div>
                   {aiErrorText ? <p className="text-[var(--color-danger)]">{String(aiErrorText)}</p> : null}
                   <div className="flex justify-end gap-2">
-                    <button disabled={aiPending || aiConfig?.apiKeySource !== "keychain"} onClick={clearStoredAiKey} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Clear stored key</button>
-                    <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</button>
+                    <Button variant="secondary" size="sm" disabled={aiPending || aiConfig?.apiKeySource !== "keychain"} onClick={clearStoredAiKey}>Clear stored key</Button>
+                    <Button variant="primary" size="sm" disabled={aiPending} onClick={saveAiProviderSettings}>{saveAiConfig.isPending ? "Saving…" : "Save AI settings"}</Button>
                   </div>
                 </div>
               </section>
@@ -470,19 +471,20 @@ export function SettingsPlaceholder() {
                     />
                   </label>
                   <div className="flex justify-end gap-2">
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       disabled={aiPending}
                       onClick={() => {
                         setCommitMessagePrompt(aiConfig?.defaultPrompts.commitMessage ?? "");
                         setConflictResolutionPrompt(aiConfig?.defaultPrompts.conflictResolution ?? "");
                       }}
-                      className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Restore defaults
-                    </button>
-                    <button disabled={aiPending} onClick={saveAiProviderSettings} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    </Button>
+                    <Button variant="primary" size="sm" disabled={aiPending} onClick={saveAiProviderSettings}>
                       {saveAiConfig.isPending ? "Saving…" : "Save AI prompts"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -515,7 +517,7 @@ export function SettingsPlaceholder() {
                       <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Comment</span>
                       <input value={sshKeyComment} onChange={(event) => setSshKeyComment(event.target.value)} placeholder="name@example.com" className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]" />
                     </label>
-                    <button disabled={sshPending || !sshStatus?.sshKeygenAvailable || !sshKeyName.trim()} onClick={createSshKey} className="self-end rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Generate</button>
+                    <Button variant="primary" size="sm" disabled={sshPending || !sshStatus?.sshKeygenAvailable || !sshKeyName.trim()} onClick={createSshKey} className="self-end">Generate</Button>
                   </div>
 
                   {sshStatus?.agentError ? <p className="text-[var(--color-warning)]">{sshStatus.agentError}</p> : null}
@@ -555,9 +557,9 @@ export function SettingsPlaceholder() {
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {["cache --timeout=3600", "store", "libsecret", "manager-core"].map((helper) => (
-                          <button key={helper} type="button" onClick={() => setCredentialHelperInput(helper)} className="rounded-full border border-[var(--color-border-muted)] px-2 py-1 font-mono text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]">
+                          <Button variant="ghost" size="sm" key={helper} onClick={() => setCredentialHelperInput(helper)} className="rounded-full font-mono">
                             {helper}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                       <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
@@ -574,28 +576,30 @@ export function SettingsPlaceholder() {
                       {credentialErrorText ? <p className="text-[var(--color-danger)]">{String(credentialErrorText)}</p> : null}
                       <div className="flex justify-between gap-2">
                         <div className="flex gap-2">
-                          <button
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             disabled={credentialPending || testAuthMutation.isPending || !activeRepoPath}
                             onClick={() => { setAuthTestResult(null); testAuthMutation.mutate(); }}
-                            className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                             title="Attempt a silent remote authentication check"
                           >
                             <Radio className="h-3.5 w-3.5" />
                             {testAuthMutation.isPending ? "Testing…" : "Test Auth"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
                             disabled={credentialPending || clearCredentialCacheMutation.isPending || !activeRepoPath}
                             onClick={() => { setAuthTestResult(null); clearCredentialCacheMutation.mutate(); }}
-                            className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Clear cached credentials for the origin remote host"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             {clearCredentialCacheMutation.isPending ? "Clearing…" : "Clear Cache"}
-                          </button>
+                          </Button>
                         </div>
                         <div className="flex gap-2">
-                          <button disabled={credentialPending} onClick={clearCredentialHelper} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
-                          <button disabled={credentialPending} onClick={saveCredentialHelper} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save helper</button>
+                          <Button variant="secondary" size="sm" disabled={credentialPending} onClick={clearCredentialHelper}>Use global</Button>
+                          <Button variant="primary" size="sm" disabled={credentialPending} onClick={saveCredentialHelper}>Save helper</Button>
                         </div>
                       </div>
                     </>
@@ -633,8 +637,8 @@ export function SettingsPlaceholder() {
                       </div>
                       {identityErrorText ? <p className="text-[var(--color-danger)]">{String(identityErrorText)}</p> : null}
                       <div className="flex justify-end gap-2">
-                        <button disabled={identityPending} onClick={clearIdentity} className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">Use global</button>
-                        <button disabled={identityPending} onClick={saveIdentity} className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save local identity</button>
+                        <Button variant="secondary" size="sm" disabled={identityPending} onClick={clearIdentity}>Use global</Button>
+                        <Button variant="primary" size="sm" disabled={identityPending} onClick={saveIdentity}>Save local identity</Button>
                       </div>
                     </>
                   )}
@@ -657,22 +661,24 @@ export function SettingsPlaceholder() {
                     </div>
                   ) : null}
                   <div className="flex gap-2">
-                    <button
+                    <Button
+                      variant="primary"
+                      size="sm"
                       disabled={exportMutation.isPending || importMutation.isPending}
                       onClick={() => { setExportImportMessage(null); exportMutation.mutate(); }}
-                      className="flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Download className="h-3.5 w-3.5" />
                       {exportMutation.isPending ? "Exporting…" : "Export Settings"}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       disabled={exportMutation.isPending || importMutation.isPending}
                       onClick={() => { setExportImportMessage(null); importMutation.mutate(); }}
-                      className="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Upload className="h-3.5 w-3.5" />
                       {importMutation.isPending ? "Importing…" : "Import Settings"}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -715,13 +721,13 @@ function SshKeyCard({
           <div className="truncate text-[11px] text-[var(--color-text-muted)]">{keyItem.comment ?? keyItem.publicKeyPath}</div>
         </div>
         <div className="flex shrink-0 gap-2">
-          <button disabled={pending || !keyItem.hasPrivateKey || keyItem.loadedInAgent} onClick={onAddToAgent} className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">
+          <Button variant="secondary" size="sm" disabled={pending || !keyItem.hasPrivateKey || keyItem.loadedInAgent} onClick={onAddToAgent}>
             Add to agent
-          </button>
-          <button disabled={!keyItem.publicKey} onClick={onCopyPublicKey} className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50">
+          </Button>
+          <Button variant="secondary" size="sm" disabled={!keyItem.publicKey} onClick={onCopyPublicKey}>
             <Copy className="h-3 w-3" />
             {copied ? "Copied" : "Copy public key"}
-          </button>
+          </Button>
         </div>
       </div>
       {keyItem.publicKey ? (
@@ -757,19 +763,20 @@ function ThemeButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="sm"
       aria-pressed={active}
       onClick={onClick}
+      icon={icon}
       className={cn(
-        "flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+        "justify-center gap-1.5 font-medium transition-colors",
         active
-          ? "bg-[var(--color-accent)] text-white shadow-sm"
-          : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]"
+          : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
       )}
     >
-      {icon}
       {children}
-    </button>
+    </Button>
   );
 }

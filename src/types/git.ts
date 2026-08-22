@@ -134,6 +134,28 @@ export interface Branch {
   upstream: string | null;
   ahead: number | null;
   behind: number | null;
+  /** Committer date of the commit the ref points at (ISO-8601). */
+  lastCommitDate?: string | null;
+  lastCommitAuthor?: string | null;
+  lastCommitSubject?: string | null;
+  /** When the branch first appeared in this repository; remote refs report null. */
+  createdAt?: string | null;
+}
+
+export interface LocalBranchPruneCandidate {
+  branch: string;
+  fullyMerged: boolean;
+  upstreamGone: boolean;
+}
+
+export interface LocalBranchPruneFailure {
+  branch: string;
+  reason: string;
+}
+
+export interface LocalBranchPruneResult {
+  deleted: string[];
+  failed: LocalBranchPruneFailure[];
 }
 
 export interface GitIdentity {
@@ -825,7 +847,8 @@ export type RepositoryViewType =
   | "submodules"
   | "archaeology"
   | "diagnostics"
-  | "custom-command";
+  | "custom-command"
+  | "repo-settings";
 
 export type ViewType = RepositoryViewType;
 

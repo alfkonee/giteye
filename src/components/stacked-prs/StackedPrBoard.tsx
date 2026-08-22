@@ -24,6 +24,7 @@ import type {
   ReviewSummary,
 } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
+import { Button } from "../ui";
 
 interface StackPrRow {
   number: number;
@@ -173,7 +174,7 @@ function Avatar({
     <div
       className={`grid h-8 w-8 place-items-center rounded-full border text-[11px] font-semibold shadow-sm ${
         accent
-          ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+          ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]"
           : "border-[var(--color-border)] bg-[var(--color-bg-surface)] text-[var(--color-text-primary)]"
       }`}
     >
@@ -381,7 +382,7 @@ export function StackedPrBoard() {
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
       <header className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-5 py-3">
         <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] text-purple-400">
+          <div className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] text-[var(--color-purple)]">
             <Layers3 className="h-5 w-5" />
           </div>
           <div>
@@ -399,35 +400,39 @@ export function StackedPrBoard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={!activePr || prActionPending}
             onClick={handleUpdateBranch}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw className="h-4 w-4" /> Update Branch
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             disabled={!activePr || prActionPending}
             onClick={handleCheckout}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <GitBranch className="h-4 w-4" /> Checkout PR
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
             disabled={!activePr || prActionPending}
             onClick={handleMergeSelected}
-            className="inline-flex items-center gap-2 rounded-md bg-[var(--color-success)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             <CheckCircle2 className="h-4 w-4" /> Squash Merge PR
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             disabled={!canSafelyLandStack || prActionPending}
             onClick={() => void handleLandStack()}
             title={stackLandingUnavailableReason}
-            className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Layers3 className="h-4 w-4" /> Land Stack
-          </button>
+          </Button>
           {prActionError ? (
             <span className="max-w-[280px] truncate text-xs text-[var(--color-danger)]">
               {String(prActionError)}
@@ -453,18 +458,20 @@ export function StackedPrBoard() {
                 >
                   {providerDetail}
                 </span>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={refreshPullRequestMetadata}
-                  className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)]"
                 >
                   Refresh
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Layers3 className="h-4 w-4" />}
+                  iconOnly
                   onClick={refreshPullRequestMetadata}
-                  className="rounded-md border border-[var(--color-border)] p-1.5 text-[var(--color-accent)]"
-                >
-                  <Layers3 className="h-4 w-4" />
-                </button>
+                />
               </div>
             </div>
             <div className="relative space-y-3 p-4">
@@ -595,9 +602,9 @@ export function StackedPrBoard() {
                     key={pr.number}
                     type="button"
                     onClick={() => setSelectedPullRequestId(String(pr.number))}
-                    className={`flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm ${pr.active ? "bg-[var(--color-bg-selected)]/15 text-[var(--color-accent)]" : "hover:bg-[var(--color-bg-hover)]"}`}
+                    className={`flex w-full items-center gap-3 rounded-md border px-2 py-1.5 text-left text-sm ${pr.active ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-transparent hover:bg-[var(--color-bg-hover)]"}`}
                   >
-                    <GitCommitVertical className="h-4 w-4 text-purple-400" />
+                    <GitCommitVertical className="h-4 w-4 text-[var(--color-purple)]" />
                     <span className="rounded bg-[color:rgba(88,166,255,0.14)] px-1.5 text-[var(--color-accent)]">
                       {pr.number}
                     </span>
@@ -769,21 +776,23 @@ export function StackedPrBoard() {
                   <EmptyState message={activePrDiffLoading ? "Loading selected PR timeline…" : activePrDiffError ? "Selected PR timeline unavailable." : "No timeline activity returned by GitHub for the selected PR."} />
                 )}
               </div>
-              <button
+              <Button
+                variant="secondary"
                 disabled={!activePr.url}
                 onClick={() =>
                   activePr.url && window.open(activePr.url, "_blank")
                 }
-                className="mt-5 w-full rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-5 w-full"
               >
                 Open PR timeline on GitHub
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
                 onClick={refreshPullRequestMetadata}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-text-secondary)]"
+                className="mt-3 w-full"
               >
                 <MoreHorizontal className="h-4 w-4" /> Refresh PR metadata
-              </button>
+              </Button>
             </>
           ) : (
             <EmptyState message="No pull request selected." />

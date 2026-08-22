@@ -63,6 +63,12 @@ export interface FastForwardBranchRequest {
   upstream: string;
 }
 
+export interface DeleteBranchRequest {
+  branchName: string;
+  /** Force-delete (`-D`) a branch that is not fully merged. */
+  force?: boolean;
+}
+
 export interface AddRemoteRequest {
   name: string;
   url: string;
@@ -179,6 +185,14 @@ export interface MergePullRequestRequest {
   method: "merge" | "rebase" | "squash";
   admin?: boolean;
   deleteBranch?: boolean;
+}
+
+export interface CreatePullRequestRequest {
+  head: string;
+  base: string | null;
+  title: string;
+  body: string | null;
+  draft: boolean;
 }
 
 export interface GenerateSshKeyRequest {
@@ -1920,11 +1934,11 @@ export const gitMutations = {
 
   deleteBranch: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (branchName: string) =>
-        gitApi.deleteBranch(repoPath!, branchName),
-      onMutate: (branchName) =>
+      mutationFn: ({ branchName, force }: DeleteBranchRequest) =>
+        gitApi.deleteBranch(repoPath!, branchName, force),
+      onMutate: ({ branchName }) =>
         startGitActionNotice("Deleting branch", branchName, repoPath),
-      onSuccess: async (_data, branchName, context) => {
+      onSuccess: async (_data, { branchName }, context) => {
         await refreshGitStateAfterAction(
           queryClient,
           repoPath,
@@ -1936,7 +1950,38 @@ export const gitMutations = {
           `${branchName} deleted and repository views refreshed.`,
         );
       },
-      onError: (error, _branchName, context) =>
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  localBranchPrunePlan: (repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: () => gitApi.localBranchPrunePlan(repoPath!),
+    }),
+
+  pruneLocalBranches: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (branches: string[]) =>
+        gitApi.pruneLocalBranches(repoPath!, branches),
+      onMutate: (branches) =>
+        startGitActionNotice(
+          "Pruning stale local branches",
+          branches.length === 1
+            ? branches[0]
+            : `${branches.length} branches`,
+          repoPath,
+        ),
+      onSuccess: async (_data, _branches, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, [
+          "refs",
+          "worktree",
+        ]);
+        finishGitActionNotice(
+          context,
+          "Local branch prune finished and affected views refreshed.",
+        );
+      },
+      onError: (error, _branches, context) =>
         failGitActionNotice(context, error),
     }),
 
@@ -3123,5 +3168,24 @@ export const gitMutations = {
         finishGitActionNotice(context, `PR #${number} closed.`);
       },
       onError: (error, _number, context) => failGitActionNotice(context, error),
+    }),
+  createPullRequest: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ head, base, title, body, draft }: CreatePullRequestRequest) =>
+        gitApi.createPullRequest({ repoPath: repoPath!, head, base, title, body, draft }),
+      onMutate: ({ head, draft }) =>
+        startGitActionNotice(
+          "Creating pull request",
+          `${head}${draft ? " · draft" : ""}`,
+          repoPath,
+        ),
+      onSuccess: async (url, { head }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(
+          context,
+          url ? `Pull request created: ${url}` : `Pull request created for ${head}.`,
+        );
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
 };

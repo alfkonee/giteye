@@ -66,6 +66,8 @@ import type {
   IgnoreScope,
   IgnoreRuleResult,
   GitRecoveryState,
+  type LocalBranchPruneCandidate,
+  type LocalBranchPruneResult,
 } from "../types/git";
 
 export type CheckoutBranchStrategy = "move" | "stash";
@@ -150,6 +152,11 @@ export interface AiModelListView {
   models: AiModelView[];
   source: AiModelListSource;
   warning: string | null;
+}
+
+export interface PullRequestDraft {
+  title: string;
+  body: string;
 }
 
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
@@ -446,6 +453,12 @@ export const gitApi = {
   fastForwardBranch: (repoPath: string, branchName: string, upstream: string) =>
     invoke<void>("fast_forward_branch", { repoPath, branchName, upstream }),
 
+  localBranchPrunePlan: (repoPath: string) =>
+    invoke<LocalBranchPruneCandidate[]>("local_branch_prune_plan", { repoPath }),
+
+  pruneLocalBranches: (repoPath: string, branches: string[]) =>
+    invoke<LocalBranchPruneResult>("prune_local_branches", { repoPath, branches }),
+
   mergeBranch: (repoPath: string, source: string) =>
     invoke<GitJobSummary>("merge_branch", { repoPath, source }),
 
@@ -458,8 +471,8 @@ export const gitApi = {
       strategyOption: request.strategyOption,
     }),
 
-  deleteBranch: (repoPath: string, branchName: string) =>
-    invoke<void>("delete_branch", { repoPath, branchName }),
+  deleteBranch: (repoPath: string, branchName: string, force = false) =>
+    invoke<void>("delete_branch", { repoPath, branchName, force }),
 
   getGitIdentity: (repoPath: string) =>
     invoke<GitIdentity>("get_git_identity", { repoPath }),
@@ -1002,6 +1015,23 @@ export const gitApi = {
   closePullRequest: (repoPath: string, number: number) =>
     invoke<void>("close_pull_request", { repoPath, number }),
 
+  createPullRequest: (options: {
+    repoPath: string;
+    head: string;
+    base: string | null;
+    title: string;
+    body: string | null;
+    draft: boolean;
+  }) =>
+    invoke<string>("create_pull_request", {
+      repoPath: options.repoPath,
+      head: options.head,
+      base: options.base ?? null,
+      title: options.title,
+      body: options.body ?? null,
+      draft: options.draft,
+    }),
+
   exportSettings: (outputPath: string, theme: string, diffMode: string) =>
     invoke<string>("export_settings", { outputPath, theme, diffMode }),
 
@@ -1028,4 +1058,11 @@ export const gitApi = {
 
   suggestCommitMessage: (diffs: Array<{ filePath: string; status: string; diffText: string }>) =>
     invoke<string>("suggest_commit_message", { diffs }),
+
+  suggestPullRequest: (repoPath: string, headBranch: string, baseBranch: string | null) =>
+    invoke<PullRequestDraft>("suggest_pull_request", {
+      repoPath,
+      headBranch,
+      baseBranch: baseBranch ?? null,
+    }),
 };

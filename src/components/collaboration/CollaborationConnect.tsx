@@ -5,6 +5,7 @@ import { useAppStore } from "../../stores/app-store";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { Button } from "../ui";
 
 export function CollaborationConnect() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -76,37 +77,37 @@ export function CollaborationConnect() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
-                <button
+                <Button
+                  variant="primary"
                   type="button"
                   onClick={() => setActiveView("stacked-prs")}
-                  className="giteye-btn giteye-btn-primary h-9"
                 >
                   <GitPullRequest className="h-4 w-4" />
                   Open Pull Requests
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
                   type="button"
                   onClick={() => setActiveView("ci-status")}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Open CI Status
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
                   type="button"
                   onClick={() => setActiveView("review-studio")}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
                 >
                   Open Review Studio
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
                   type="button"
                   onClick={() => void providerQuery.refetch()}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Refresh Capability
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -140,14 +141,14 @@ export function CollaborationConnect() {
                   </div>
                 </div>
               </div>
-              <button
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => void providerQuery.refetch()}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
               >
                 <RefreshCw className="h-4 w-4" />
                 Check Again
-              </button>
+              </Button>
             </div>
           )}
         </div>

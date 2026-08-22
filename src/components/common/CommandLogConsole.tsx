@@ -15,6 +15,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import { isTerminalStatus, useJobStore, type GitJobLogEntry } from "../../stores/job-store";
 import type { GitJobStatus } from "../../types/git";
+import { Button } from "../ui";
 
 const HEIGHT_STORAGE_KEY = "giteye.command-log.height";
 const MIN_HEIGHT = 180;
@@ -160,19 +161,20 @@ export function CommandLogConsole() {
           ))}
         </select>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          icon={<Trash2 className="h-3.5 w-3.5" />}
           onClick={() => {
             clearJobOutput(repoFilter);
             void gitApi.clearGitJobLog(repoFilter).catch(() => undefined);
           }}
           disabled={filteredJobs.length === 0}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon"
           title={repoFilter ? "Clear filtered command output" : "Clear command output"}
         >
-          <Trash2 className="h-3.5 w-3.5" />
-          <span className="sr-only">Clear command output</span>
-        </button>
+          Clear command output
+        </Button>
 
         <span className="ml-auto hidden items-center gap-1 text-[10.5px] text-[var(--color-text-muted)] md:flex">
           <kbd className="giteye-kbd">`</kbd>
@@ -180,15 +182,16 @@ export function CommandLogConsole() {
           <kbd className="giteye-kbd ml-1">Esc</kbd>
           close
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          iconOnly
+          icon={<ChevronDown className="h-3.5 w-3.5 rotate-180" />}
           onClick={() => setOpen(false)}
-          className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon"
           title="Close command log"
         >
-          <ChevronDown className="h-3.5 w-3.5 rotate-180" />
-          <span className="sr-only">Close command log</span>
-        </button>
+          Close command log
+        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -267,13 +270,14 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
             {repoName(job.repoPath)}
           </span>
           {canCancel && (
-            <button
-              type="button"
+            <Button
+              variant="danger"
+              size="sm"
+              className="shrink-0"
               onClick={() => void gitApi.cancelGitJob(job.jobId)}
-              className="giteye-btn giteye-btn-sm shrink-0 border border-[var(--color-danger)]/35 text-[var(--color-danger)]"
             >
               Cancel
-            </button>
+            </Button>
           )}
         </div>
 
@@ -296,16 +300,16 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
         </dl>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-[#05070b] px-3 py-1.5 font-mono text-[11px] leading-[1.45] text-slate-200">
+      <div className="min-h-0 flex-1 overflow-auto bg-[var(--color-bg-console)] px-3 py-1.5 font-mono text-[11px] leading-[1.45] text-[var(--color-text-primary)]">
         {job.lines.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-center text-[11px] text-slate-500">
+          <div className="flex h-full items-center justify-center text-center text-[11px] text-[var(--color-text-subtle)]">
             No stdout or stderr has been emitted for this job yet.
           </div>
         ) : (
           <ol>
             {job.lines.map((line) => (
               <li key={line.id} className="grid grid-cols-[3.2rem_1fr] gap-2">
-                <span className={line.channel === "stderr" ? "text-rose-300" : "text-sky-300"}>{line.channel}</span>
+                <span className={line.channel === "stderr" ? "text-[var(--color-danger)]" : "text-sky-300"}>{line.channel}</span>
                 <span className="whitespace-pre-wrap break-words">{line.line}</span>
               </li>
             ))}

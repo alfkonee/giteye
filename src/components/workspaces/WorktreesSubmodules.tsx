@@ -17,6 +17,8 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import type { Submodule, SubmoduleForeachStatus, Worktree } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
+import { EmptyState } from "../common/EmptyState";
+import { Button } from "../ui";
 
 type WorktreeRow = {
   key: string;
@@ -237,42 +239,8 @@ function QueryNote({ loading, error }: { loading: boolean; error: unknown }) {
   return <span className="text-xs text-[var(--color-text-muted)]">{message}</span>;
 }
 
-function EmptyState({ message }: { message: string }) {
-  return <div className="px-5 py-6 text-center text-sm text-[var(--color-text-muted)]">{message}</div>;
-}
 
-function ActionButton({
-  children,
-  disabled,
-  tone = "default",
-  title,
-  onClick,
-}: {
-  children: React.ReactNode;
-  disabled?: boolean;
-  tone?: "default" | "accent" | "danger";
-  title?: string;
-  onClick: React.MouseEventHandler<HTMLButtonElement>;
-}) {
-  const toneClass =
-    tone === "accent"
-      ? "text-[var(--color-accent)]"
-      : tone === "danger"
-        ? "border-[color:rgba(248,81,73,0.45)] text-[var(--color-danger)]"
-        : "text-[var(--color-text-muted)]";
 
-  return (
-    <button
-      type="button"
-      className={`inline-flex items-center justify-center gap-1 rounded border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--color-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
 
 const WORKTREE_GRID =
   "grid-cols-[minmax(10rem,1.1fr)_minmax(15rem,1.5fr)_minmax(10rem,1.1fr)_minmax(7.5rem,0.8fr)_minmax(5rem,0.65fr)_minmax(6rem,0.7fr)_minmax(8rem,0.55fr)]";
@@ -676,13 +644,13 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                     <Search className="h-4 w-4" />
                     <input value={worktreeFilter} onChange={(event) => setWorktreeFilter(event.target.value)} placeholder="Filter worktrees" className="min-w-0 flex-1 bg-transparent text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]" />
                   </label>
-                  <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isWorktreeMutating} onClick={openCreateWorktreeDialog}>{createWorktree.isPending ? "Creating…" : "Create Worktree"}</button>
-                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || pruneWorktreesDryRun.isPending} onClick={handlePreviewPrune}>Preview prune</button>
-                  <button className="rounded-md border border-[var(--color-border)] p-2 text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || pruneWorktrees.isPending} onClick={handlePruneWorktrees} title="Prune stale worktrees"><RefreshCw className={`h-4 w-4 ${pruneWorktrees.isPending ? "animate-spin" : ""}`} /></button>
+                  <Button variant="primary" disabled={!activeRepoPath || isWorktreeMutating} onClick={openCreateWorktreeDialog}>{createWorktree.isPending ? "Creating…" : "Create Worktree"}</Button>
+                  <Button variant="secondary" disabled={!activeRepoPath || pruneWorktreesDryRun.isPending} onClick={handlePreviewPrune}>Preview prune</Button>
+                  <Button variant="secondary" iconOnly disabled={!activeRepoPath || pruneWorktrees.isPending} onClick={handlePruneWorktrees} title="Prune stale worktrees"><RefreshCw className={`h-4 w-4 ${pruneWorktrees.isPending ? "animate-spin" : ""}`} /></Button>
                 </div>
               </div>
               {prunePreviewPaths.length > 0 ? (
-                <div className="border-b border-[var(--color-border-muted)] bg-[color:rgba(210,153,34,0.08)] px-4 py-3 text-xs text-[var(--color-warning)]">
+                <div className="border-b border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-4 py-3 text-xs text-[var(--color-warning)]">
                   <strong>Prune preview:</strong> {prunePreviewPaths.length} stale worktree record{prunePreviewPaths.length === 1 ? "" : "s"} detected. Confirm prune from the toolbar or review the context panel first.
                 </div>
               ) : null}
@@ -698,12 +666,12 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                       <span>{row.aheadBehind}</span>
                       <span className="text-[var(--color-text-secondary)]">{row.updated}</span>
                       <span className="flex justify-end">
-                        <ActionButton tone="accent" disabled={openRepository.isPending} onClick={(event) => { event.stopPropagation(); handleOpenWorktree(row.path); }}><TerminalSquare className="h-3 w-3" />{row.action}</ActionButton>
+                        <Button variant="secondary" size="sm" disabled={openRepository.isPending} onClick={(event) => { event.stopPropagation(); handleOpenWorktree(row.path); }}><TerminalSquare className="h-3 w-3" />{row.action}</Button>
                       </span>
                     </div>
                   ))
                 ) : (
-                  <EmptyState message={activeRepoPath ? "No worktrees returned by the repository." : "Open a repository to load worktrees."} />
+                  <EmptyState title={activeRepoPath ? "No worktrees returned by the repository." : "Open a repository to load worktrees."} />
                 )}
               </div>
               <p className="border-t border-[var(--color-border-muted)] px-5 py-3 text-xs text-[var(--color-text-muted)]">{worktreeError ?? "Open/Switch stays in-row. Advanced and destructive actions require row selection."}</p>
@@ -724,10 +692,10 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                     <Search className="h-4 w-4" />
                     <input value={submoduleFilter} onChange={(event) => setSubmoduleFilter(event.target.value)} placeholder="Filter submodules" className="min-w-0 flex-1 bg-transparent text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]" />
                   </label>
-                  <button className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || isSubmoduleMutating} onClick={openAddSubmoduleDialog}>{addSubmodule.isPending ? "Adding…" : "Add Submodule"}</button>
-                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => handleSubmoduleInitUpdate(null, true)}>Init/update recursive</button>
-                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!canMutateSubmodules} onClick={() => void handleSyncSubmodules()}>Sync recursive</button>
-                  <button className="rounded-md border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!activeRepoPath || foreachStatusQuery.isFetching} onClick={() => { void foreachStatusQuery.refetch(); }}>Refresh foreach</button>
+                  <Button variant="primary" disabled={!activeRepoPath || isSubmoduleMutating} onClick={openAddSubmoduleDialog}>{addSubmodule.isPending ? "Adding…" : "Add Submodule"}</Button>
+                  <Button variant="secondary" disabled={!canMutateSubmodules} onClick={() => handleSubmoduleInitUpdate(null, true)}>Init/update recursive</Button>
+                  <Button variant="secondary" disabled={!canMutateSubmodules} onClick={() => void handleSyncSubmodules()}>Sync recursive</Button>
+                  <Button variant="secondary" disabled={!activeRepoPath || foreachStatusQuery.isFetching} onClick={() => { void foreachStatusQuery.refetch(); }}>Refresh foreach</Button>
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
@@ -744,13 +712,13 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                       <span>{row.recursive}</span>
                       <span className={row.status === "Up to date" ? "text-[var(--color-success)]" : "text-[var(--color-warning)]"}><StatusDot status={row.status} /> <span className="ml-1">{row.status}</span></span>
                       <span className="flex justify-end gap-1">
-                        <ActionButton disabled={isSubmoduleMutating} onClick={(event) => { event.stopPropagation(); handleSubmoduleInitUpdate(row.path, !row.isInitialized); }}>{row.isInitialized ? "Update" : "Init"}</ActionButton>
-                        <ActionButton tone="accent" disabled={openRepository.isPending} onClick={(event) => { event.stopPropagation(); void handleOpenSubmodule(row.path); }}>Open</ActionButton>
+                        <Button variant="secondary" size="sm" disabled={isSubmoduleMutating} onClick={(event) => { event.stopPropagation(); handleSubmoduleInitUpdate(row.path, !row.isInitialized); }}>{row.isInitialized ? "Update" : "Init"}</Button>
+                        <Button variant="secondary" size="sm" disabled={openRepository.isPending} onClick={(event) => { event.stopPropagation(); void handleOpenSubmodule(row.path); }}>Open</Button>
                       </span>
                     </div>
                   ))
                 ) : (
-                  <EmptyState message={activeRepoPath ? "No submodules returned by the repository." : "Open a repository to load submodules."} />
+                  <EmptyState title={activeRepoPath ? "No submodules returned by the repository." : "Open a repository to load submodules."} />
                 )}
               </div>
               {foreachStatusQuery.data && foreachStatusQuery.data.length > 0 ? (
@@ -789,15 +757,15 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                     <p className="flex justify-between">Detached <span>{selectedWorktree.isDetached ? "Yes" : "No"}</span></p>
                     <p className="flex justify-between">Locked <span>{selectedWorktree.isLocked ? selectedWorktree.lockReason || "Yes" : "No"}</span></p>
                   </div>
-                  {selectedWorktree.isDetached ? <p className="mt-4 rounded-md border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.08)] p-3 text-xs text-[var(--color-warning)]">Detached worktree: avoid commits here unless you intentionally want detached HEAD work.</p> : null}
+                  {selectedWorktree.isDetached ? <p className="mt-4 rounded-md border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-3 text-xs text-[var(--color-warning)]">Detached worktree: avoid commits here unless you intentionally want detached HEAD work.</p> : null}
                   <div className="mt-5 grid grid-cols-2 gap-2">
-                    <button className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-accent)]" disabled={openRepository.isPending} onClick={() => handleOpenWorktree(selectedWorktree.path)}><TerminalSquare className="h-4 w-4" /> Open</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isWorktreeMutating} onClick={() => handleMoveWorktree(selectedWorktree)}>Move</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isWorktreeMutating} onClick={() => selectedWorktree.isLocked ? handleUnlockWorktree(selectedWorktree) : handleLockWorktree(selectedWorktree)}>{selectedWorktree.isLocked ? "Unlock" : "Lock"}</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isWorktreeMutating} onClick={() => handleRepairWorktree(selectedWorktree)}>Repair</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={repairWorktreeDryRun.isPending} onClick={() => handlePreviewRepair(selectedWorktree)}>Preview repair</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={selectedWorktree.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={() => void handleRemoveWorktree(selectedWorktree, false)}>Remove</button>
-                    <button className="rounded-md border border-[color:rgba(248,81,73,0.45)] py-2 text-sm text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50" disabled={selectedWorktree.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={() => void handleRemoveWorktree(selectedWorktree, true)}>Force remove</button>
+                    <Button variant="secondary" className="w-full" disabled={openRepository.isPending} onClick={() => handleOpenWorktree(selectedWorktree.path)}><TerminalSquare className="h-4 w-4" /> Open</Button>
+                    <Button variant="secondary" className="w-full" disabled={isWorktreeMutating} onClick={() => handleMoveWorktree(selectedWorktree)}>Move</Button>
+                    <Button variant="secondary" className="w-full" disabled={isWorktreeMutating} onClick={() => selectedWorktree.isLocked ? handleUnlockWorktree(selectedWorktree) : handleLockWorktree(selectedWorktree)}>{selectedWorktree.isLocked ? "Unlock" : "Lock"}</Button>
+                    <Button variant="secondary" className="w-full" disabled={isWorktreeMutating} onClick={() => handleRepairWorktree(selectedWorktree)}>Repair</Button>
+                    <Button variant="secondary" className="w-full" disabled={repairWorktreeDryRun.isPending} onClick={() => handlePreviewRepair(selectedWorktree)}>Preview repair</Button>
+                    <Button variant="secondary" className="w-full" disabled={selectedWorktree.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={() => void handleRemoveWorktree(selectedWorktree, false)}>Remove</Button>
+                    <Button variant="danger" className="w-full" disabled={selectedWorktree.isCurrent || removeWorktreeDryRun.isPending || removeWorktree.isPending} onClick={() => void handleRemoveWorktree(selectedWorktree, true)}>Force remove</Button>
                   </div>
                   {prunePreviewPaths.length > 0 || repairPreviewLines.length > 0 ? (
                     <div className="mt-5 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3">
@@ -824,13 +792,13 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                     <p className="flex justify-between">Ahead / Behind <span>{selectedSubmodule.ahead}/{selectedSubmodule.behind}</span></p>
                     <p className="flex justify-between">Nested recursive <span>{selectedSubmodule.recursive}</span></p>
                   </div>
-                  {selectedSubmodule.behind > 0 ? <p className="mt-4 rounded-md border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.08)] p-3 text-xs text-[var(--color-warning)]"><AlertCircle className="mr-2 inline h-4 w-4" /> {selectedSubmodule.name} is {selectedSubmodule.behind} commits behind its tracked branch.</p> : null}
+                  {selectedSubmodule.behind > 0 ? <p className="mt-4 rounded-md border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-3 text-xs text-[var(--color-warning)]"><AlertCircle className="mr-2 inline h-4 w-4" /> {selectedSubmodule.name} is {selectedSubmodule.behind} commits behind its tracked branch.</p> : null}
                   <div className="mt-5 grid grid-cols-2 gap-2">
-                    <button className="inline-flex items-center justify-center gap-2 rounded-md border border-[var(--color-border)] py-2 text-sm text-[var(--color-accent)]" disabled={openRepository.isPending} onClick={() => handleOpenSubmodule(selectedSubmodule.path)}><GitCommitHorizontal className="h-4 w-4" /> Open</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isSubmoduleMutating} onClick={() => handleSetSubmoduleBranch(selectedSubmodule)}>Track branch</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isSubmoduleMutating} onClick={() => handleSubmoduleInitUpdate(selectedSubmodule.path, !selectedSubmodule.isInitialized)}>Init/update</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm" disabled={isSubmoduleMutating} onClick={() => handlePinnedSubmoduleUpdate(selectedSubmodule)}>Pinned update</button>
-                    <button className="rounded-md border border-[var(--color-border)] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50" disabled={isSubmoduleMutating || selectedSubmodule.behind <= 0} onClick={() => handleBumpSubmodule(selectedSubmodule)}>Bump parent</button>
+                    <Button variant="secondary" className="w-full" disabled={openRepository.isPending} onClick={() => handleOpenSubmodule(selectedSubmodule.path)}><GitCommitHorizontal className="h-4 w-4" /> Open</Button>
+                    <Button variant="secondary" className="w-full" disabled={isSubmoduleMutating} onClick={() => handleSetSubmoduleBranch(selectedSubmodule)}>Track branch</Button>
+                    <Button variant="secondary" className="w-full" disabled={isSubmoduleMutating} onClick={() => handleSubmoduleInitUpdate(selectedSubmodule.path, !selectedSubmodule.isInitialized)}>Init/update</Button>
+                    <Button variant="secondary" className="w-full" disabled={isSubmoduleMutating} onClick={() => handlePinnedSubmoduleUpdate(selectedSubmodule)}>Pinned update</Button>
+                    <Button variant="secondary" className="w-full" disabled={isSubmoduleMutating || selectedSubmodule.behind <= 0} onClick={() => handleBumpSubmodule(selectedSubmodule)}>Bump parent</Button>
                   </div>
                   <div className="mt-5 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 text-xs text-[var(--color-text-secondary)]">
                     <div className="font-semibold text-[var(--color-text-primary)]">Recursive workflow</div>
@@ -919,7 +887,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                 </code>
               </div>
               {actionError ? (
-                <div className="rounded-lg border border-[color:rgba(248,81,73,0.35)] bg-[color:rgba(248,81,73,0.08)] p-3 text-sm text-[var(--color-danger)]">
+                <div className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] p-3 text-sm text-[var(--color-danger)]">
                   {actionError}
                 </div>
               ) : null}
@@ -929,23 +897,23 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                 Path is required. Branch or commit is optional.
               </p>
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={closeCreateWorktreeDialog}
                   disabled={createWorktree.isPending}
-                  className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
+                  variant="primary"
                   disabled={
                     createWorktree.isPending || !createWorktreeForm.path.trim()
                   }
-                  className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {createWorktree.isPending ? "Creating…" : "Create worktree"}
-                </button>
+                </Button>
               </div>
             </div>
           </form>
@@ -1043,7 +1011,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                 </code>
               </div>
               {actionError ? (
-                <div className="rounded-lg border border-[color:rgba(248,81,73,0.35)] bg-[color:rgba(248,81,73,0.08)] p-3 text-sm text-[var(--color-danger)]">
+                <div className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] p-3 text-sm text-[var(--color-danger)]">
                   {actionError}
                 </div>
               ) : null}
@@ -1053,25 +1021,25 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                 URL and path are required. Branch and display name are optional.
               </p>
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={closeAddSubmoduleDialog}
                   disabled={addSubmodule.isPending}
-                  className="rounded-md border border-[var(--color-border)] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
+                  variant="primary"
                   disabled={
                     addSubmodule.isPending ||
                     !addSubmoduleForm.url.trim() ||
                     !addSubmoduleForm.path.trim()
                   }
-                  className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {addSubmodule.isPending ? "Adding…" : "Add submodule"}
-                </button>
+                </Button>
               </div>
             </div>
           </form>

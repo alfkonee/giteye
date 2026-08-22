@@ -50,7 +50,7 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
           </p>
         ) : (
           <div className="mt-4 space-y-3 text-xs text-[var(--color-text-secondary)]">
-            <div className="flex items-start gap-2 rounded-lg border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.08)] px-3 py-2.5 text-[var(--color-warning)]">
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-3 py-2.5 text-[var(--color-warning)]">
               <Archive className="mt-0.5 h-4 w-4 shrink-0" />
               <p>This repository has uncommitted changes. Choose how to handle the existing working copy.</p>
             </div>
@@ -74,7 +74,7 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
         )}
 
         {followUpNote ? (
-          <p className="mt-3 rounded-lg border border-[color:rgba(31,111,235,0.3)] bg-[color:rgba(31,111,235,0.1)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+          <p className="mt-3 rounded-lg border border-[var(--color-info-border)] bg-[var(--color-info-bg)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
             {followUpNote}
           </p>
         ) : null}

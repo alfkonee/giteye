@@ -12,6 +12,7 @@ import {
   LayoutPanelLeft,
   PlugZap,
   Search,
+  Settings2,
   ShieldCheck,
   Tag,
   Terminal,
@@ -29,6 +30,7 @@ import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
 import { CustomCommandView } from "../components/repository/CustomCommandView";
+import { RepositorySettings } from "../components/repository/RepositorySettings";
 
 export type ViewGroupId = "core" | "repository" | "collaboration";
 
@@ -88,6 +90,14 @@ export const viewDefinitions: ViewDefinition[] = [
     group: "core",
     icon: Box,
     render: () => <WorktreesSubmodules section="submodules" />,
+  },
+  {
+    id: "repo-settings",
+    label: "Repository Settings",
+    description: "Repository appearance, remotes, hooks, and workspace danger zone",
+    group: "repository",
+    icon: Settings2,
+    render: () => <RepositorySettings />,
   },
   {
     id: "remotes",
