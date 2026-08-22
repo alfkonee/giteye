@@ -143,19 +143,46 @@ function AppDialog({
   const { options } = request;
   const [input, setInput] = useState(request.kind === "prompt" ? request.options.initialValue ?? "" : "");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
   const isPrompt = request.kind === "prompt";
   const isAlert = request.kind === "alert";
   const canSubmit = !isPrompt || request.options.allowEmpty !== false || input.trim().length > 0;
 
+  // Capture the invoker first, then move focus into the dialog; restore on
+  // close so keyboard users never land back at <body>.
   useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (isPrompt) inputRef.current?.focus();
-  }, [isPrompt]);
+    else sectionRef.current?.focus();
+    return () => {
+      if (document.activeElement === document.body) previous?.focus();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         onSettle(isAlert ? undefined : request.kind === "confirm" ? false : null);
+        return;
+      }
+      // Trap Tab inside the dialog while it is open.
+      if (event.key === "Tab" && sectionRef.current) {
+        const focusables = sectionRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !sectionRef.current.contains(active))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -177,10 +204,12 @@ function AppDialog({
       }}
     >
       <section
+        ref={sectionRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="app-dialog-title"
-        className="w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)]"
+        className="w-[calc(100vw-2rem)] max-w-xl overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-elevated)] outline-none"
       >
         <header className="flex items-start gap-3 border-b border-[var(--color-border-muted)] px-4 py-3">
           <div
