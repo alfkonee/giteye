@@ -65,10 +65,12 @@ export const appDialog = {
   },
 };
 
-type DialogRequest =
+type PendingDialogRequest =
   | { kind: "alert"; options: BaseDialogOptions; resolve: (value: void) => void }
   | { kind: "confirm"; options: BaseDialogOptions; resolve: (value: boolean) => void }
   | { kind: "prompt"; options: PromptDialogOptions; resolve: (value: string | null) => void };
+
+type DialogRequest = PendingDialogRequest & { id: number };
 
 const AppDialogContext = createContext<AppDialogApi | null>(null);
 
@@ -81,18 +83,23 @@ export function useAppDialog() {
 export function AppDialogProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<DialogRequest | null>(null);
   const queueRef = useRef<DialogRequest[]>([]);
+  const nextRequestIdRef = useRef(0);
 
   const showNext = useCallback(() => {
     setActive(queueRef.current.shift() ?? null);
   }, []);
 
-  const enqueue = useCallback((request: DialogRequest) => {
+  const enqueue = useCallback((request: PendingDialogRequest) => {
+    // Unique per-request id used as the AppDialog key so every dialog remounts:
+    // queued prompts must not inherit a previous prompt's input, and the
+    // focus-in effect must rerun for each new dialog.
+    const requestWithId: DialogRequest = { ...request, id: nextRequestIdRef.current++ };
     setActive((current) => {
       if (current) {
-        queueRef.current.push(request);
+        queueRef.current.push(requestWithId);
         return current;
       }
-      return request;
+      return requestWithId;
     });
   }, []);
 
@@ -128,7 +135,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
   return (
     <AppDialogContext.Provider value={api}>
       {children}
-      {active ? <AppDialog request={active} onSettle={settle} /> : null}
+      {active ? <AppDialog key={active.id} request={active} onSettle={settle} /> : null}
     </AppDialogContext.Provider>
   );
 }

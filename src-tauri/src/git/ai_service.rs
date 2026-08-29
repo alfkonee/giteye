@@ -938,19 +938,29 @@ pub fn suggest_pull_request(
 }
 
 fn parse_pull_request_draft(raw: &str) -> Result<PullRequestDraft, AppError> {
-    let title_line = raw
-        .lines()
-        .find(|line| line.trim().starts_with("TITLE:"))
-        .and_then(|line| line.trim().strip_prefix("TITLE:"));
-    let body_start = raw
-        .lines()
+    let lines: Vec<&str> = raw.lines().collect();
+    let title_index = lines.iter().position(|line| line.trim().starts_with("TITLE:"));
+    let body_start = lines
+        .iter()
         .position(|line| line.trim().starts_with("BODY:"))
         .map(|index| index + 1);
 
-    let title = title_line
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .map(str::to_string);
+    // Models render the TITLE section in two ways: inline ("TITLE: foo") or as
+    // a bare header with the title on the following line. Accept both.
+    let title = title_index.and_then(|index| {
+        let inline = lines[index].trim().strip_prefix("TITLE:")?.trim();
+        let candidate = if !inline.is_empty() {
+            inline.to_string()
+        } else {
+            lines[index + 1..]
+                .iter()
+                .take_while(|line| !line.trim().starts_with("BODY:"))
+                .map(|line| line.trim())
+                .find(|line| !line.is_empty())?
+                .to_string()
+        };
+        (!candidate.is_empty()).then_some(candidate)
+    });
     let body = body_start
         .and_then(|start| {
             let lines = raw.lines().skip(start).collect::<Vec<_>>();
@@ -1482,6 +1492,39 @@ mod tests {
 
         assert!(
             git_error_message(error).contains("AI API error from OpenRouter: HTTP 401: bad key")
+        );
+    }
+
+    #[test]
+    fn pull_request_draft_parses_inline_title() {
+        let draft = parse_pull_request_draft(
+            "TITLE: feat(ui): refresh hub\n\nBODY:\n## Summary\n\n- redesign hub\n- fix dialogs",
+        )
+        .expect("valid draft");
+
+        assert_eq!(draft.title, "feat(ui): refresh hub");
+        assert_eq!(draft.body, "## Summary\n\n- redesign hub\n- fix dialogs");
+    }
+
+    #[test]
+    fn pull_request_draft_parses_title_on_next_line() {
+        let draft = parse_pull_request_draft(
+            "TITLE:\nfeat(ui): refresh hub\n\nBODY:\n## Summary\n\n- redesign hub",
+        )
+        .expect("valid draft");
+
+        assert_eq!(draft.title, "feat(ui): refresh hub");
+        assert_eq!(draft.body, "## Summary\n\n- redesign hub");
+    }
+
+    #[test]
+    fn pull_request_draft_rejects_empty_title() {
+        let error = parse_pull_request_draft("TITLE:\n\nBODY:\nSummary")
+            .expect_err("empty title must be rejected");
+
+        assert_eq!(
+            git_error_message(error),
+            "AI did not return a valid pull request title and body."
         );
     }
 }
