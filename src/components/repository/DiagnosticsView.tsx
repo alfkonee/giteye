@@ -23,7 +23,7 @@ import type {
   GitSignatureSummary,
 } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 function errorMessage(error: unknown) {
   if (!error) return null;
@@ -466,16 +466,14 @@ function DiagnosticsPanel({
           </div>
           <div className="mb-3 grid gap-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]" htmlFor="maintenance-mode">Mode</label>
-            <select
+            <Select
               id="maintenance-mode"
               value={maintenanceMode}
-              onChange={(event) => onMaintenanceModeChange(event.target.value as GitMaintenanceMode)}
+              onValueChange={(mode) => onMaintenanceModeChange(mode as GitMaintenanceMode)}
+              options={[{ value: "maintenance", label: "git maintenance run" }, { value: "gc", label: "git gc" }]}
               disabled={isMaintenancePending}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="maintenance">git maintenance run</option>
-              <option value="gc">git gc</option>
-            </select>
+              className="w-full"
+            />
           </div>
           <Button variant="danger" size="sm" disabled={isMaintenancePending} onClick={onRunMaintenance}>
             <Wrench className="h-3.5 w-3.5" /> Run selected maintenance

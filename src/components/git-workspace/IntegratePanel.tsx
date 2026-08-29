@@ -7,7 +7,7 @@ import { useAppStore } from "../../stores/app-store";
 import type { MergeStrategyOption, StartRebaseRequest } from "../../types/git";
 
 import { appDialog } from "../common/AppDialogProvider";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 const MERGE_STRATEGY_OPTIONS: Array<{ value: "" | MergeStrategyOption; label: string }> = [
   { value: "", label: "Default recursive strategy" },
@@ -199,17 +199,13 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
             </label>
           </div>
           <label className="mt-2 block text-xs text-[var(--color-text-muted)]">Strategy option</label>
-          <select
+          <Select
             value={strategyOption}
-            onChange={(event) => setStrategyOption(event.target.value as "" | MergeStrategyOption)}
-            className="giteye-input mt-1 w-full"
-          >
-            {MERGE_STRATEGY_OPTIONS.map((option) => (
-              <option key={option.value || "default"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setStrategyOption(value as "" | MergeStrategyOption)}
+            options={MERGE_STRATEGY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+            className="mt-1 w-full"
+            ariaLabel="Strategy option"
+          />
           <Button
             variant="primary"
             size="sm"

@@ -15,7 +15,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
 import { isTerminalStatus, useJobStore, type GitJobLogEntry } from "../../stores/job-store";
 import type { GitJobStatus } from "../../types/git";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 const HEIGHT_STORAGE_KEY = "giteye.command-log.height";
 const MIN_HEIGHT = 180;
@@ -147,19 +147,15 @@ export function CommandLogConsole() {
           {runningCount > 0 ? `${runningCount} running` : `${jobs.length} jobs`}
         </span>
 
-        <select
+        <Select
+          size="sm"
+          className="max-w-[220px]"
+          ariaLabel="Filter command log by repository"
           value={repoFilter ?? ""}
-          onChange={(event) => setRepoFilter(event.target.value || null)}
-          className="giteye-input h-6 max-w-[220px] text-[11px]"
-          aria-label="Filter command log by repository"
-        >
-          <option value="">All repositories</option>
-          {repos.map((repoPath) => (
-            <option key={repoPath} value={repoPath}>
-              {repoName(repoPath)}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => setRepoFilter(value || null)}
+          placeholder="All repositories"
+          options={[{ value: "", label: "All repositories" }, ...repos.map((repoPath) => ({ value: repoPath, label: repoName(repoPath) }))]}
+        />
 
         <Button
           variant="ghost"

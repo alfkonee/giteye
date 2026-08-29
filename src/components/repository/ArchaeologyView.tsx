@@ -14,7 +14,7 @@ import { gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { EmptyState } from "../common/EmptyState";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 import type {
   BlameFileRequest,
   BlameLine,
@@ -285,15 +285,12 @@ function SelectField({ label, value, options, onChange }: { label: string; value
   return (
     <label className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
       {label}
-      <select
+      <Select
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] px-3 text-[12px] normal-case tracking-normal text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-accent)]"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        options={options}
+        className="mt-1 w-full"
+      />
     </label>
   );
 }

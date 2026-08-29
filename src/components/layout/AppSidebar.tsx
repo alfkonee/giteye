@@ -9,6 +9,7 @@ import { cn } from "../../lib/cn";
 import { formatRelativeTime } from "../../lib/format";
 import { openCommandPalette } from "../../lib/command-palette";
 import { getShortcutBinding } from "../../lib/shortcuts";
+import { Select } from "../ui";
 
 export function AppSidebar({ children }: { children?: ReactNode }) {
   const queryClient = useQueryClient();
@@ -51,23 +52,15 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
         </div>
 
         <div className="px-3 pb-4">
-          <select
-            className="giteye-select"
+          <Select
+            ariaLabel="Active workspace"
             value={activeRepoPath ?? ""}
-            onChange={(event) => {
-              if (event.target.value) setActiveRepoPath(event.target.value);
+            onValueChange={(value) => {
+              if (value) setActiveRepoPath(value);
             }}
-            aria-label="Active workspace"
-          >
-            <option value="" disabled>
-              {openRepoPaths.length > 0 ? "Select workspace" : "No workspace open"}
-            </option>
-            {openRepoPaths.map((repoPath) => (
-              <option key={repoPath} value={repoPath}>
-                {basename(repoPath)}
-              </option>
-            ))}
-          </select>
+            placeholder={openRepoPaths.length > 0 ? "Select workspace" : "No workspace open"}
+            options={openRepoPaths.map((repoPath) => ({ value: repoPath, label: basename(repoPath) }))}
+          />
         </div>
 
         <nav className="space-y-1 px-3 pb-2">

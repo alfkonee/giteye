@@ -1,6 +1,9 @@
 use crate::errors::AppError;
 use crate::git::cli::{has_worktree_changes, required_git_arg, GitCli};
-use crate::models::Branch;
+use crate::models::{
+    Branch, LocalBranchPruneCandidate, LocalBranchPruneFailure, LocalBranchPruneResult,
+    unix_seconds_to_iso,
+};
 use std::path::Path;
 
 pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
@@ -9,15 +12,17 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
         &[
             "branch",
             "--all",
-            "--format=%(refname)|%(refname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)",
+            "--format=%(refname)|%(refname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)|%(committerdate:iso-strict)|%(authorname)|%(contents:subject)",
         ],
     )?;
+
+    let logs_dir = branch_reflogs_dir(repo_path);
 
     let branches: Vec<Branch> = output
         .lines()
         .filter(|l| !l.is_empty())
         .filter_map(|line| {
-            let parts: Vec<&str> = line.splitn(5, '|').collect();
+            let parts: Vec<&str> = line.splitn(8, '|').collect();
             if parts.len() < 2 {
                 return None;
             }
@@ -54,6 +59,23 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
                 })
                 .unwrap_or((None, None));
 
+            let last_commit_date = parts.get(5).filter(|d| !d.is_empty()).map(|d| d.to_string());
+            let last_commit_author = parts.get(6).filter(|a| !a.is_empty()).map(|a| a.to_string());
+            let last_commit_subject = parts
+                .get(7)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+
+            // Only local branches have a meaningful creation date; it is taken
+            // from the oldest entry in the branch's reflog file.
+            let created_at = if is_remote {
+                None
+            } else {
+                logs_dir
+                    .as_deref()
+                    .and_then(|dir| branch_created_at(dir, short_ref))
+            };
+
             Some(Branch {
                 name: ref_name.to_string(),
                 short_name: short_ref.to_string(),
@@ -62,11 +84,48 @@ pub fn list_branches(repo_path: &Path) -> Result<Vec<Branch>, AppError> {
                 upstream,
                 ahead,
                 behind,
+                last_commit_date,
+                last_commit_author,
+                last_commit_subject,
+                created_at,
             })
         })
         .collect();
 
     Ok(branches)
+}
+
+/// Resolves the directory holding reflog files (`git rev-parse --git-path logs`).
+fn branch_reflogs_dir(repo_path: &Path) -> Option<String> {
+    let path = GitCli::run(repo_path, &["rev-parse", "--git-path", "logs"]).ok()?;
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let resolved = Path::new(trimmed);
+    Some(
+        if resolved.is_absolute() {
+            resolved.to_path_buf()
+        } else {
+            repo_path.join(resolved)
+        }
+        .to_string_lossy()
+        .to_string(),
+    )
+}
+
+/// Oldest reflog entry timestamp for a branch, formatted as ISO-8601.
+fn branch_created_at(logs_dir: &str, short_name: &str) -> Option<String> {
+    let file = std::fs::read(format!("{logs_dir}/refs/heads/{short_name}")).ok()?;
+    let first_line = String::from_utf8(file).ok()?.lines().next()?.to_string();
+    // Reflog line: "<old-sha> <new-sha> <ident> <unix-time> <tz>\t<message>"
+    let left = first_line.split('\t').next()?;
+    let tokens: Vec<&str> = left.split_whitespace().collect();
+    if tokens.len() < 2 {
+        return None;
+    }
+    let seconds: i64 = tokens[tokens.len() - 2].parse().ok()?;
+    unix_seconds_to_iso(seconds)
 }
 
 pub fn get_current_branch(repo_path: &Path) -> Result<String, AppError> {
@@ -206,9 +265,95 @@ pub fn merge_with_options(
     Ok(())
 }
 
-pub fn delete_branch(repo_path: &Path, name: &str) -> Result<(), AppError> {
-    GitCli::run(repo_path, &["branch", "-d", name])?;
+pub fn delete_branch(repo_path: &Path, name: &str, force: bool) -> Result<(), AppError> {
+    let flag = if force { "-D" } else { "-d" };
+    GitCli::run(repo_path, &["branch", flag, name])?;
     Ok(())
+}
+
+/// Local branches that are candidates for pruning: fully merged into HEAD
+/// and/or tracking an upstream that no longer exists. The current branch is
+/// never a candidate.
+pub fn local_prune_candidates(repo_path: &Path) -> Result<Vec<LocalBranchPruneCandidate>, AppError> {
+    let format = "%(HEAD)|%(refname:short)|%(upstream:track)";
+    let merged_output = GitCli::run(
+        repo_path,
+        &["branch", "--merged", "HEAD", "--format", format],
+    )?;
+    let all_output = GitCli::run(repo_path, &["branch", "--format", format])?;
+
+    let parse =
+        |line: &str| -> Option<(bool, String, bool)> {
+            let parts: Vec<&str> = line.splitn(3, '|').collect();
+            if parts.len() < 2 {
+                return None;
+            }
+            let is_current = parts[0] == "*";
+            let name = parts[1].trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
+            let track = parts.get(2).copied().unwrap_or("").trim().to_string();
+            Some((is_current, name, track.to_lowercase().contains("gone")))
+        };
+
+    let mut candidates: Vec<LocalBranchPruneCandidate> = Vec::new();
+    for line in merged_output.lines() {
+        if let Some((is_current, name, gone)) = parse(line) {
+            if is_current {
+                continue;
+            }
+            candidates.push(LocalBranchPruneCandidate {
+                branch: name,
+                fully_merged: true,
+                upstream_gone: gone,
+            });
+        }
+    }
+
+    for line in all_output.lines() {
+        if let Some((is_current, name, gone)) = parse(line) {
+            if is_current || !gone || candidates.iter().any(|c| c.branch == name) {
+                continue;
+            }
+            candidates.push(LocalBranchPruneCandidate {
+                branch: name,
+                fully_merged: false,
+                upstream_gone: true,
+            });
+        }
+    }
+
+    candidates.sort_by(|a, b| a.branch.cmp(&b.branch));
+    Ok(candidates)
+}
+
+/// Deletes local branches with the safe `-d` flag. Branches that are not fully
+/// merged are reported as failures instead of being force-deleted.
+pub fn prune_local_branches(
+    repo_path: &Path,
+    branches: &[String],
+) -> Result<LocalBranchPruneResult, AppError> {
+    let mut result = LocalBranchPruneResult {
+        deleted: Vec::new(),
+        failed: Vec::new(),
+    };
+
+    for branch in branches {
+        let name = required_git_arg(branch, "branch name")?;
+        match GitCli::run(repo_path, &["branch", "-d", name]) {
+            Ok(_) => result.deleted.push(name.to_string()),
+            Err(error) => result.failed.push(LocalBranchPruneFailure {
+                branch: name.to_string(),
+                reason: match error {
+                    AppError::GitError(message) => message,
+                    other => other.to_string(),
+                },
+            }),
+        }
+    }
+
+    Ok(result)
 }
 
 fn validate_merge_strategy_option(option: &str) -> Result<&str, AppError> {

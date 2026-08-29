@@ -10,7 +10,7 @@ import type { SshKey, Theme } from "../../types/git";
 import { AiModelCombobox } from "./AiModelCombobox";
 import { ToolchainSettings } from "../toolchain/ToolchainSetup";
 import { useNoticeStore } from "../../stores/notice-store";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 type SettingsTab = "general" | "appearance" | "toolchain" | "ai" | "security";
 
@@ -385,15 +385,12 @@ export function SettingsPlaceholder() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1">
                       <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Provider</span>
-                      <select
+                      <Select
                         value={aiProvider}
-                        onChange={(event) => chooseAiProvider(event.target.value as AiProvider)}
-                        className="giteye-input w-full text-[12px]"
-                      >
-                        {aiProviders.map((provider) => (
-                          <option key={provider.id} value={provider.id}>{provider.label}</option>
-                        ))}
-                      </select>
+                        onValueChange={(provider) => chooseAiProvider(provider as AiProvider)}
+                        options={aiProviders.map((item) => ({ value: item.id, label: item.label }))}
+                        className="w-full"
+                      />
                     </label>
                     <div className="space-y-1">
                       <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">Model</span>

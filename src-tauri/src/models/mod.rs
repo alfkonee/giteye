@@ -24,7 +24,10 @@ pub use archaeology::{
     BlameLine, CommitSearchResult, FileChange, FileHistoryEntry, GitGrepMatch, LostCommit,
     PickaxeSearchResult,
 };
-pub use branch::Branch;
+pub use branch::{
+    unix_seconds_to_iso, Branch, LocalBranchPruneCandidate, LocalBranchPruneFailure,
+    LocalBranchPruneResult,
+};
 pub use commit::{CommitDetails, CommitSummary};
 pub use config::{GitCredentialConfig, GitIdentity};
 pub use diff::DiffResult;

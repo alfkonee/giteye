@@ -16,7 +16,7 @@ import {
   type TraceLevel,
 } from "../../lib/invoke-trace";
 import { useShortcut } from "../../lib/shortcuts";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 const TRACE_ROW_HEIGHT = 30;
 
@@ -89,21 +89,21 @@ export function RustCallTracePanel() {
           placeholder="Filter traces…"
           className="giteye-input ml-auto h-7 w-44 text-xs"
         />
-        <select
+        <Select
           value={level}
-          onChange={(event) => {
-            const nextLevel = event.target.value as TraceLevel;
-            setLevel(nextLevel);
-            setTraceLevel(nextLevel);
+          onValueChange={(nextLevel) => {
+            setLevel(nextLevel as TraceLevel);
+            setTraceLevel(nextLevel as TraceLevel);
           }}
-          className="giteye-input h-7 w-32 text-xs"
-          title="Rust: IPC only · Navigation: IPC and route changes · Verbose: IPC, routes, clicks, and keys"
-          aria-label="Tracing level"
-        >
-          <option value="rust">Rust only</option>
-          <option value="navigation">Navigation</option>
-          <option value="verbose">Verbose UI</option>
-        </select>
+          options={[
+            { value: "rust", label: "Rust only" },
+            { value: "navigation", label: "Navigation" },
+            { value: "verbose", label: "Verbose UI" },
+          ]}
+          size="sm"
+          className="w-32"
+          ariaLabel="Tracing level"
+        />
         <Button
           variant="secondary"
           size="sm"

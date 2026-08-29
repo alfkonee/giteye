@@ -8,7 +8,7 @@ import { useAppStore } from "../../stores/app-store";
 import type { Branch, GitTag, LfsCommandPreview, LfsMigrationMode, LfsMigrationRequest, LfsTrackPattern, LfsTransferOperation, LfsTransferRequest, Remote, StashEntry } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
 import { EmptyState } from "../common/EmptyState";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -858,7 +858,19 @@ export function LfsView() {
                 <h3 className="flex items-center gap-2 text-sm font-semibold"><ArrowLeftRight className="h-4 w-4 text-[var(--color-accent)]" />Transfer objects</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">Preview downloads, worktree population, or uploads before queuing them.</p>
                 <div className="mt-3 grid gap-2">
-                  <select className={fieldClass} value={transferOperation} onChange={(event) => { setTransferOperation(event.target.value as LfsTransferOperation); setTransferAll(false); }}><option value="fetch">Fetch</option><option value="pull">Pull</option><option value="push">Push</option></select>
+                  <Select
+                    className={fieldClass}
+                    value={transferOperation}
+                    onValueChange={(operation) => {
+                      setTransferOperation(operation as LfsTransferOperation);
+                      setTransferAll(false);
+                    }}
+                    options={[
+                      { value: "fetch", label: "Fetch" },
+                      { value: "pull", label: "Pull" },
+                      { value: "push", label: "Push" },
+                    ]}
+                  />
                   <div className={`grid gap-2 ${transferOperation === "pull" ? "" : "grid-cols-2"}`}><input className={fieldClass} value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="Remote" />{transferOperation !== "pull" ? <input className={fieldClass} value={transferRef} onChange={(event) => setTransferRef(event.target.value)} placeholder={transferOperation === "push" && !transferAll ? "Ref (required)" : "Ref (optional)"} disabled={transferOperation === "push" && transferAll} /> : null}</div>
                   {transferOperation !== "push" ? <div className="grid grid-cols-2 gap-2"><input className={fieldClass} value={transferInclude} onChange={(event) => setTransferInclude(event.target.value)} placeholder="Include paths" /><input className={fieldClass} value={transferExclude} onChange={(event) => setTransferExclude(event.target.value)} placeholder="Exclude paths" /></div> : null}
                   {transferOperation !== "pull" ? <LfsCheckbox checked={transferAll} onChange={setTransferAll} label="All refs / objects" /> : null}
@@ -883,7 +895,15 @@ export function LfsView() {
                 <h3 className="flex items-center gap-2 text-sm font-semibold"><Wrench className="h-4 w-4 text-[var(--color-danger)]" />History migration</h3>
                 <p className="mt-1 text-xs text-[var(--color-text-muted)]">Rewrite selected history. A clean worktree is required and a recovery branch is created automatically.</p>
                 <div className="mt-3 grid gap-2">
-                  <select className={fieldClass} value={migrationMode} onChange={(event) => setMigrationMode(event.target.value as LfsMigrationMode)}><option value="import">Import into LFS</option><option value="export">Export from LFS</option></select>
+                  <Select
+                    className={fieldClass}
+                    value={migrationMode}
+                    onValueChange={(mode) => setMigrationMode(mode as LfsMigrationMode)}
+                    options={[
+                      { value: "import", label: "Import into LFS" },
+                      { value: "export", label: "Export from LFS" },
+                    ]}
+                  />
                   <input className={fieldClass} value={migrationInclude} onChange={(event) => setMigrationInclude(event.target.value)} placeholder="Include pattern (required)" />
                   <input className={fieldClass} value={migrationExclude} onChange={(event) => setMigrationExclude(event.target.value)} placeholder="Exclude pattern" />
                   <p className="text-[10px] text-[var(--color-text-muted)]">Migration is limited to the checked-out branch and does not fetch remote refs, keeping execution identical to the preview.</p>

@@ -13,7 +13,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import type { RebaseTodoItem } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 
 const splitLines = (content: string | null | undefined, emptyMessage: string) => {
@@ -170,14 +170,15 @@ function TodoRow({
         {item.completed ? (
           <span className="rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-0.5 text-[var(--color-text-muted)]">{item.action}</span>
         ) : (
-          <select
+          <Select
             value={item.action}
             disabled={disabled}
-            onChange={(event) => onActionChange?.(event.target.value)}
-            className="w-[92px] shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-1.5 py-1 text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {REBASE_ACTIONS.map((action) => <option key={action} value={action}>{action}</option>)}
-          </select>
+            onValueChange={(action) => onActionChange?.(action)}
+            options={REBASE_ACTIONS.map((action) => ({ value: action, label: action }))}
+            size="sm"
+            className="w-[92px] shrink-0"
+            ariaLabel={`Action for ${item.message}`}
+          />
         )}
         <span className="ml-auto font-mono text-[var(--color-text-muted)]">{shortHash(item.commit)}</span>
         <span className="flex shrink-0 gap-0.5">

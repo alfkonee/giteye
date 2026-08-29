@@ -2,7 +2,9 @@ use crate::errors::AppError;
 use crate::git::branch_service;
 use crate::git::cli::{has_worktree_changes, required_git_arg};
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
-use crate::models::{Branch, GitJobSummary};
+use crate::models::{
+    Branch, GitJobSummary, LocalBranchPruneCandidate, LocalBranchPruneResult,
+};
 use std::path::Path;
 use tauri::{AppHandle, State};
 
@@ -137,9 +139,40 @@ pub fn merge_with_options(
 }
 
 #[tauri::command]
-pub async fn delete_branch(repo_path: String, branch_name: String) -> Result<(), AppError> {
+pub async fn delete_branch(
+    repo_path: String,
+    branch_name: String,
+    force: Option<bool>,
+) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        branch_service::delete_branch(Path::new(&repo_path), &branch_name)
+        branch_service::delete_branch(
+            Path::new(&repo_path),
+            &branch_name,
+            force.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn local_branch_prune_plan(
+    repo_path: String,
+) -> Result<Vec<LocalBranchPruneCandidate>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::local_prune_candidates(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn prune_local_branches(
+    repo_path: String,
+    branches: Vec<String>,
+) -> Result<LocalBranchPruneResult, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        branch_service::prune_local_branches(Path::new(&repo_path), &branches)
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?

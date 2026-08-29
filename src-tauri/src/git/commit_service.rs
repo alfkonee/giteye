@@ -70,6 +70,42 @@ pub fn get_commit_history(
     Ok(commits)
 }
 
+/// Subject lines of the commits that `head` introduces over `base`, newest first.
+///
+/// This is the text the AI PR assistant summarizes into a title and description.
+/// When `base` is absent the branch's own recent history is used instead.
+pub fn branch_commit_subjects(
+    repo_path: &Path,
+    head: &str,
+    base: Option<&str>,
+    limit: usize,
+) -> Result<Vec<String>, AppError> {
+    let limit_str = limit.to_string();
+    let revision = match base {
+        Some(base) => format!("{base}..{head}"),
+        None => head.to_string(),
+    };
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "log",
+            "--no-merges",
+            "--date-order",
+            "--max-count",
+            &limit_str,
+            &revision,
+            "--pretty=format:%s",
+        ],
+    )?;
+
+    Ok(output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
 pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails, AppError> {
     let output = GitCli::run(
         repo_path,

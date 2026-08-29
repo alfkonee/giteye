@@ -26,7 +26,7 @@ import type { PullRequestSummary } from "../../types/git";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { LoadingSpinner } from "../common/LoadingSpinner";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 
 const bucketFilters: Array<{ value: CheckBucket | "all"; label: string }> = [
   { value: "all", label: "All" },
@@ -353,17 +353,13 @@ export function CiStatusView() {
                     className="h-9 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] pl-8 pr-3 text-sm text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
                   />
                 </label>
-                <select
+                <Select
+                  className="h-9 rounded-lg border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm"
+                  ariaLabel="Filter checks by result"
                   value={bucketFilter}
-                  onChange={(event) => setBucketFilter(event.target.value as CheckBucket | "all")}
-                  className="h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-                >
-                  {bucketFilters.map((filter) => (
-                    <option key={filter.value} value={filter.value}>
-                      {filter.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setBucketFilter(value as CheckBucket | "all")}
+                  options={bucketFilters.map((filter) => ({ value: filter.value, label: filter.label }))}
+                />
               </div>
             </div>
 

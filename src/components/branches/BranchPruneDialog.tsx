@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, GitBranch, RefreshCw, Scissors, TriangleAlert, X } from "lucide-react";
 import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
 import type { LocalBranchPruneCandidate } from "../../types/git";
-import { Button } from "../ui";
+import { Button, Select } from "../ui";
 import { useAppDialog } from "../common/AppDialogProvider";
 
 export function BranchPruneButton({
@@ -182,16 +182,14 @@ function BranchPruneDialog({ repoPath, onClose }: { repoPath: string | null; onC
         <div className="space-y-3 px-4 py-3">
           <label className="block space-y-1.5 text-xs text-[var(--color-text-secondary)]">
             <span>Remote</span>
-            <select
+            <Select
               value={remote}
-              onChange={(event) => setRemote(event.target.value)}
+              onValueChange={(item) => setRemote(item)}
+              options={remotes.map((item) => ({ value: item.name, label: item.name }))}
               disabled={busy || remotes.length === 0}
-              className="giteye-input w-full"
-            >
-              {remotes.map((item) => (
-                <option key={item.name} value={item.name}>{item.name}</option>
-              ))}
-            </select>
+              className="w-full"
+              ariaLabel="Remote"
+            />
           </label>
 
           {remotes.length === 0 && !remotesQuery.isLoading ? (
