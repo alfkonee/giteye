@@ -70,6 +70,42 @@ pub fn get_commit_history(
     Ok(commits)
 }
 
+/// Subject lines of the commits that `head` introduces over `base`, newest first.
+///
+/// This is the text the AI PR assistant summarizes into a title and description.
+/// When `base` is absent the branch's own recent history is used instead.
+pub fn branch_commit_subjects(
+    repo_path: &Path,
+    head: &str,
+    base: Option<&str>,
+    limit: usize,
+) -> Result<Vec<String>, AppError> {
+    let limit_str = limit.to_string();
+    let revision = match base {
+        Some(base) => format!("{base}..{head}"),
+        None => head.to_string(),
+    };
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "log",
+            "--no-merges",
+            "--date-order",
+            "--max-count",
+            &limit_str,
+            &revision,
+            "--pretty=format:%s",
+        ],
+    )?;
+
+    Ok(output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
 pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails, AppError> {
     let output = GitCli::run(
         repo_path,
@@ -78,6 +114,11 @@ pub fn get_commit_details(repo_path: &Path, hash: &str) -> Result<CommitDetails,
             "--format=%H%x00%s%x00%b%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%P",
             "--name-only",
             "--no-renames",
+            // Plain `git show` emits a *combined* diff for merges, which is
+            // empty for clean merges. Diff against the first parent instead,
+            // matching every mainstream Git GUI.
+            "-m",
+            "--first-parent",
             hash,
         ],
     )?;
@@ -481,6 +522,47 @@ mod tests {
         assert!(
             feature_index < main_index,
             "recent merged branch should stay close to merge: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn merge_commit_details_list_changes_against_first_parent() {
+        let temp = TestDir::new("merge-details");
+        init_repo(&temp.path);
+
+        fs::write(temp.path.join("README.md"), "# fixture\n").expect("write file");
+        git(&temp.path, &["add", "README.md"]);
+        git_at(
+            &temp.path,
+            &["commit", "-m", "Initial fixture"],
+            "2026-01-01T00:00:00Z",
+        );
+
+        git(&temp.path, &["branch", "feature"]);
+        git(&temp.path, &["checkout", "feature"]);
+        fs::write(temp.path.join("feature.txt"), "feature\n").expect("write feature");
+        git(&temp.path, &["add", "feature.txt"]);
+        git_at(
+            &temp.path,
+            &["commit", "-m", "Feature work"],
+            "2026-01-02T00:00:00Z",
+        );
+
+        git(&temp.path, &["checkout", "main"]);
+        git_at(
+            &temp.path,
+            &["merge", "--no-ff", "feature", "-m", "Merge feature"],
+            "2026-01-03T00:00:00Z",
+        );
+
+        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        assert_eq!(history[0].message, "Merge feature");
+
+        let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
+        assert!(
+            details.changed_files.iter().any(|file| file == "feature.txt"),
+            "clean merge must list merged files, got {:?}",
+            details.changed_files
         );
     }
 }

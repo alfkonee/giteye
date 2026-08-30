@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { Circle, GitBranch, Home, Loader2, X } from "lucide-react";
+import { Circle, GitBranch, Loader2, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
@@ -37,21 +37,6 @@ export function RepositoryTabs() {
 
   return (
     <div className="giteye-repository-tabs flex min-h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2">
-      <button
-        type="button"
-        onClick={() => setActiveRepoPath(null)}
-        className={cn(
-          "giteye-btn giteye-btn-sm min-h-9 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
-          activeRepoPath
-            ? "giteye-btn-ghost text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
-            : "giteye-nav-active border border-[var(--color-border-accent)] text-[var(--color-text-primary)]",
-        )}
-        title="Open Repo Hub"
-      >
-        <Home className="h-3.5 w-3.5" />
-        Repo Hub
-      </button>
-      <div className="h-5 w-px bg-[var(--color-border-muted)]" />
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {openRepoPaths.map((repoPath, index) => {
           const snapshot = snapshotQueries[index]?.data;

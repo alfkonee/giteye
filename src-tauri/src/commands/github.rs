@@ -158,3 +158,26 @@ pub async fn close_pull_request(repo_path: String, number: u64) -> Result<(), Ap
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
 }
+
+#[tauri::command]
+pub async fn create_pull_request(
+    repo_path: String,
+    head: String,
+    base: Option<String>,
+    title: String,
+    body: Option<String>,
+    draft: bool,
+) -> Result<String, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        github_service::create_pull_request(
+            Path::new(&repo_path),
+            &head,
+            base.as_deref(),
+            &title,
+            body.as_deref(),
+            draft,
+        )
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}

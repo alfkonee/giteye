@@ -1,10 +1,12 @@
 use crate::errors::AppError;
+use crate::git::cli::GitCli;
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
 use crate::git::repository_service;
 use crate::models::{
     BranchSummary, GitJobSummary, RepositoryInfo, RepositorySnapshot, WorkspaceSummary,
 };
 use crate::storage;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 
@@ -201,6 +203,7 @@ fn enrich_recent_relationships(repositories: &mut [storage::RecentRepo]) {
                     if repository.is_stale {
                         return;
                     }
+                    repository.current_branch = read_current_branch(Path::new(&repository.path));
                     if let Some(parent) =
                         repository_service::detect_repository_parent(Path::new(&repository.path))
                     {
@@ -219,6 +222,7 @@ fn enrich_favorite_relationships(repositories: &mut [storage::FavoriteRepo]) {
         std::thread::scope(|scope| {
             for repository in batch {
                 scope.spawn(move || {
+                    repository.current_branch = read_current_branch(Path::new(&repository.path));
                     if let Some(parent) =
                         repository_service::detect_repository_parent(Path::new(&repository.path))
                     {
@@ -230,4 +234,53 @@ fn enrich_favorite_relationships(repositories: &mut [storage::FavoriteRepo]) {
             }
         });
     }
+}
+
+fn read_current_branch(repo_path: &Path) -> Option<String> {
+    GitCli::run(repo_path, &["symbolic-ref", "--short", "HEAD"])
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct HubCommitActivity {
+    pub path: String,
+    pub commits_this_week: u32,
+}
+
+#[tauri::command]
+pub async fn hub_commit_activity(
+    repo_paths: Vec<String>,
+) -> Result<Vec<HubCommitActivity>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::with_capacity(repo_paths.len());
+        for chunk in repo_paths.chunks(RELATIONSHIP_ENRICHMENT_BATCH_SIZE) {
+            let mut partial: Vec<HubCommitActivity> = chunk
+                .iter()
+                .map(|path| HubCommitActivity {
+                    path: path.clone(),
+                    commits_this_week: 0,
+                })
+                .collect();
+            std::thread::scope(|scope| {
+                for entry in partial.iter_mut() {
+                    scope.spawn(move || {
+                        entry.commits_this_week = GitCli::run(
+                            Path::new(&entry.path),
+                            &["rev-list", "--count", "--since=7 days ago", "HEAD"],
+                        )
+                        .ok()
+                        .and_then(|value| value.trim().parse::<u32>().ok())
+                        .unwrap_or(0);
+                    });
+                }
+            });
+            results.extend(partial);
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }

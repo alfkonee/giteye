@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::git::ai_service;
-
+use crate::git::commit_service;
+use std::path::Path;
 #[tauri::command]
 pub fn get_ai_config(app_handle: tauri::AppHandle) -> Result<ai_service::AiConfigView, AppError> {
     ai_service::get_ai_config(&app_handle)
@@ -46,5 +47,25 @@ pub async fn suggest_commit_message(
     tauri::async_runtime::spawn_blocking(move || ai_service::suggest_commit_message(&app_handle, &diffs))
         .await
         .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn suggest_pull_request(
+    app_handle: tauri::AppHandle,
+    repo_path: String,
+    head_branch: String,
+    base_branch: Option<String>,
+) -> Result<ai_service::PullRequestDraft, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let commits = commit_service::branch_commit_subjects(
+            Path::new(&repo_path),
+            &head_branch,
+            base_branch.as_deref(),
+            50,
+        )?;
+        ai_service::suggest_pull_request(&app_handle, &head_branch, &commits)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 

@@ -1,7 +1,7 @@
-import type { RepositoryInfo } from "./git";
+import type { RepositoryInfo, Theme } from "./git";
 
 export interface AppSettings {
-  theme: "dark" | "light";
+  theme: Theme;
   gitExecutablePath: string | null;
   userName: string | null;
   userEmail: string | null;

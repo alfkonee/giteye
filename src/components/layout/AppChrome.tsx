@@ -13,11 +13,13 @@ import {
 interface AppChromeProps {
   title: string;
   subtitle?: string;
+  leading?: ReactNode;
+  trailing?: ReactNode;
   children: ReactNode;
   className?: string;
 }
 
-export function AppChrome({ title, subtitle, children, className }: AppChromeProps) {
+export function AppChrome({ title, subtitle, leading, trailing, children, className }: AppChromeProps) {
   const controlPlacement = getWindowControlPlacement();
 
   const handleTitlebarMouseDown = (event: MouseEvent<HTMLElement>) => {
@@ -39,28 +41,49 @@ export function AppChrome({ title, subtitle, children, className }: AppChromePro
       <WindowResizeHandles />
     <div className={cn("giteye-shell flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]", className)}>
       <header
-        className="giteye-window-chrome grid shrink-0 select-none grid-cols-[160px_minmax(0,1fr)_160px] items-center"
+        className="giteye-window-chrome flex shrink-0 select-none items-center gap-2 px-3"
         data-control-placement={controlPlacement}
         onMouseDown={handleTitlebarMouseDown}
+        aria-label={title}
       >
-        <div className="flex min-w-0 items-center px-3">
-          {controlPlacement === "left" ? <WindowControls placement={controlPlacement} /> : <WindowBrand />}
+        {controlPlacement === "left" ? (
+          <WindowControls placement={controlPlacement} />
+        ) : leading ? null : (
+          <WindowBrand />
+        )}
+
+        {leading ? (
+          <div className="flex min-w-0 items-center gap-2" data-giteye-no-drag>
+            {leading}
+          </div>
+        ) : null}
+
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
+          {leading || trailing ? null : (
+            <>
+              <span className="min-w-0 truncate text-[12px] font-medium tracking-[-0.01em] text-[var(--color-window-title)]">
+                {title}
+              </span>
+              {subtitle ? (
+                <span className="hidden min-w-0 truncate text-[11px] text-[var(--color-window-subtitle)] lg:inline">
+                  {subtitle}
+                </span>
+              ) : null}
+            </>
+          )}
         </div>
 
-        <div className="flex min-w-0 items-center justify-center gap-1.5 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
-          <span className="min-w-0 truncate text-[12px] font-medium tracking-[-0.01em] text-[var(--color-window-title)]">
-            {title}
-          </span>
-          {subtitle ? (
-            <span className="hidden min-w-0 truncate text-[11px] text-[var(--color-window-subtitle)] lg:inline">
-              {subtitle}
-            </span>
-          ) : null}
-        </div>
+        {trailing ? (
+          <div className="flex min-w-0 items-center gap-1.5" data-giteye-no-drag>
+            {trailing}
+          </div>
+        ) : null}
 
-        <div className="flex min-w-0 items-center justify-end px-3">
-          {controlPlacement === "right" ? <WindowControls placement={controlPlacement} /> : <WindowBrand />}
-        </div>
+        {controlPlacement === "right" ? (
+          <WindowControls placement={controlPlacement} />
+        ) : trailing ? null : (
+          <WindowBrand />
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>

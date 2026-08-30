@@ -9,6 +9,7 @@ import {
   GitBranch,
   GitMerge,
   RefreshCw,
+  Tag,
   X,
 } from "lucide-react";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
@@ -18,6 +19,8 @@ import { useAppStore } from "../../stores/app-store";
 import { CommitHistory } from "../commit-history/CommitHistory";
 import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
 import { IntegratePanel } from "./IntegratePanel";
+import { BranchPruneButton } from "../branches/BranchPruneDialog";
+import { appDialog } from "../common/AppDialogProvider";
 
 type DrawerTab = "integrate" | "conflicts";
 
@@ -40,6 +43,7 @@ export function GitWorkspace() {
   const operationQuery = useQuery(
     gitQueries.operationSummary(activeRepoPath, Boolean(activeRepoPath)),
   );
+  const { data: tags = [] } = useQuery(gitQueries.tags(activeRepoPath));
   const continueRebaseMutation = useMutation(
     gitMutations.continueRebase(queryClient, activeRepoPath),
   );
@@ -54,6 +58,9 @@ export function GitWorkspace() {
   const repoInfo = snapshot?.repositoryInfo;
   const summary = snapshot?.summary;
   const operation = operationQuery.data;
+  const headTags = repoInfo?.headCommit
+    ? tags.filter((tag) => tag.commitHash === repoInfo.headCommit)
+    : [];
   const conflicts = operation?.conflicts ?? [];
   const activeOperation =
     operation?.operation ?? (operation?.inRebase ? "rebase" : operation?.inMerge ? "merge" : null);
@@ -85,6 +92,16 @@ export function GitWorkspace() {
   }, [activeOperation]);
 
   const openDrawer = (tab: DrawerTab) => setDrawerTab((current) => (current === tab ? null : tab));
+  const abortOperation = async () => {
+    if (!activeOperation) return;
+    const confirmed = await appDialog.confirm(
+      `Abort the in-progress ${activeOperation}?\n\nGit restores the pre-operation state; resolved conflict edits made in this operation are discarded.`,
+      `Abort ${activeOperation}?`,
+      "danger",
+    );
+    if (!confirmed) return;
+    inRebase ? abortRebaseMutation.mutate() : recoverMutation.mutate("abort");
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
@@ -125,6 +142,26 @@ export function GitWorkspace() {
                 : `${summary?.stagedCount ?? 0} staged · ${summary?.unstagedCount ?? 0} unstaged`}
             </span>
           </div>
+          {headTags.length > 0 ? (
+            <div className="flex min-w-0 items-center gap-1">
+              {headTags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag.name}
+                  className="giteye-chip max-w-40 truncate"
+                  data-tone="warning"
+                  title={`HEAD tag ${tag.name} · ${tag.shortHash}`}
+                >
+                  <Tag className="h-3 w-3" />
+                  {tag.name}
+                </span>
+              ))}
+              {headTags.length > 3 ? (
+                <span className="giteye-chip tabular-nums" title={headTags.slice(3).map((tag) => tag.name).join(", ")}>
+                  +{headTags.length - 3}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="ml-auto flex items-center gap-1">
             <button
@@ -136,6 +173,7 @@ export function GitWorkspace() {
               <RefreshCw className="h-3.5 w-3.5" />
               <span className="sr-only">Refresh</span>
             </button>
+            <BranchPruneButton repoPath={activeRepoPath} compact />
             <button
               type="button"
               onClick={() => openDrawer("integrate")}
@@ -171,7 +209,7 @@ export function GitWorkspace() {
       </header>
 
       {activeOperation ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.1)] px-2.5 py-1 text-[11px] text-[var(--color-warning)]">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2.5 py-1 text-[11px] text-[var(--color-warning)]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span className="font-semibold uppercase tracking-[0.06em]">{activeOperation} in progress</span>
           <span className="text-[var(--color-text-secondary)]">
@@ -203,16 +241,7 @@ export function GitWorkspace() {
             <button
               type="button"
               disabled={operationPending}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    `Abort the in-progress ${activeOperation}?\n\nGit restores the pre-operation state; resolved conflict edits made in this operation are discarded.`,
-                  )
-                ) {
-                  return;
-                }
-                inRebase ? abortRebaseMutation.mutate() : recoverMutation.mutate("abort");
-              }}
+              onClick={() => void abortOperation()}
               className="giteye-btn giteye-btn-sm border border-[var(--color-danger)] text-[var(--color-danger)]"
             >
               Abort

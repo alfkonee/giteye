@@ -22,6 +22,7 @@ pub struct RecentRepo {
     pub parent_name: Option<String>,
     pub relationship_kind: Option<String>,
     pub is_stale: bool,
+    pub current_branch: Option<String>,
 }
 
 impl Default for RecentRepo {
@@ -34,6 +35,7 @@ impl Default for RecentRepo {
             parent_name: None,
             relationship_kind: None,
             is_stale: false,
+            current_branch: None,
         }
     }
 }
@@ -47,6 +49,7 @@ pub struct FavoriteRepo {
     pub parent_path: Option<String>,
     pub parent_name: Option<String>,
     pub relationship_kind: Option<String>,
+    pub current_branch: Option<String>,
 }
 
 impl Default for FavoriteRepo {
@@ -58,6 +61,7 @@ impl Default for FavoriteRepo {
             parent_path: None,
             parent_name: None,
             relationship_kind: None,
+            current_branch: None,
         }
     }
 }
@@ -159,7 +163,7 @@ fn clean_optional_string(value: Option<String>) -> Option<String> {
 
 fn normalize_app_settings(mut settings: AppSettings) -> AppSettings {
     let default = AppSettings::default();
-    if !matches!(settings.theme.as_str(), "dark" | "light") {
+    if !matches!(settings.theme.as_str(), "dark" | "light" | "system") {
         settings.theme = default.theme;
     }
     if !matches!(settings.diff_mode.as_str(), "unified" | "split") {
@@ -259,6 +263,7 @@ pub fn save_recent_repository(
             parent_name: None,
             relationship_kind: None,
             is_stale: false,
+            current_branch: None,
         },
     );
 
@@ -325,6 +330,7 @@ pub fn set_repository_favorite(
                 parent_path: None,
                 parent_name: None,
                 relationship_kind: None,
+                current_branch: None,
             },
         );
     }

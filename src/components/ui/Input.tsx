@@ -21,8 +21,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({
 
   const decorationStyle = {
     ...style,
-    ...(leadingIcon ? { paddingLeft: "3rem" } : {}),
-    ...(trailing ? { paddingRight: "3rem" } : {}),
+    ...(leadingIcon ? { paddingLeft: "2.25rem" } : {}),
+    ...(trailing ? { paddingRight: "2.25rem" } : {}),
   };
 
   return (

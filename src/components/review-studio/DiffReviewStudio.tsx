@@ -34,7 +34,8 @@ import {
 } from "../../lib/pr-diff";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
-import { Avatar, Markdown } from "../ui";
+import { Avatar, Button, Markdown } from "../ui";
+import { appDialog } from "../common/AppDialogProvider";
 import type {
   CheckRunSummary,
   PullRequestSummary,
@@ -340,7 +341,7 @@ function PrSummary({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selected ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
+      className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selected ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
     >
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-xs text-[var(--color-text-muted)]">
@@ -600,9 +601,13 @@ export function DiffReviewStudio() {
   const canMutateCurrentPr = Boolean(
     currentPr && currentPr.state?.toLowerCase() === "open",
   );
-  const requestReview = () => {
+  const requestReview = async () => {
     if (!currentPr) return;
-    const input = window.prompt("Reviewer usernames or teams, comma-separated");
+    const input = await appDialog.prompt(
+      "Enter reviewer usernames or teams, comma-separated.",
+      "",
+      "Request review",
+    );
     const reviewers =
       input
         ?.split(",")
@@ -611,29 +616,33 @@ export function DiffReviewStudio() {
     if (reviewers.length === 0) return;
     requestReviewMutation.mutate({ number: currentPr.number, reviewers });
   };
-  const submitReview = (event: "approve" | "request_changes" | "comment") => {
+  const submitReview = async (event: "approve" | "request_changes" | "comment") => {
     if (!currentPr) return;
-    const body =
+    const body = await appDialog.prompt(
       event === "approve"
-        ? (window.prompt("Optional approval note") ?? undefined)
-        : window.prompt(
-            event === "request_changes"
-              ? "Describe requested changes"
-              : "Review comment",
-          );
-    if (event !== "approve" && !body?.trim()) return;
+        ? "Add an optional approval note."
+        : event === "request_changes"
+          ? "Describe requested changes."
+          : "Enter your review comment.",
+      "",
+      event === "approve" ? "Approve pull request" : event === "request_changes" ? "Request changes" : "Comment on pull request",
+    );
+    if (body === null) return;
+    if (event !== "approve" && !body.trim()) return;
     submitReviewMutation.mutate({
       number: currentPr.number,
       event,
-      body: body?.trim() || undefined,
+      body: body.trim() || undefined,
     });
   };
-  const editLabels = (mode: "add" | "remove") => {
+  const editLabels = async (mode: "add" | "remove") => {
     if (!currentPr) return;
-    const input = window.prompt(
+    const input = await appDialog.prompt(
       mode === "add"
-        ? "Labels to add, comma-separated"
-        : "Labels to remove, comma-separated",
+        ? "Enter labels to add, comma-separated."
+        : "Enter labels to remove, comma-separated.",
+      "",
+      mode === "add" ? "Add labels" : "Remove labels",
     );
     const nextLabels =
       input
@@ -645,17 +654,18 @@ export function DiffReviewStudio() {
     if (mode === "add") addLabelMutation.mutate(variables);
     else removeLabelMutation.mutate(variables);
   };
-  const finalizePullRequest = () => {
+  const finalizePullRequest = async () => {
     if (!currentPr) return;
     const bypassCopy = finalizeWithAdmin
       ? " This will ask GitHub to bypass required checks/reviews with --admin."
       : "";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Complete PR #${currentPr.number} with ${mergeMethodLabels[mergeMethod]}?${bypassCopy}`,
-      )
-    )
-      return;
+        "Complete pull request?",
+        finalizeWithAdmin ? "danger" : "warning",
+      ))
+    ) return;
     mergePrMutation.mutate({
       number: currentPr.number,
       method: mergeMethod,
@@ -663,10 +673,13 @@ export function DiffReviewStudio() {
       deleteBranch: deleteHeadBranch,
     });
   };
-  const closePullRequest = () => {
+  const closePullRequest = async () => {
     if (!currentPr) return;
-    if (!window.confirm(`Close PR #${currentPr.number} without merging?`))
-      return;
+    if (!(await appDialog.confirm(
+      `Close PR #${currentPr.number} without merging?`,
+      "Close pull request?",
+      "danger",
+    ))) return;
     closePrMutation.mutate(currentPr.number);
   };
   const submitLineComment = () => {
@@ -783,7 +796,7 @@ export function DiffReviewStudio() {
                     setSelectedFilePath(file.path);
                     setActiveTab("files");
                   }}
-                  className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selectedFile?.path === file.path ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
+                  className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selectedFile?.path === file.path ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-mono text-xs text-[var(--color-text-secondary)]">
@@ -898,12 +911,12 @@ export function DiffReviewStudio() {
           </span>
         </div>
         {reviewActionError ? (
-          <div className="border-b border-[var(--color-danger)]/30 bg-[color:rgba(248,81,73,0.08)] px-4 py-2 text-xs text-[var(--color-danger)]">
+          <div className="border-b border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-2 text-xs text-[var(--color-danger)]">
             {formatErrorMessage(reviewActionError)}
           </div>
         ) : null}
         {diffErrorMessage || prFetchWarning ? (
-          <div className="border-b border-[var(--color-danger)]/30 bg-[color:rgba(248,81,73,0.08)] px-4 py-2 text-xs text-[var(--color-danger)]">
+          <div className="border-b border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-2 text-xs text-[var(--color-danger)]">
             {diffErrorMessage ?? prFetchWarning}
           </div>
         ) : null}
@@ -983,16 +996,18 @@ export function DiffReviewStudio() {
                         "click a diff line"
                       )}
                     </span>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       disabled={!lineCommentTarget}
                       onClick={() => {
                         setLineCommentTarget(null);
                         setLineCommentBody("");
                       }}
-                      className="text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="text-[var(--color-text-muted)]"
                     >
                       Clear
-                    </button>
+                    </Button>
                   </div>
                   <textarea
                     value={lineCommentBody}
@@ -1002,17 +1017,18 @@ export function DiffReviewStudio() {
                     className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-2 py-1.5 text-sm text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
                   />
                   <div className="mt-2 flex justify-end">
-                    <button
+                    <Button
+                      variant="primary"
+                      size="sm"
                       disabled={
                         !lineCommentTarget ||
                         !lineCommentBody.trim() ||
                         reviewActionPending
                       }
                       onClick={submitLineComment}
-                      className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Submit line comment
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -1080,43 +1096,50 @@ export function DiffReviewStudio() {
                   Conversation
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={!currentPr || reviewActionPending}
                     onClick={() => submitReview("approve")}
-                    className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-success)] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="text-[var(--color-success)]"
                   >
                     Approve
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
                     disabled={!currentPr || reviewActionPending}
                     onClick={() => submitReview("request_changes")}
-                    className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Request changes
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     disabled={!currentPr || reviewActionPending}
                     onClick={() => submitReview("comment")}
-                    className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Comment
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
                     disabled={!canMutateCurrentPr || reviewActionPending}
                     onClick={closePullRequest}
-                    className="rounded-md border border-[var(--color-danger)]/50 px-2 py-1 text-xs text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Close PR
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={!currentPr?.url}
                     onClick={() =>
                       currentPr?.url && window.open(currentPr.url, "_blank")
                     }
-                    className="inline-flex items-center gap-1.5 text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                    className="text-[var(--color-accent)]"
                   >
                     <MessageSquarePlus className="h-4 w-4" /> Open
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -1206,7 +1229,7 @@ export function DiffReviewStudio() {
                       key={method}
                       type="button"
                       onClick={() => setMergeMethod(method)}
-                      className={`rounded-md border px-2 py-1.5 text-left ${mergeMethod === method ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/20 text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] text-[var(--color-text-secondary)]"}`}
+                      className={`rounded-md border px-2 py-1.5 text-left ${mergeMethod === method ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] text-[var(--color-text-secondary)]"}`}
                     >
                       {method}
                     </button>
@@ -1233,13 +1256,13 @@ export function DiffReviewStudio() {
                   />
                   Delete head branch after merge
                 </label>
-                <button
+                <Button
+                  variant="success"
                   disabled={!canMutateCurrentPr || reviewActionPending}
                   onClick={finalizePullRequest}
-                  className="rounded-md bg-[var(--color-success)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Complete PR
-                </button>
+                </Button>
               </div>
             </div>
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
@@ -1277,13 +1300,15 @@ export function DiffReviewStudio() {
                 </span>
               </div>
               <div className="mt-4 text-xs">
-                <button
+                <Button
+                  variant="danger"
+                  size="sm"
                   disabled={!canMutateCurrentPr || reviewActionPending}
                   onClick={closePullRequest}
-                  className="w-full rounded-md border border-[var(--color-danger)]/50 px-2 py-1.5 text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full"
                 >
                   Close PR without merging
-                </button>
+                </Button>
               </div>
               <div className="mt-4 space-y-3 border-l border-[var(--color-border)] pl-4 text-sm">
                 <p className="rounded bg-[color:rgba(88,166,255,0.14)] p-2 text-[var(--color-accent)]">
@@ -1314,22 +1339,25 @@ export function DiffReviewStudio() {
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-semibold">Labels</h3>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 disabled={!currentPr || reviewActionPending}
                 onClick={() => editLabels("add")}
-                className="text-xs text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                className="text-[var(--color-accent)]"
               >
                 Add
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 disabled={
                   !currentPr || reviewActionPending || labels.length === 0
                 }
                 onClick={() => editLabels("remove")}
-                className="text-xs text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
               >
                 Remove
-              </button>
+              </Button>
             </div>
           </div>
           {labels.length > 0 ? (
@@ -1357,13 +1385,15 @@ export function DiffReviewStudio() {
         <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Reviewers</h3>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               disabled={!currentPr || reviewActionPending}
               onClick={requestReview}
-              className="text-xs text-[var(--color-accent)] disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+              className="text-[var(--color-accent)]"
             >
               Request review
-            </button>
+            </Button>
           </div>
           {pendingReviewers.length > 0 ? (
             <div className="mt-3 space-y-2 text-sm">

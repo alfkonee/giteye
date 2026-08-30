@@ -6,6 +6,7 @@ import { parseFileStatus } from "../../types/git";
 import { FileStatusList } from "./FileStatusList";
 import { CommitBox } from "./CommitBox";
 import { Button } from "../ui";
+import { appDialog } from "../common/AppDialogProvider";
 
 /**
  * The detail-pane face of the uncommitted-changes row: the staged/unstaged
@@ -40,12 +41,14 @@ export function WorkingCommitDetails() {
    * in one step. Untracked files survive a hard reset, so they stay listed and
    * have to go through "Discard all" in the Unstaged section.
    */
-  const handleResetToHead = () => {
+  const handleResetToHead = async () => {
     if (!headCommit) return;
     if (
-      !confirm(
+      !(await appDialog.confirm(
         `Reset the working tree to HEAD?\n\nThis discards all staged and unstaged changes to tracked files (${stagedCount} staged, ${trackedUnstagedCount} unstaged).${untrackedCount > 0 ? `\n\n${untrackedCount} untracked ${untrackedCount === 1 ? "file is" : "files are"} left in place; use "Discard all" in the Unstaged section to remove ${untrackedCount === 1 ? "it" : "them"}.` : ""}\n\nThis cannot be undone from GitEye; stash or commit first if you need a Git safety net.`,
-      )
+        "Reset to HEAD?",
+        "danger",
+      ))
     ) {
       return;
     }

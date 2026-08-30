@@ -22,6 +22,8 @@ import type {
   GitMaintenanceSummary,
   GitSignatureSummary,
 } from "../../types/git";
+import { appDialog } from "../common/AppDialogProvider";
+import { Button, Select } from "../ui";
 
 function errorMessage(error: unknown) {
   if (!error) return null;
@@ -85,17 +87,18 @@ export function DiagnosticsView() {
     fsckMutation.error ?? maintenanceMutation.error ?? signatureMutation.error,
   );
 
-  const startBisect = () => {
-    if (!activeRepoPath || isBisectPending) return;
+  const startBisect = async () => {
+    const bad = badRevision.trim();
     const good = splitInput(goodRevisions);
-    const bad = optionalInput(badRevision);
     const paths = splitInput(pathspecs);
+    if (!bad || good.length === 0) return;
     const warning = [
-      "Start guided git bisect?",
-      "Git will check out commits while you mark revisions good, bad, or skipped.",
-      "Save or stash local work before continuing.",
+      `Start git bisect with bad revision "${bad}" and ${good.length} good revision${good.length === 1 ? "" : "s"}?`,
+      paths.length > 0 ? `Path limit: ${paths.join(", ")}` : "No path limit.",
+      "Bisect checks out commits and moves HEAD until you reset the bisect. Your working tree must be clean.",
+      "Recovery: use Reset bisect below (git bisect reset) to return to the original branch/commit.",
     ].join("\n\n");
-    if (!window.confirm(warning)) return;
+    if (!(await appDialog.confirm(warning, "Start git bisect?", "warning"))) return;
     bisectStart.mutate({ badRevision: bad, goodRevisions: good, paths });
   };
 
@@ -108,11 +111,13 @@ export function DiagnosticsView() {
     if (kind === "skip") bisectSkip.mutate(request);
   };
 
-  const resetBisect = () => {
-    if (!activeRepoPath || isBisectPending) return;
-    const revision = optionalInput(resetRevision);
+  const resetBisect = async () => {
+    const revision = resetRevision.trim() || null;
     const target = revision || "the original branch";
-    if (!window.confirm(`Reset git bisect and return to ${target}?`)) return;
+    if (!(await appDialog.confirm(
+      `Reset git bisect and return to ${target}?`,
+      "Reset git bisect?",
+    ))) return;
     bisectReset.mutate({ revision });
   };
 
@@ -121,13 +126,15 @@ export function DiagnosticsView() {
     fsckMutation.mutate({ full: fsckFull, strict: fsckStrict });
   };
 
-  const runMaintenance = () => {
+  const runMaintenance = async () => {
     if (!activeRepoPath || maintenanceMutation.isPending) return;
     const label = maintenanceMode === "gc" ? "git gc" : "git maintenance run";
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Run ${label}?\n\nThis can take a while and rewrites Git's internal object storage/pack files. Do not close the app while it is running.\n\nRecovery: rely on current refs/reflog promptly; unreachable objects may expire after cleanup.`,
-      )
+        `Run ${label}?`,
+        "danger",
+      ))
     ) {
       return;
     }
@@ -307,9 +314,9 @@ function BisectPanel({
           <TextInput value={pathspecs} onChange={onPathspecsChange} placeholder="src/ tests/" disabled={isPending || isActive} />
         </Field>
         <div>
-          <ActionButton disabled={isPending || isActive} onClick={onStart} tone="primary">
+          <Button variant="primary" size="sm" disabled={isPending || isActive} onClick={onStart}>
             <Play className="h-3.5 w-3.5" /> Start bisect
-          </ActionButton>
+          </Button>
         </div>
       </div>
 
@@ -324,19 +331,19 @@ function BisectPanel({
           <TextInput value={markRevision} onChange={onMarkRevisionChange} placeholder="Blank means current checkout" disabled={isPending || !isActive} />
         </Field>
         <div className="flex flex-wrap gap-2">
-          <ActionButton disabled={isPending || !isActive} onClick={onGood} tone="success">
+          <Button variant="success" size="sm" disabled={isPending || !isActive} onClick={onGood}>
             <CheckCircle2 className="h-3.5 w-3.5" /> Good
-          </ActionButton>
-          <ActionButton disabled={isPending || !isActive} onClick={onBad} tone="danger">
+          </Button>
+          <Button variant="danger" size="sm" disabled={isPending || !isActive} onClick={onBad}>
             <XCircle className="h-3.5 w-3.5" /> Bad
-          </ActionButton>
-          <ActionButton disabled={isPending || !isActive} onClick={onSkip}>
+          </Button>
+          <Button variant="secondary" size="sm" disabled={isPending || !isActive} onClick={onSkip}>
             <SkipForward className="h-3.5 w-3.5" /> Skip
-          </ActionButton>
+          </Button>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 rounded-lg border border-[color:rgba(248,81,73,0.35)] bg-[color:rgba(248,81,73,0.06)] p-4">
+      <div className="mt-4 grid gap-3 rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] p-4">
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-warning)]" />
           <div>
@@ -350,9 +357,9 @@ function BisectPanel({
           <TextInput value={resetRevision} onChange={onResetRevisionChange} placeholder="Blank returns to original branch" disabled={isPending || !isActive} />
         </Field>
         <div>
-          <ActionButton disabled={isPending || !isActive} onClick={onReset} tone="danger">
+          <Button variant="danger" size="sm" disabled={isPending || !isActive} onClick={onReset}>
             <RotateCcw className="h-3.5 w-3.5" /> Reset bisect
-          </ActionButton>
+          </Button>
         </div>
       </div>
     </Card>
@@ -442,12 +449,12 @@ function DiagnosticsPanel({
             <Checkbox checked={fsckFull} onChange={onFsckFullChange} label="Full object check" />
             <Checkbox checked={fsckStrict} onChange={onFsckStrictChange} label="Strict mode" />
           </div>
-          <ActionButton disabled={isFsckPending} onClick={onRunFsck} tone="primary">
+          <Button variant="primary" size="sm" disabled={isFsckPending} onClick={onRunFsck}>
             <SearchCheck className="h-3.5 w-3.5" /> Run fsck
-          </ActionButton>
+          </Button>
         </section>
 
-        <section className="rounded-lg border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.07)] p-4">
+        <section className="rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-4">
           <div className="mb-3 flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 text-[var(--color-warning)]" />
             <div>
@@ -459,20 +466,18 @@ function DiagnosticsPanel({
           </div>
           <div className="mb-3 grid gap-2">
             <label className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]" htmlFor="maintenance-mode">Mode</label>
-            <select
+            <Select
               id="maintenance-mode"
               value={maintenanceMode}
-              onChange={(event) => onMaintenanceModeChange(event.target.value as GitMaintenanceMode)}
+              onValueChange={(mode) => onMaintenanceModeChange(mode as GitMaintenanceMode)}
+              options={[{ value: "maintenance", label: "git maintenance run" }, { value: "gc", label: "git gc" }]}
               disabled={isMaintenancePending}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
-            >
-              <option value="maintenance">git maintenance run</option>
-              <option value="gc">git gc</option>
-            </select>
+              className="w-full"
+            />
           </div>
-          <ActionButton disabled={isMaintenancePending} onClick={onRunMaintenance} tone="danger">
+          <Button variant="danger" size="sm" disabled={isMaintenancePending} onClick={onRunMaintenance}>
             <Wrench className="h-3.5 w-3.5" /> Run selected maintenance
-          </ActionButton>
+          </Button>
         </section>
 
         <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-surface)] p-4">
@@ -486,9 +491,9 @@ function DiagnosticsPanel({
           <div className="mb-3">
             <TextInput value={signatureTarget} onChange={onSignatureTargetChange} placeholder="HEAD, tag name, or commit hash" disabled={isSignaturePending} />
           </div>
-          <ActionButton disabled={isSignaturePending || !signatureTarget.trim()} onClick={onVerifySignature} tone="primary">
+          <Button variant="primary" size="sm" disabled={isSignaturePending || !signatureTarget.trim()} onClick={onVerifySignature}>
             <ShieldCheck className="h-3.5 w-3.5" /> Verify signature
-          </ActionButton>
+          </Button>
         </section>
       </div>
     </Card>
@@ -585,7 +590,7 @@ function OutputBlock({ label, value, tone = "default" }: { label: string; value:
   return (
     <div>
       <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{label}</div>
-      <pre className={tone === "warning" ? "max-h-64 overflow-auto rounded-md border border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.07)] p-3 whitespace-pre-wrap font-mono text-xs text-[var(--color-text-secondary)]" : "max-h-64 overflow-auto rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 whitespace-pre-wrap font-mono text-xs text-[var(--color-text-secondary)]"}>{value}</pre>
+      <pre className={tone === "warning" ? "max-h-64 overflow-auto rounded-md border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] p-3 whitespace-pre-wrap font-mono text-xs text-[var(--color-text-secondary)]" : "max-h-64 overflow-auto rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3 whitespace-pre-wrap font-mono text-xs text-[var(--color-text-secondary)]"}>{value}</pre>
     </div>
   );
 }
@@ -653,34 +658,13 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v
   );
 }
 
-function ActionButton({ children, disabled, onClick, tone = "default" }: { children: ReactNode; disabled?: boolean; onClick: () => void; tone?: "default" | "danger" | "primary" | "success" }) {
-  const toneClass =
-    tone === "primary"
-      ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white hover:opacity-90"
-      : tone === "danger"
-        ? "border-[color:rgba(248,81,73,0.45)] text-[var(--color-danger)] hover:bg-[color:rgba(248,81,73,0.08)]"
-        : tone === "success"
-          ? "border-[color:rgba(63,185,80,0.45)] text-[var(--color-success)] hover:bg-[color:rgba(63,185,80,0.08)]"
-          : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]";
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function StatusPill({ children, tone }: { children: ReactNode; tone: "neutral" | "success" | "warning" }) {
   const className =
     tone === "success"
       ? "border-[color:rgba(63,185,80,0.35)] bg-[color:rgba(63,185,80,0.1)] text-[var(--color-success)]"
       : tone === "warning"
-        ? "border-[color:rgba(210,153,34,0.35)] bg-[color:rgba(210,153,34,0.1)] text-[var(--color-warning)]"
+        ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning)]"
         : "border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]";
   return <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${className}`}>{children}</span>;
 }
@@ -696,7 +680,7 @@ function KeyValue({ label, value }: { label: string; value: string }) {
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="mb-3 rounded-md border border-[color:rgba(248,81,73,0.45)] bg-[color:rgba(248,81,73,0.08)] px-3 py-2 text-sm text-[var(--color-danger)]">
+    <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">
       {message}
     </div>
   );

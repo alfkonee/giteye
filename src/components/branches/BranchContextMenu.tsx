@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { formatRebasePreview } from "../../lib/git-preview";
 import { gitMutations } from "../../lib/git-data";
+import { appDialog } from "../common/AppDialogProvider";
 import type { Branch, StartRebaseRequest } from "../../types/git";
 
 interface BranchContextMenuProps {
@@ -19,6 +20,7 @@ interface BranchContextMenuProps {
   onFastForward: (branch: Branch) => void;
   onMerge: (branch: Branch) => void;
   onAdvancedMergeRebase?: (branch: Branch) => void;
+  onCreatePullRequest?: (branch: Branch) => void;
   onDelete?: (branch: Branch) => void;
   onClose: () => void;
 }
@@ -32,6 +34,7 @@ export function BranchContextMenu({
   onFastForward,
   onMerge,
   onAdvancedMergeRebase,
+  onCreatePullRequest,
   onDelete,
   onRename,
   onSetUpstream,
@@ -79,18 +82,21 @@ export function BranchContextMenu({
         await previewRebaseMutation.mutateAsync(request),
       );
     } catch (error) {
-      window.alert(
+      await appDialog.alert(
         `Unable to preview rebase onto ${branch.shortName}: ${
           error instanceof Error ? error.message : String(error)
         }`,
+        "Rebase preview failed",
       );
       return;
     }
 
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Rebase the current branch onto "${branch.shortName}"?\n\nThis rewrites local branch history. GitEye will autostash local changes when Git can do so.\n\nPreview:\n${previewText}\n\nRecovery: abort while the rebase is active, or use ORIG_HEAD/reflog after completion to create a recovery branch or reset back.`,
-      )
+        "Rebase current branch?",
+        "danger",
+      ))
     ) {
       return;
     }
@@ -179,6 +185,15 @@ export function BranchContextMenu({
 
         <div className="giteye-context-separator" />
         <BranchMenuItem
+          label="Create pull request…"
+          detail={branch.isRemote ? "local branches only" : branch.shortName}
+          disabled={!canUseLocalBranchTools || !onCreatePullRequest}
+          onSelect={() => onCreatePullRequest?.(branch)}
+          onClose={onClose}
+        />
+
+        <div className="giteye-context-separator" />
+        <BranchMenuItem
           label="New branch from here"
           detail={branch.shortName}
           onSelect={() => onCreateFromBranch(branch)}
@@ -215,13 +230,15 @@ export function BranchContextMenu({
 
         <div className="giteye-context-separator" />
         <BranchMenuItem
-          label="Delete local branch"
+          label="Delete local branch…"
           detail={
             branch.isCurrent
               ? "current branch"
               : branch.isRemote
                 ? "use remote delete below"
-                : branch.shortName
+                : branch.upstream
+                  ? `optionally include ${branch.upstream}`
+                  : branch.shortName
           }
           tone="danger"
           disabled={!canDelete}

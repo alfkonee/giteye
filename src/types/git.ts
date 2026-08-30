@@ -134,6 +134,28 @@ export interface Branch {
   upstream: string | null;
   ahead: number | null;
   behind: number | null;
+  /** Committer date of the commit the ref points at (ISO-8601). */
+  lastCommitDate?: string | null;
+  lastCommitAuthor?: string | null;
+  lastCommitSubject?: string | null;
+  /** When the branch first appeared in this repository; remote refs report null. */
+  createdAt?: string | null;
+}
+
+export interface LocalBranchPruneCandidate {
+  branch: string;
+  fullyMerged: boolean;
+  upstreamGone: boolean;
+}
+
+export interface LocalBranchPruneFailure {
+  branch: string;
+  reason: string;
+}
+
+export interface LocalBranchPruneResult {
+  deleted: string[];
+  failed: LocalBranchPruneFailure[];
 }
 
 export interface GitIdentity {
@@ -299,6 +321,7 @@ export interface RecentRepo {
   parentName: string | null;
   relationshipKind: "submodule" | "worktree" | null;
   isStale: boolean;
+  currentBranch: string | null;
 }
 
 export interface FavoriteRepo {
@@ -308,6 +331,12 @@ export interface FavoriteRepo {
   parentPath: string | null;
   parentName: string | null;
   relationshipKind: "submodule" | "worktree" | null;
+  currentBranch: string | null;
+}
+
+export interface HubCommitActivity {
+  path: string;
+  commitsThisWeek: number;
 }
 
 export interface Worktree {
@@ -818,7 +847,8 @@ export type RepositoryViewType =
   | "submodules"
   | "archaeology"
   | "diagnostics"
-  | "custom-command";
+  | "custom-command"
+  | "repo-settings";
 
 export type ViewType = RepositoryViewType;
 
@@ -847,6 +877,7 @@ export interface SelectedEntityState {
   conflictPath: string | null;
 }
 export type DiffMode = "unified" | "split";
+export type Theme = "dark" | "light" | "system";
 
 /** `repository` writes to `.gitignore`, `local` to `.git/info/exclude`. */
 export type IgnoreScope = "repository" | "local";

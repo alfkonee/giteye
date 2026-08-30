@@ -1,13 +1,8 @@
-import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
-import { cn } from "../../lib/cn";
 import {
   Box,
-  ChevronDown,
-  ChevronRight,
   Command,
-  Folder,
-  FolderOpen,
   GitBranch,
   Globe,
   Layers,
@@ -16,6 +11,8 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatDryRunPreview } from "../../lib/git-preview";
+import { runBranchPushFlow } from "../../lib/branch-push";
 import { gitApi } from "../../lib/tauri-api";
 import {
   getViewsForGroup,
@@ -26,7 +23,18 @@ import {
 import type { Branch, ViewType } from "../../types/git";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
+import {
+  BranchTree,
+  ShowMoreButton,
+  isUnmergedStatus,
+  visibleBranches,
+} from "./sidebar/BranchTree";
+import { SidebarCountBadge, SidebarNavItem, SidebarNote, SidebarSection } from "./sidebar/SidebarNav";
+import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
+import { appDialog } from "../common/AppDialogProvider";
+import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
 import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
+import { AppSidebar } from "./AppSidebar";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -37,7 +45,6 @@ export function Sidebar() {
   const setPendingAdvancedBranchName = useAppStore(
     (s) => s.setPendingAdvancedBranchName,
   );
-  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const setSelectedWorktreePath = useAppStore((s) => s.setSelectedWorktreePath);
   const setSelectedSubmodulePath = useAppStore(
     (s) => s.setSelectedSubmodulePath,
@@ -49,6 +56,8 @@ export function Sidebar() {
     x: number;
     y: number;
   } | null>(null);
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
+  const [prBranch, setPrBranch] = useState<Branch | null>(null);
   const [localBranchesExpanded, setLocalBranchesExpanded] = useState(true);
   const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
   const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
@@ -110,9 +119,10 @@ export function Sidebar() {
   const mergeBranchMutation = useMutation(
     gitMutations.mergeBranch(queryClient, activeRepoPath),
   );
-  const deleteBranchMutation = useMutation(
-    gitMutations.deleteBranch(queryClient, activeRepoPath),
-  );
+  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
+  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
+  const deleteRemoteBranchMutation = useMutation(gitMutations.deleteRemoteBranch(queryClient, activeRepoPath));
+  const deleteRemoteBranchDryRunMutation = useMutation(gitMutations.deleteRemoteBranchDryRun(activeRepoPath));
   const githubOverviewQuery = useQuery(
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
@@ -147,12 +157,10 @@ export function Sidebar() {
     },
   });
 
-  const repoInfo = snapshot?.repositoryInfo;
   const statusFileCount = snapshot?.summary.totalCount;
   const pullRequestCount = githubOverviewQuery.data?.pullRequests.length;
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
-  const activeBranch = repoInfo?.currentBranch ?? branchSummary?.currentBranch;
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
   const conflictCount =
     snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
@@ -221,8 +229,12 @@ export function Sidebar() {
   const describeActivation = (branch: Branch) =>
     describeBranchActivation(branch, branchesQuery.data ?? []);
 
-  const createBranchFrom = (branch: Branch) => {
-    const name = window.prompt(`New branch name from ${branch.shortName}`);
+  const createBranchFrom = async (branch: Branch) => {
+    const name = await appDialog.prompt(
+      `Create a new branch from ${branch.shortName}.`,
+      "",
+      "New branch name",
+    );
     const trimmedName = name?.trim();
     if (!trimmedName) return;
     createBranch.mutate({
@@ -239,31 +251,67 @@ export function Sidebar() {
       upstream: branch.upstream,
     });
   };
-  const mergeBranch = (branch: Branch) => {
+
+  const mergeBranch = async (branch: Branch) => {
     if (branch.isCurrent) return;
     if (
-      !window.confirm(
+      !(await appDialog.confirm(
         `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
-      )
-    )
-      return;
+        "Merge branch?",
+      ))
+    ) return;
     mergeBranchMutation.mutate(branch.shortName);
   };
 
   const deleteBranch = (branch: Branch) => {
     if (branch.isCurrent || branch.isRemote) return;
-    if (
-      !window.confirm(`Delete local branch "${branch.shortName}"?`)
-    )
-      return;
-    deleteBranchMutation.mutate(branch.shortName);
+    setDeleteBranchTarget(branch);
+  };
+
+  const remoteNames = Array.from(
+    new Set(remoteBranches.map((branch) => branch.shortName.split("/", 1)[0]).filter(Boolean)),
+  );
+  const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
+    if (branch.isRemote) return;
+    await runBranchPushFlow({
+      branch,
+      remoteNames,
+      forceWithLease,
+      dryRunPreview: (request) => pushBranchDryRunMutation.mutateAsync(request),
+      submitPush: (request) => pushBranchMutation.mutate(request),
+    });
+  };
+
+  const deleteRemoteBranch = async (branch: Branch) => {
+    if (!branch.isRemote) return;
+    const separator = branch.shortName.indexOf("/");
+    if (separator < 1) return;
+    const request = {
+      remote: branch.shortName.slice(0, separator),
+      branch: branch.shortName.slice(separator + 1),
+    };
+    const target = `${request.remote}/${request.branch}`;
+    try {
+      const preview = formatDryRunPreview(
+        await deleteRemoteBranchDryRunMutation.mutateAsync(request),
+        "Git did not report a ref deletion for this remote branch dry run.",
+      );
+      if (!(await appDialog.confirm(
+        `Delete remote branch “${target}”?\n\nPreview:\n${preview}`,
+        "Delete remote branch?",
+        "danger",
+      ))) return;
+      deleteRemoteBranchMutation.mutate(request);
+    } catch (error) {
+      await appDialog.alert(
+        `Unable to preview remote deletion for ${target}: ${String(error)}`,
+        "Remote deletion preview failed",
+      );
+    }
   };
 
   const shouldShowView = (definition: ViewDefinition) => {
-    if (!definition.collaboration) {
-      return true;
-    }
-
+    if (!definition.collaboration) return true;
     return definition.connectEntry || showCollaborationViews;
   };
 
@@ -274,7 +322,6 @@ export function Sidebar() {
         key={definition.id}
         icon={<Icon className="h-4 w-4" />}
         label={definition.label}
-        description={definition.connectEntry ? definition.description : undefined}
         count={viewCounts[definition.id]}
         countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
@@ -311,25 +358,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside aria-label="Repository navigation" className="giteye-sidebar flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/92 backdrop-blur-sm">
-      <div className="border-b border-[var(--color-border-muted)] px-3 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] shadow-[var(--shadow-soft)]">
-            <FolderOpen className="h-4 w-4 text-[var(--color-accent)]" />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
-              {repoInfo?.name ?? "No Repository"}
-            </div>
-            {activeBranch && (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--color-text-muted)]">
-                <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                <span className="truncate">{activeBranch}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+    <AppSidebar>
 
       <div className="flex-1 overflow-y-auto py-1.5">
         {viewGroups.map((group) => {
@@ -467,14 +496,6 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-        <SidebarNavItem
-          icon={<FolderOpen className="h-4 w-4" />}
-          label="Repo Hub"
-          onClick={() => {
-            setNarrowSidebarOpen(false);
-            setGlobalView("repo-hub");
-          }}
-        />
 
         <button
           type="button"
@@ -511,354 +532,32 @@ export function Sidebar() {
           onCreateFromBranch={createBranchFrom}
           onFastForward={fastForwardBranch}
           onMerge={mergeBranch}
+          onPushBranch={(branch) => void pushBranch(branch, false)}
+          onForcePushBranch={(branch) => void pushBranch(branch, true)}
+          onDeleteRemoteBranch={(branch) => void deleteRemoteBranch(branch)}
           onAdvancedMergeRebase={(branch) => {
             setPendingAdvancedBranchName(branch.shortName);
             navigate("workspace");
           }}
+          onCreatePullRequest={setPrBranch}
           onDelete={deleteBranch}
           onClose={() => setContextBranch(null)}
         />
+        <CreatePullRequestDialog
+          branch={prBranch}
+          repoPath={activeRepoPath}
+          onClose={() => setPrBranch(null)}
+        />
+        <BranchDeleteDialog
+          branch={deleteBranchTarget}
+          repoPath={activeRepoPath}
+          onClose={() => setDeleteBranchTarget(null)}
+        />
       </div>
-    </aside>
+    </AppSidebar>
   );
 }
 
-function SidebarSection({
-  title,
-  count,
-  expanded,
-  onToggle,
-}: {
-  title: string;
-  count?: number;
-  expanded?: boolean;
-  onToggle?: () => void;
-}) {
-  const content = (
-    <>
-      {onToggle ? (expanded ? <ChevronDown className="mr-1 h-3 w-3" /> : <ChevronRight className="mr-1 h-3 w-3" />) : null}
-      <span className="truncate">{title}</span>
-      {count !== undefined && count > 0 ? (
-        <span className="ml-auto tabular-nums text-[10px] text-[var(--color-text-subtle)]">{count}</span>
-      ) : null}
-    </>
-  );
-  return (
-    onToggle ? (
-      <button type="button" aria-expanded={expanded} onClick={onToggle} className="giteye-section-label flex min-h-8 w-full items-center px-3 pb-1 pt-3 text-left hover:text-[var(--color-text-primary)]">
-        {content}
-      </button>
-    ) : (
-      <div className="giteye-section-label flex items-center px-3 pb-1 pt-3">{content}</div>
-    )
-  );
-}
-
-interface BranchTreeNode {
-  folders: Map<string, BranchTreeNode>;
-  branches: Array<{ branch: Branch; label: string }>;
-}
-
-function visibleBranches(branches: Branch[], showAll: boolean) {
-  if (showAll || branches.length <= 8) return branches;
-  const visible = branches.slice(0, 8);
-  const current = branches.find((branch) => branch.isCurrent);
-  if (current && !visible.includes(current)) visible[visible.length - 1] = current;
-  return visible;
-}
-
-function buildBranchTree(branches: Branch[]): BranchTreeNode {
-  const root: BranchTreeNode = { folders: new Map(), branches: [] };
-  for (const branch of branches) {
-    const parts = branch.shortName.split("/").filter(Boolean);
-    const label = parts.pop() ?? branch.shortName;
-    let node = root;
-    for (const part of parts) {
-      let folder = node.folders.get(part);
-      if (!folder) {
-        folder = { folders: new Map(), branches: [] };
-        node.folders.set(part, folder);
-      }
-      node = folder;
-    }
-    node.branches.push({ branch, label });
-  }
-  return root;
-}
-
-function BranchTree({
-  branches,
-  onSwitch,
-  onContextMenu,
-  describeActivation,
-}: {
-  branches: Branch[];
-  onSwitch: (branch: Branch) => void;
-  onContextMenu: (event: MouseEvent, branch: Branch) => void;
-  describeActivation: (branch: Branch) => string;
-}) {
-  const tree = buildBranchTree(branches);
-  return (
-    <div className="pb-1">
-      <BranchTreeContents
-        node={tree}
-        depth={0}
-        onSwitch={onSwitch}
-        onContextMenu={onContextMenu}
-        describeActivation={describeActivation}
-      />
-    </div>
-  );
-}
-
-function BranchTreeContents({
-  node,
-  depth,
-  onSwitch,
-  onContextMenu,
-  describeActivation,
-}: {
-  node: BranchTreeNode;
-  depth: number;
-  onSwitch: (branch: Branch) => void;
-  onContextMenu: (event: MouseEvent, branch: Branch) => void;
-  describeActivation: (branch: Branch) => string;
-}) {
-  return (
-    <>
-      {[...node.folders.entries()].map(([name, folder]) => (
-        <BranchFolder
-          key={name}
-          name={name}
-          node={folder}
-          depth={depth}
-          onSwitch={onSwitch}
-          onContextMenu={onContextMenu}
-          describeActivation={describeActivation}
-        />
-      ))}
-      {node.branches.map(({ branch, label }) => (
-        <button
-          key={branch.name}
-          type="button"
-          onDoubleClick={() => onSwitch(branch)}
-          onContextMenu={(event) => onContextMenu(event, branch)}
-          title={describeActivation(branch)}
-          style={{ paddingLeft: `${24 + depth * 14}px` }}
-          className={cn(
-            "giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md pr-2 text-left text-[12px] transition-colors",
-            branch.isCurrent
-              ? "giteye-nav-active text-[13px] !font-bold tracking-[0.01em] text-[var(--color-text-primary)]"
-              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]",
-          )}
-        >
-          {branch.isRemote ? <Globe className="h-3.5 w-3.5 shrink-0" /> : <GitBranch className="h-3.5 w-3.5 shrink-0" />}
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {branch.upstream && !branch.isRemote ? (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-text-muted)]" title={trackingLabel(branch)} />
-          ) : null}
-        </button>
-      ))}
-    </>
-  );
-}
-
-function BranchFolder({
-  name,
-  node,
-  depth,
-  onSwitch,
-  onContextMenu,
-  describeActivation,
-}: {
-  name: string;
-  node: BranchTreeNode;
-  depth: number;
-  onSwitch: (branch: Branch) => void;
-  onContextMenu: (event: MouseEvent, branch: Branch) => void;
-  describeActivation: (branch: Branch) => string;
-}) {
-  const [expanded, setExpanded] = useState(depth === 0);
-  const count = node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
-  return (
-    <>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-        style={{ paddingLeft: `${18 + depth * 14}px` }}
-        className="giteye-row mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md pr-2 text-left text-[12px] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-      >
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <Folder className="h-3.5 w-3.5" />
-        <span className="min-w-0 flex-1 truncate">{name}</span>
-        <span className="text-[9px] tabular-nums">{count}</span>
-      </button>
-      {expanded ? (
-        <BranchTreeContents
-          node={node}
-          depth={depth + 1}
-          onSwitch={onSwitch}
-          onContextMenu={onContextMenu}
-          describeActivation={describeActivation}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function countBranchTree(node: BranchTreeNode): number {
-  return node.branches.length + [...node.folders.values()].reduce((total, folder) => total + countBranchTree(folder), 0);
-}
-
-function ShowMoreButton({ expanded, hiddenCount, onClick }: { expanded: boolean; hiddenCount: number; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="giteye-menu-item mx-6 mb-1 rounded px-2 py-1 text-xs font-medium text-[var(--color-accent)] hover:bg-[var(--color-bg-hover)]">
-      {expanded ? "Show less" : `Show ${hiddenCount} more`}
-    </button>
-  );
-}
-
-interface SidebarCountBadge {
-  key: string;
-  icon: ReactNode;
-  value: number;
-  title: string;
-}
-
-function SidebarNavItem({
-  icon,
-  description,
-  label,
-  active = false,
-  indent = false,
-  count,
-  countBadges,
-  tone = "default",
-  onClick,
-  onDoubleClick,
-  title,
-  onContextMenu,
-}: {
-  icon: ReactNode;
-  label: string;
-  description?: string;
-  active?: boolean;
-  indent?: boolean;
-  count?: number;
-  countBadges?: SidebarCountBadge[];
-  tone?: "default" | "warning";
-  onClick?: () => void;
-  onDoubleClick?: () => void;
-  title?: string;
-  onContextMenu?: (event: MouseEvent) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      title={title}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "giteye-row flex w-full items-center gap-2.5 rounded-md text-left text-[13px] transition-colors",
-        "mx-1.5 w-[calc(100%-0.75rem)]",
-        indent ? "pl-6 pr-2" : "px-2",
-        active
-          ? "giteye-nav-active"
-          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
-      )}
-    >
-      {active ? (
-        <span className="text-[var(--color-accent)]">{icon}</span>
-      ) : (
-        <span
-          className={
-            tone === "warning"
-              ? "text-[var(--color-warning)]"
-              : "text-[var(--color-text-muted)]"
-          }
-        >
-          {icon}
-        </span>
-      )}
-      <span className="min-w-0 flex-1">
-        <span className={cn("block truncate", active && "font-semibold text-[var(--color-text-primary)]")}>
-          {label}
-        </span>
-        {description && (
-          <span
-            className={cn(
-              "block truncate text-[10px]",
-              active ? "text-[var(--color-text-muted)]" : "text-[var(--color-text-muted)]",
-            )}
-          >
-            {description}
-          </span>
-        )}
-      </span>
-      {countBadges ? (
-        <span className="flex shrink-0 items-center gap-1">
-          {countBadges
-            .filter((badge) => badge.value > 0)
-            .map((badge) => (
-              <span
-                key={badge.key}
-                title={badge.title}
-                className={cn(
-                  "flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                  active
-                    ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
-                    : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
-                )}
-              >
-                {badge.icon}
-                {badge.value}
-              </span>
-            ))}
-        </span>
-      ) : (
-        count !== undefined &&
-        count > 0 && (
-          <span
-            className={cn(
-              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-              active
-                ? "bg-[var(--color-info-bg)] text-[var(--color-accent)]"
-                : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
-            )}
-          >
-            {count}
-          </span>
-        )
-      )}
-    </button>
-  );
-}
-
-function SidebarNote({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-7 py-1 text-[12px] italic text-[var(--color-text-muted)]">
-      {children}
-    </div>
-  );
-}
-
-function trackingLabel(branch: Branch) {
-  const divergence = [
-    branch.ahead ? `${branch.ahead} ahead` : null,
-    branch.behind ? `${branch.behind} behind` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  return divergence
-    ? `${branch.upstream} · ${divergence}`
-    : `tracks ${branch.upstream}`;
-}
-function isUnmergedStatus(status: string) {
-  return ["DD", "AU", "UD", "UA", "DU", "AA", "UU"].includes(status);
-}
 
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;

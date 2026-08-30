@@ -1,32 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  Bell,
   CheckCircle2,
-  Circle,
   Clock,
-  FolderGit2,
+  Code2,
   FolderOpen,
   GitBranch,
-  Home,
+  GitFork,
+  History,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Plus,
   Search,
-  Settings,
-  Sparkles,
   Star,
-  X,
 } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
-import { getShortcutBinding } from "../../lib/shortcuts";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { appDialog } from "../common/AppDialogProvider";
+import { getShortcutBinding } from "../../lib/shortcuts";
 import { AppChrome } from "../layout/AppChrome";
-import { RepositoryTabs } from "../layout/RepositoryTabs";
+import { AppSidebar, useAppChromeSlots } from "../layout/AppSidebar";
 import { SettingsPlaceholder } from "../settings/SettingsPlaceholder";
 import { Input } from "../ui/Input";
 
@@ -38,6 +37,7 @@ type RepositoryCard = {
   parentPath?: string | null;
   parentName?: string | null;
   relationshipKind?: "submodule" | "worktree" | null;
+  currentBranch?: string | null;
 };
 
 function groupRelatedRepositories<T extends RepositoryCard>(repositories: T[]) {
@@ -80,11 +80,14 @@ export function RepositoryWelcome() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const handledStalePathsRef = useRef(new Set<string>());
   const stalePromptBusyRef = useRef(false);
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [showOpenPanel, setShowOpenPanel] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showAllFavorites, setShowAllFavorites] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
   const queryClient = useQueryClient();
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
+  const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const route = useAppStore((s) => s.route);
-  const setGlobalView = useAppStore((s) => s.setGlobalView);
   const openRepoPaths = useAppStore((s) => s.openRepoPaths);
   const operationTranscript = useNoticeStore((s) => s.operationTranscript);
   const openMutation = useMutation(gitMutations.openRepository(queryClient, setActiveRepoPath));
@@ -94,19 +97,54 @@ export function RepositoryWelcome() {
   const { data: favorites, isLoading: favoritesLoading } = useQuery(gitQueries.favoriteRepositories());
   const favoriteMutation = useMutation(gitMutations.setRepositoryFavorite(queryClient));
   const removeRecentMutation = useMutation(gitMutations.removeRecentRepository(queryClient));
+  const { data: activeRepoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
+  const { data: toolchain } = useQuery(gitQueries.toolchainStatus());
+  const openRepoInfos = useQueries({ queries: openRepoPaths.map((repoPath) => gitQueries.repositoryInfo(repoPath)) });
+  const openRemotes = useQueries({ queries: openRepoPaths.map((repoPath) => gitQueries.remotes(repoPath)) });
+  const hubScrollerRef = useRef<HTMLDivElement | null>(null);
   const [showAllRecents, setShowAllRecents] = useState(false);
+  const toggleShowAllRecents = () => {
+    const collapsing = showAllRecents;
+    setShowAllRecents(!showAllRecents);
+    if (collapsing) {
+      requestAnimationFrame(() => {
+        if (hubScrollerRef.current) hubScrollerRef.current.scrollTop = 0;
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   const repoSearchLower = repoSearch.trim().toLowerCase();
-  const recentRepos = (recents ?? []).filter(
-    (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
-  );
+  const allFavoritePaths = new Set((favorites ?? []).map((repo) => repo.path));
+  const recentRepos = (recents ?? [])
+    .filter((repo) => !allFavoritePaths.has(repo.path))
+    .filter(
+      (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
+    );
   const groupedRecentRepos = groupRelatedRepositories(recentRepos);
   const displayedRecentRepos = showAllRecents ? groupedRecentRepos : groupedRecentRepos.slice(0, 5);
   const favoriteRepos = groupRelatedRepositories((favorites ?? []).filter(
     (repo) => !repoSearchLower || repo.name.toLowerCase().includes(repoSearchLower) || repo.path.toLowerCase().includes(repoSearchLower),
   ));
   const favoritePaths = new Set(favoriteRepos.map((repo) => repo.path));
-  const recentCount = recentRepos.length;
-  const latestRecent = recentRepos[0];
+  const uncommittedCount = openRepoInfos.filter((result) => result.data && result.data.isClean === false).length;
+  const totalRemotes = openRemotes.reduce((sum, result) => sum + (result.data?.length ?? 0), 0);
+  const activityPaths = useMemo(
+    () => (recents ?? []).filter((repo) => !repo.isStale).slice(0, 10).map((repo) => repo.path),
+    [recents],
+  );
+  const { data: hubActivity } = useQuery(gitQueries.hubActivity(activityPaths));
+  const commitsThisWeek = (hubActivity ?? []).reduce((sum, entry) => sum + entry.commitsThisWeek, 0);
 
   const handleOpen = () => {
     const trimmed = path.trim();
@@ -131,11 +169,15 @@ export function RepositoryWelcome() {
     }
   };
 
-  const handleCloneRepository = () => {
-    const url = window.prompt("Repository URL to clone");
+  const handleCloneRepository = async () => {
+    const url = await appDialog.prompt("Enter the repository URL to clone.", "", "Clone repository");
     if (!url?.trim()) return;
 
-    const destination = window.prompt("Destination path for cloned repository");
+    const destination = await appDialog.prompt(
+      "Enter the destination path for the cloned repository.",
+      "",
+      "Clone destination",
+    );
     if (!destination?.trim()) return;
 
     cloneMutation.mutate({ url: url.trim(), destination: destination.trim() });
@@ -171,11 +213,14 @@ export function RepositoryWelcome() {
     }
     const preview = staleRepositories.slice(0, 5).map((repo) => `• ${repo.name}: ${repo.path}`).join("\n");
     const remaining = staleRepositories.length > 5 ? `\n…and ${staleRepositories.length - 5} more` : "";
-    if (!window.confirm(`GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`)) return;
-
     stalePromptBusyRef.current = true;
     void (async () => {
       try {
+        const confirmed = await appDialog.confirm(
+          `GitEye found ${staleRepositories.length} recent ${staleRepositories.length === 1 ? "repository" : "repositories"} that no longer exist at their saved paths:\n\n${preview}${remaining}\n\nRemove ${staleRepositories.length === 1 ? "this stale entry" : "these stale entries"} from Recents?`,
+          "Remove stale recent repositories?",
+        );
+        if (!confirmed) return;
         for (const repository of staleRepositories) {
           await removeRecentMutation.mutateAsync(repository.path);
         }
@@ -184,631 +229,554 @@ export function RepositoryWelcome() {
       }
     })();
   }, [globalView, recents, removeRecentMutation]);
+  const paletteKeys = getShortcutBinding("command-palette").replace("Mod+", "⌘");
+  const errorCount = operationTranscript.filter((entry) => entry.status === "error").length;
+
+  const chrome = useAppChromeSlots();
 
   return (
     <AppChrome
       title={globalView === "settings" ? "GitEye · Settings" : "GitEye · Repo Hub"}
       subtitle={globalView === "settings" ? "Application preferences" : "No repository open"}
+      leading={chrome.leading}
+      trailing={chrome.trailing}
     >
       <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-        <aside className="giteye-hub-sidebar flex w-[248px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80">
-          <nav className="flex-1 overflow-y-auto px-3 py-4">
-            <button
-              type="button"
-              onClick={() => setGlobalView("repo-hub")}
-              aria-current={globalView === "repo-hub" ? "page" : undefined}
-              className={cn(
-                "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
-                globalView === "repo-hub" && "giteye-nav-active text-[var(--color-text-primary)]",
-              )}
-            >
-              <Home className={cn("h-4 w-4", globalView === "repo-hub" && "text-[var(--color-accent)]")} />
-              Repo Hub
-            </button>
-            <button
-              type="button"
-              onClick={() => setGlobalView("settings")}
-              aria-current={globalView === "settings" ? "page" : undefined}
-              className={cn(
-                "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
-                globalView === "settings" && "giteye-nav-active text-[var(--color-text-primary)]",
-              )}
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNotifications((v) => !v)}
-              aria-expanded={showNotifications}
-              className={cn(
-                "mt-1 flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]",
-                showNotifications && "giteye-nav-active text-[var(--color-text-primary)]",
-              )}
-            >
-              <Bell className="h-4 w-4" />
-              Notifications
-              {operationTranscript.length > 0 && (
-                <span className="ml-auto giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
-                  {Math.min(operationTranscript.length, 99)}
-                </span>
-              )}
-            </button>
+        <AppSidebar />
 
-            <div className="my-5 h-px bg-[var(--color-border-muted)]" />
-            <SectionLabel>Workspaces</SectionLabel>
-            {openRepoPaths.length > 0 ? (
-              <div className="mt-2 space-y-1">
-                {openRepoPaths.map((repoPath) => (
-                  <button
-                    key={repoPath}
-                    type="button"
-                    onClick={() => setActiveRepoPath(repoPath)}
-                    className="giteye-menu-item flex w-full items-center gap-2 rounded-md px-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-                    title={repoPath}
-                  >
-                    <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                    <span className="truncate">{basename(repoPath)}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-2 space-y-2 rounded-lg bg-[var(--color-bg-tertiary)]/40 p-3 text-xs text-[var(--color-text-secondary)]">
-                <span className="giteye-chip">No sessions</span>
-                <p>Open or clone a repository to start a workspace.</p>
-              </div>
-            )}
-
-            <div className="my-5 h-px bg-[var(--color-border-muted)]" />
-            <SectionLabel>Accounts</SectionLabel>
-            <div className="mt-2 space-y-2 rounded-lg bg-[var(--color-bg-tertiary)]/40 p-3 text-xs text-[var(--color-text-secondary)]">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="giteye-chip">
-                  <GitBranch className="h-3 w-3" />
-                  GitHub via gh
-                </span>
-                <span className="giteye-chip">GitLab later</span>
-              </div>
-              <p>Authenticate with gh, then open a repository for provider features.</p>
-              <button
-                disabled
-                className="giteye-btn giteye-btn-ghost giteye-btn-sm w-full cursor-not-allowed justify-start opacity-60"
-                title="GitHub accounts are detected automatically when gh CLI is authenticated. GitLab and Bitbucket support is planned for a future release."
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add Account
-              </button>
-            </div>
-          </nav>
-
-          <div className="border-t border-[var(--color-border-muted)] px-4 py-2 text-xs text-[var(--color-text-muted)]">
-            <GitBranch className="mr-2 inline h-3.5 w-3.5" />
-            {openRepoPaths.length === 0 ? "No repository open" : `${openRepoPaths.length} session${openRepoPaths.length === 1 ? "" : "s"}`}
-          </div>
-        </aside>
-
-        {showNotifications && (
-          <aside className="giteye-hub-notifications flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
-            <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
-              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Notifications</h2>
-              <button
-                type="button"
-                onClick={() => setShowNotifications(false)}
-                aria-label="Close notifications"
-                className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3">
-              {operationTranscript.length === 0 ? (
-                <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/45 p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-                      <Bell className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--color-text-primary)]">No operations logged</p>
-                      <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">Git operations triggered while a repository is open will appear here.</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {operationTranscript.slice(0, 20).map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-surface)] p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Circle
-                          className={cn(
-                            "h-2.5 w-2.5 shrink-0 fill-current",
-                            entry.status === "success" && "text-[var(--color-success)]",
-                            entry.status === "error" && "text-[var(--color-danger)]",
-                            entry.status === "info" && "text-[var(--color-accent)]",
-                          )}
-                        />
-                        <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
-                          {entry.title}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-[11px] text-[var(--color-text-secondary)]">
-                        {entry.detail}
-                      </p>
-                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--color-text-muted)]">
-                        <span>{formatRelativeTime(new Date(entry.createdAt).toISOString())}</span>
-                        {entry.repoPath && (
-                          <span className="truncate">{basename(entry.repoPath)}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </aside>
-        )}
-
-        <main className="giteye-hub-main-shell flex min-w-0 flex-1 flex-col">
-          <nav aria-label="Application navigation" className="giteye-hub-compact-nav hidden shrink-0 items-center gap-1 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 py-1.5">
-            <button
-              type="button"
-              onClick={() => setGlobalView("repo-hub")}
-              aria-current={globalView === "repo-hub" ? "page" : undefined}
-              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", globalView === "repo-hub" && "giteye-nav-active")}
-            >
-              <Home className="h-4 w-4" />
-              Repo Hub
-            </button>
-            <button
-              type="button"
-              onClick={() => setGlobalView("settings")}
-              aria-current={globalView === "settings" ? "page" : undefined}
-              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", globalView === "settings" && "giteye-nav-active")}
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNotifications((visible) => !visible)}
-              aria-expanded={showNotifications}
-              className={cn("giteye-btn giteye-btn-ghost giteye-btn-sm", showNotifications && "giteye-nav-active")}
-            >
-              <Bell className="h-4 w-4" />
-              Notifications
-            </button>
-          </nav>
-          <RepositoryTabs />
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div ref={hubScrollerRef} className="min-h-0 flex-1 overflow-y-auto">
             {globalView === "settings" ? (
               <SettingsPlaceholder />
             ) : (
-              <>
-            <section className="giteye-hub-main min-w-0 flex-1 overflow-y-auto px-5 py-4">
-              <div className="mx-auto max-w-[1020px]">
-                <div className="giteye-hub-heading mb-4 flex items-start justify-between gap-4">
+              <div className="mx-auto flex max-w-[1160px] flex-col gap-6 px-6 py-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h1 className="text-[30px] font-semibold leading-none tracking-[-0.035em] text-[var(--color-text-primary)]">Repo Hub</h1>
-                    <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Open, clone, or revisit a repository from one calm starting point.</p>
+                    <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] text-[var(--color-text-primary)]">
+                      Repository Hub
+                    </h1>
+                    <p className="mt-1 text-[12.5px] text-[var(--color-text-muted)]">
+                      Manage your local workspaces and connected remote repositories.
+                    </p>
                   </div>
-                  <div className="giteye-hub-search relative shrink-0">
-                    <Input
-                      ref={searchInputRef}
-                      value={repoSearch}
-                      onChange={(event) => setRepoSearch(event.target.value)}
-                      placeholder="Search repositories"
-                      leadingIcon={<Search className="h-4 w-4" />}
-                      trailing={<kbd className="giteye-kbd">⌘K</kbd>}
-                      className="h-9 w-64"
-                    />
-                  </div>
-                </div>
-
-                <section className="giteye-surface rounded-xl p-4 shadow-[var(--shadow-panel)]">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Start with a repository</h2>
-                      <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Browse for a local repo, paste a path, clone, or initialize a new repository.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCloneRepository}
-                        disabled={actionPending}
-                        className="giteye-btn giteye-btn-secondary giteye-btn-sm disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        {cloneMutation.isPending ? "Cloning…" : "Clone"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleInitRepository}
-                        disabled={actionPending}
-                        className="giteye-btn giteye-btn-secondary giteye-btn-sm disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        {initMutation.isPending ? "Creating…" : "New"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="giteye-hub-open-row mt-3 flex gap-2">
-                    <div className="giteye-hub-open-input relative min-w-0 flex-1">
-                      <Input
-                        value={path}
-                        onChange={(event) => setPath(event.target.value)}
-                        onKeyDown={(event) => event.key === "Enter" && handleOpen()}
-                        placeholder="/path/to/git/repository"
-                        leadingIcon={<Search className="h-4 w-4" />}
-                        className="h-9 w-full"
-                      />
-                    </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleBrowse}
-                      className="giteye-btn giteye-btn-secondary giteye-btn-sm shrink-0"
-                      aria-label="Browse for repository folder"
+                      onClick={() => setShowOpenPanel((visible) => !visible)}
+                      aria-expanded={showOpenPanel}
+                      className="giteye-btn giteye-btn-secondary"
                     >
                       <FolderOpen className="h-4 w-4" />
-                      Browse
+                      Open
                     </button>
                     <button
                       type="button"
-                      onClick={handleOpen}
-                      disabled={!path.trim() || actionPending}
-                      className="giteye-btn giteye-btn-primary giteye-btn-sm shrink-0 disabled:cursor-not-allowed disabled:opacity-45"
+                      onClick={() => void handleInitRepository()}
+                      disabled={actionPending}
+                      className="giteye-btn giteye-btn-secondary disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      {openMutation.isPending ? "Opening…" : "Open"}
+                      <Plus className="h-4 w-4" />
+                      {initMutation.isPending ? "Creating…" : "New Repo"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCloneRepository()}
+                      disabled={actionPending}
+                      className="giteye-btn giteye-btn-primary disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <GitFork className="h-4 w-4" />
+                      {cloneMutation.isPending ? "Cloning…" : "Clone"}
                     </button>
                   </div>
-                  {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(actionError)}</p>}
-                </section>
-
-                <div className="mt-4">
-                  <RepositoryList
-                    title="Recent Repositories"
-                    loading={recentsLoading}
-                    repos={displayedRecentRepos}
-                    totalCount={recentCount}
-                    showAll={showAllRecents}
-                    onToggleShowAll={() => setShowAllRecents((value) => !value)}
-                    favoritePaths={favoritePaths}
-                    onOpen={(repoPath) => openMutation.mutate(repoPath)}
-                    onSetFavorite={handleSetFavorite}
-                    onRemoveRecent={(repoPath) => removeRecentMutation.mutate(repoPath)}
-                  />
                 </div>
 
-                <div className="giteye-hub-summary-grid mt-4 grid grid-cols-[minmax(0,1fr)_320px] gap-4">
-                  <FavoriteList
-                    loading={favoritesLoading}
-                    repos={favoriteRepos}
-                    onOpen={(repoPath) => openMutation.mutate(repoPath)}
-                    onSetFavorite={handleSetFavorite}
-                  />
-
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-2">
-                      <MetricCard label="Recent" value={String(recentCount)} detail={recentCount === 1 ? "1 repo opened" : `${recentCount} repos opened`} icon={FolderGit2} />
-                      <MetricCard label="Paths" value={String(recentCount)} detail={recentCount === 1 ? "1 local path" : `${recentCount} local paths`} icon={FolderOpen} />
-                      <MetricCard label="Latest" value={latestRecent ? formatRelativeTime(latestRecent.lastOpenedAt) : "—"} detail={latestRecent?.name ?? "Open a repository"} icon={Clock} />
-                    </div>
-
-                    <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80 p-3 shadow-[var(--shadow-panel)]">
-                      <div className="flex items-start gap-3">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent)]/10 text-[var(--color-accent)]">
-                          <Sparkles className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Welcome to Repo Hub</h2>
-                          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Repository context appears here after you open a local project.</p>
-                          <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
-                            Press <kbd className="giteye-kbd">⌘K</kbd> to filter recents.
-                          </p>
-                        </div>
+                {showOpenPanel && (
+                  <div className="giteye-card p-3">
+                    <div className="flex gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <Input
+                          value={path}
+                          onChange={(event) => setPath(event.target.value)}
+                          onKeyDown={(event) => event.key === "Enter" && handleOpen()}
+                          placeholder="/path/to/git/repository"
+                          leadingIcon={<Search className="h-4 w-4" />}
+                          className="h-9 w-full"
+                        />
                       </div>
-                    </section>
+                      <button
+                        type="button"
+                        onClick={() => void handleBrowse()}
+                        className="giteye-btn giteye-btn-secondary shrink-0"
+                        aria-label="Browse for repository folder"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                        Browse
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpen}
+                        disabled={!path.trim() || actionPending}
+                        className="giteye-btn giteye-btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {openMutation.isPending ? "Opening…" : "Open"}
+                      </button>
+                    </div>
+                    {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(actionError)}</p>}
+                  </div>
+                )}
 
-                    <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/70 p-3 shadow-[var(--shadow-panel)]">
-                      <SectionHeader title="Team Workspaces" />
-                      <p className="mt-2 text-xs text-[var(--color-text-secondary)]">Open a repository with workspace metadata to show shared context.</p>
-                    </section>
+                <div className="flex items-center gap-2 border-b border-[var(--color-border-muted)] pb-4">
+                  <Input
+                    ref={searchInputRef}
+                    value={repoSearch}
+                    onChange={(event) => setRepoSearch(event.target.value)}
+                    placeholder="Filter repositories by name, path, or tag…"
+                    leadingIcon={<Search className="h-4 w-4" />}
+                    containerClassName="h-9 min-w-0 flex-1"
+                    className="h-9 w-full"
+                  />
+                  <div className="giteye-segmented shrink-0" role="group" aria-label="Favorites layout">
+                    <button
+                      type="button"
+                      data-state={viewMode === "grid" ? "active" : undefined}
+                      onClick={() => setViewMode("grid")}
+                      aria-label="Card view"
+                      title="Card view"
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      data-state={viewMode === "list" ? "active" : undefined}
+                      onClick={() => setViewMode("list")}
+                      aria-label="List view"
+                      title="List view"
+                    >
+                      <List className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="giteye-section-title">
+                      <Star className="h-4 w-4 text-[var(--color-star)]" />
+                      Favorite Repositories
+                    </h2>
+                    {favoriteRepos.length > 0 && (
+                      <button
+                        type="button"
+                        className="giteye-link"
+                        onClick={() => setShowAllFavorites((visible) => !visible)}
+                      >
+                        {showAllFavorites ? "Show fewer favorites" : "View all favorites"}
+                      </button>
+                    )}
+                  </div>
+                  {favoritesLoading ? (
+                    <div className="flex h-40 items-center justify-center">
+                      <LoadingSpinner size="sm" />
+                    </div>
+                  ) : favoriteRepos.length === 0 ? (
+                    <div className="giteye-card flex h-40 flex-col items-center justify-center px-5 text-center">
+                      <Star className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">No favorites yet</p>
+                      <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Star a repository to pin it here.</p>
+                    </div>
+                  ) : viewMode === "grid" ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {(showAllFavorites ? favoriteRepos : favoriteRepos.slice(0, 3)).map((repo) => (
+                        <FavoriteCard key={repo.path} repo={repo} onOpen={(repoPath) => openMutation.mutate(repoPath)} onSetFavorite={handleSetFavorite} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="giteye-card divide-y divide-[var(--color-border-muted)]">
+                      {favoriteRepos.map((repo) => (
+                        <FavoriteRow key={repo.path} repo={repo} onOpen={(repoPath) => openMutation.mutate(repoPath)} onSetFavorite={handleSetFavorite} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="giteye-section-title">
+                      <History className="h-4 w-4 text-[var(--color-text-muted)]" />
+                      Recent Workspaces
+                    </h2>
+                    <span className="flex items-center gap-3 text-[11px] text-[var(--color-text-muted)]">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full border-2 border-[var(--color-success)]" />
+                        {openRepoPaths.length} Active
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full border-2 border-[var(--color-star)]" />
+                        {uncommittedCount} Uncommitted
+                      </span>
+                    </span>
+                  </div>
+                  <div className="giteye-card divide-y divide-[var(--color-border-muted)]">
+                    {recentsLoading ? (
+                      <div className="flex h-40 items-center justify-center">
+                        <LoadingSpinner size="sm" />
+                      </div>
+                    ) : displayedRecentRepos.length === 0 ? (
+                      <div className="flex h-40 flex-col items-center justify-center px-5 text-center">
+                        <GitBranch className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
+                        <p className="text-sm font-medium text-[var(--color-text-primary)]">No recent repositories</p>
+                        <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Open a local Git repository to pin it here.</p>
+                      </div>
+                    ) : (
+                      displayedRecentRepos.map((repo) => (
+                        <RecentRow
+                          key={repo.path}
+                          repo={repo}
+                          isFavorite={favoritePaths.has(repo.path) || allFavoritePaths.has(repo.path)}
+                          onOpen={(repoPath) => openMutation.mutate(repoPath)}
+                          onSetFavorite={handleSetFavorite}
+                          onRemoveRecent={(repoPath) => removeRecentMutation.mutate(repoPath)}
+                        />
+                      ))
+                    )}
+                  </div>
+                  {groupedRecentRepos.length > 5 && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        className="giteye-link text-[var(--color-text-secondary)]"
+                        onClick={toggleShowAllRecents}
+                      >
+                        {showAllRecents ? "Show fewer repositories" : "Show more repositories"}
+                      </button>
+                    </div>
+                  )}
+                </section>
+
+                <div className="h-px bg-[var(--color-border-muted)]" />
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="giteye-stat-card">
+                    <span className="giteye-icon-tile" data-tone="accent">
+                      <Code2 className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">System Health</span>
+                      <span className="giteye-mono block truncate text-[11px] text-[var(--color-text-muted)]">
+                        {toolchain?.git.installed ? `Git v${(toolchain.git.version ?? "").replace(/^git version\s+/i, "") || "unknown"} Installed` : "Git not installed"}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="giteye-stat-card">
+                    <span className="giteye-icon-tile">
+                      <GitFork className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">Active Remotes</span>
+                      <span className="giteye-mono block truncate text-[11px] text-[var(--color-text-muted)]">
+                        {totalRemotes} Total Connections
+                      </span>
+                    </span>
+                  </div>
+                  <div className="giteye-stat-card">
+                    <span className="giteye-icon-tile">
+                      <History className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-[var(--color-text-primary)]">Commit Activity</span>
+                      <span className="giteye-mono block truncate text-[11px] text-[var(--color-text-muted)]">
+                        {commitsThisWeek} commits this week
+                      </span>
+                    </span>
                   </div>
                 </div>
               </div>
-            </section>
-
-            <ActivityFeed />
-              </>
             )}
           </div>
 
-        <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 px-5 text-[11px] text-[var(--color-text-muted)]">
-          <span className="inline-flex items-center gap-2">
-            <GitBranch className="h-3.5 w-3.5" />
-            No repository open
-          </span>
-          <span className="giteye-hub-footer-shortcuts flex items-center gap-3">
-            <Shortcut keys={getShortcutBinding("command-palette").replace("Mod+", "⌘")} label="Search" />
-            <Shortcut keys={getShortcutBinding("toggle-command-log").replace("Mod+", "⌘")} label="Command log" />
-          </span>
-          <span className="giteye-chip" data-tone="success">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Ready
-          </span>
-        </footer>
-      </main>
+          <footer className="giteye-statusbar flex shrink-0 items-center justify-between gap-3 border-t border-[var(--color-border-muted)] px-4 text-[11px] text-[var(--color-text-muted)]">
+            <span className="flex min-w-0 items-center gap-2">
+              <GitBranch className="h-3.5 w-3.5 shrink-0" />
+              {activeRepoInfo ? (
+                <>
+                  <span className="giteye-mono truncate text-[var(--color-text-secondary)]">{activeRepoInfo.currentBranch}</span>
+                  {(activeRepoInfo.ahead > 0 || activeRepoInfo.behind > 0) && (
+                    <span className="giteye-mono shrink-0">↑{activeRepoInfo.ahead} ↓{activeRepoInfo.behind}</span>
+                  )}
+                </>
+              ) : (
+                <span className="truncate">No repository open</span>
+              )}
+            </span>
+            <span className="flex shrink-0 items-center gap-3">
+              {activeRepoInfo && (
+                <span className="giteye-chip" data-tone={activeRepoInfo.isClean ? "success" : "warning"}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {activeRepoInfo.isClean ? "Synced" : "Uncommitted"}
+                </span>
+              )}
+              <span className="flex items-center gap-1.5">
+                <span className={cn("h-2 w-2 rounded-full", online ? "bg-[var(--color-success)]" : "bg-[var(--color-danger)]")} />
+                {online ? "Online" : "Offline"}
+              </span>
+              {errorCount > 0 && (
+                <span className="giteye-chip" data-tone="danger">
+                  {errorCount} {errorCount === 1 ? "error" : "errors"}
+                </span>
+              )}
+              <span className="giteye-hub-footer-shortcuts hidden items-center gap-3 lg:flex">
+                <Shortcut keys={paletteKeys} label="Search" />
+                <Shortcut keys={getShortcutBinding("toggle-command-log").replace("Mod+", "⌘")} label="Command log" />
+              </span>
+            </span>
+          </footer>
+        </main>
       </div>
     </AppChrome>
   );
 }
 
-function SectionLabel({ children }: { children: string }) {
-  return <div className="px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{children}</div>;
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{title}</h2>
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
+function FavoriteCard({
+  repo,
+  onOpen,
+  onSetFavorite,
 }: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: typeof FolderGit2;
+  repo: RepositoryCard;
+  onOpen: (path: string) => void;
+  onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
 }) {
+  const timestamp = repo.lastOpenedAt ?? repo.favoritedAt;
   return (
-    <article className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/70 px-3 py-2 shadow-[var(--shadow-soft)]">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-          <Icon className="h-4 w-4" />
+    <article className="giteye-card relative">
+      <button type="button" onClick={() => onOpen(repo.path)} className="block w-full text-left">
+        <RepoThumb seed={repo.path} />
+        <span className="block p-4">
+          <span className="block truncate text-[15px] font-semibold text-[var(--color-text-primary)]">
+            {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
+          </span>
+          <span className="giteye-mono mt-0.5 block truncate text-[11px] text-[var(--color-text-muted)]">{repo.path}</span>
+          {(repo.relationshipKind || repo.parentName) && (
+            <span className="mt-2.5 flex flex-wrap gap-1.5">
+              {repo.relationshipKind && <span className="giteye-chip capitalize">{repo.relationshipKind}</span>}
+              {repo.parentName && <span className="giteye-chip">{repo.parentName}</span>}
+            </span>
+          )}
+          <span className="mt-3 flex items-center justify-between border-t border-[var(--color-border-muted)] pt-2.5 text-[11px] text-[var(--color-text-muted)]">
+            <span className="giteye-mono flex min-w-0 items-center gap-1.5 text-[var(--color-accent)]">
+              <GitBranch className="h-3 w-3 shrink-0" />
+              <span className="truncate">{repo.currentBranch ?? "—"}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-1">
+              <Clock className="h-3 w-3" />
+              {timestamp ? formatRelativeTime(timestamp) : "—"}
+            </span>
+          </span>
         </span>
-        <span className="min-w-0">
-          <span className="block truncate whitespace-nowrap text-xs text-[var(--color-text-secondary)]">{label}</span>
-          <span className="mt-0.5 block truncate text-lg font-semibold leading-none text-[var(--color-text-primary)]">{value}</span>
-          <span className="mt-1 block truncate text-[11px] text-[var(--color-text-muted)]">{detail}</span>
-        </span>
-      </div>
+      </button>
+      <button
+        type="button"
+        aria-label={`Remove ${repo.name} from favorites`}
+        title="Remove from favorites"
+        onClick={() => onSetFavorite(repo, false)}
+        className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-bg-elevated)] text-[var(--color-star)] shadow-[var(--shadow-soft)] hover:opacity-80"
+      >
+        <Star className="h-3.5 w-3.5 fill-current" />
+      </button>
     </article>
   );
 }
 
-function RepositoryList({
-  title,
-  loading,
-  repos,
-  totalCount,
-  showAll,
-  onToggleShowAll,
-  favoritePaths,
+function FavoriteRow({
+  repo,
+  onOpen,
+  onSetFavorite,
+}: {
+  repo: RepositoryCard;
+  onOpen: (path: string) => void;
+  onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
+}) {
+  return (
+    <div className="group flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-bg-hover)]">
+      <button type="button" onClick={() => onOpen(repo.path)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className="giteye-icon-tile" data-tone="star">
+          <Star className="h-4 w-4 fill-current" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+            {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
+          </span>
+          <span className="giteye-mono block truncate text-[11px] text-[var(--color-text-muted)]">{repo.path}</span>
+        </span>
+      </button>
+      <span className="giteye-mono hidden w-40 shrink-0 items-center gap-1.5 text-[11.5px] text-[var(--color-text-secondary)] sm:flex">
+        <GitBranch className="h-3 w-3 shrink-0" />
+        <span className="truncate">{repo.currentBranch ?? "—"}</span>
+      </span>
+      <button
+        type="button"
+        aria-label={`Remove ${repo.name} from favorites`}
+        title="Remove from favorites"
+        onClick={() => onSetFavorite(repo, false)}
+        className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-star)]"
+      >
+        <Star className="h-4 w-4 fill-current" />
+      </button>
+    </div>
+  );
+}
+
+function RecentRow({
+  repo,
+  isFavorite,
   onOpen,
   onSetFavorite,
   onRemoveRecent,
 }: {
-  title: string;
-  loading: boolean;
-  repos: RepositoryCard[];
-  totalCount: number;
-  showAll: boolean;
-  onToggleShowAll: () => void;
-  favoritePaths: Set<string>;
+  repo: RepositoryCard;
+  isFavorite: boolean;
   onOpen: (path: string) => void;
   onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
   onRemoveRecent: (path: string) => void;
 }) {
-  const [menuRepo, setMenuRepo] = useState<RepositoryCard | null>(null);
-  const canToggle = totalCount > 5;
-
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <section className="min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
-      <div className="flex items-center justify-between">
-        <SectionHeader title={title} />
-        {canToggle && (
-          <button
-            type="button"
-            onClick={onToggleShowAll}
-            className="giteye-btn giteye-btn-ghost giteye-btn-sm text-[var(--color-accent)]"
-          >
-            {showAll ? "Show less" : `View all ${totalCount}`}
-          </button>
-        )}
-      </div>
-      <div className="mt-3 h-[264px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
-        {loading ? (
-          <div className="flex h-[264px] items-center justify-center">
-            <LoadingSpinner size="sm" />
-          </div>
-        ) : repos.length === 0 ? (
-          <div className="flex h-[264px] flex-col items-center justify-center px-5 text-center">
-            <GitBranch className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-            <p className="text-sm font-medium text-[var(--color-text-primary)]">No recent repositories</p>
-            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Open a local Git repository to pin it here.</p>
-          </div>
-        ) : (
-          repos.map((repo) => {
-            const isFavorite = favoritePaths.has(repo.path);
-
-            return (
-              <div
-                key={repo.path}
-                className={cn(
-                  "group relative grid w-full grid-cols-[minmax(0,1fr)_80px] items-center rounded-md px-1 hover:bg-[var(--color-bg-hover)]",
-                  repo.parentPath && "ml-5 w-[calc(100%-1.25rem)] border-l-2 border-[var(--color-accent)]/30 pl-2",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onOpen(repo.path)}
-                  className="grid min-h-12 min-w-0 grid-cols-[minmax(0,1fr)_96px] items-center gap-3 px-1 text-left"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-                      <FolderGit2 className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
-                        {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
-                      </span>
-                      {repo.parentName ? (
-                        <span className="block truncate text-xs capitalize text-[var(--color-text-muted)]">
-                          {repo.relationshipKind} repository
-                        </span>
-                      ) : null}
-                      <span className="block truncate text-xs text-[var(--color-text-secondary)]">{repo.path}</span>
-                    </span>
-                  </span>
-                  <span className="text-right text-xs text-[var(--color-text-secondary)]">{repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}</span>
-                </button>
-                <span className="flex justify-end gap-1">
-                  <button
-                    type="button"
-                    aria-label={isFavorite ? `Remove ${repo.name} from favorites` : `Add ${repo.name} to favorites`}
-                    title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                    onClick={() => onSetFavorite(repo, !isFavorite)}
-                    className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] hover:text-[var(--color-warning)]"
-                  >
-                    <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-warning)]")} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`More actions for ${repo.name}`}
-                    title="More actions"
-                    aria-expanded={menuRepo?.path === repo.path}
-                    onClick={() => setMenuRepo(menuRepo?.path === repo.path ? null : repo)}
-                    className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] opacity-70 hover:text-[var(--color-text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                  {menuRepo?.path === repo.path && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setMenuRepo(null)} />
-                      <div role="menu" aria-label={`Actions for ${repo.name}`} className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] py-1 shadow-[var(--shadow-elevated)]">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuRepo(null);
-                            void navigator.clipboard.writeText(repo.path);
-                          }}
-                          className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
-                        >
-                          Copy Path
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuRepo(null);
-                            onRemoveRecent(repo.path);
-                          }}
-                          className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
-                        >
-                          Remove from Recents
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </section>
-  );
-}
-
-function FavoriteList({
-  loading,
-  repos,
-  onOpen,
-  onSetFavorite,
-}: {
-  loading: boolean;
-  repos: RepositoryCard[];
-  onOpen: (path: string) => void;
-  onSetFavorite: (repo: RepositoryCard, favorite: boolean) => void;
-}) {
-  return (
-    <section className="min-w-0 overflow-hidden rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] p-3.5 shadow-[var(--shadow-panel)]">
-      <SectionHeader title="Favorite Repositories" />
-      <div className="mt-3 h-[252px] overflow-y-auto divide-y divide-[var(--color-border-muted)] pr-1">
-        {loading ? (
-          <div className="flex h-[252px] items-center justify-center">
-            <LoadingSpinner size="sm" />
-          </div>
-        ) : repos.length === 0 ? (
-          <div className="flex h-[252px] flex-col items-center justify-center rounded-lg bg-[var(--color-bg-tertiary)]/35 px-5 text-center">
-            <Star className="mb-2 h-6 w-6 text-[var(--color-text-muted)]" />
-            <p className="text-sm font-medium text-[var(--color-text-primary)]">No favorites yet</p>
-            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">Favorite repositories from the recent list or repo switcher to pin them here.</p>
-          </div>
-        ) : (
-          repos.map((repo) => (
-            <div
-              key={repo.path}
-              className="group grid w-full grid-cols-[minmax(0,1fr)_40px] items-center gap-2 rounded-md px-1 hover:bg-[var(--color-bg-hover)]"
-            >
+    <div className="group relative flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-bg-hover)]">
+      <button type="button" onClick={() => onOpen(repo.path)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className="giteye-icon-tile">
+          <FolderOpen className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
+            <span className="truncate">{repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}</span>
+            {isFavorite && <Star className="h-3.5 w-3.5 shrink-0 fill-current text-[var(--color-star)]" />}
+          </span>
+          <span className="giteye-mono block truncate text-[11px] text-[var(--color-text-muted)]">{repo.path}</span>
+        </span>
+      </button>
+      <span className="hidden w-44 shrink-0 flex-col items-end sm:flex">
+        <span className="giteye-mono flex max-w-full items-center gap-1.5 text-[11.5px] text-[var(--color-text-secondary)]">
+          <GitBranch className="h-3 w-3 shrink-0" />
+          <span className="truncate">{repo.currentBranch ?? "—"}</span>
+        </span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">Active branch</span>
+      </span>
+      <span className="hidden w-28 shrink-0 flex-col items-end md:flex">
+        <span className="text-[11.5px] text-[var(--color-text-secondary)]">
+          {repo.lastOpenedAt ? formatRelativeTime(repo.lastOpenedAt) : "—"}
+        </span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">Last opened</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          aria-label={isFavorite ? `Remove ${repo.name} from favorites` : `Add ${repo.name} to favorites`}
+          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+          onClick={() => onSetFavorite(repo, !isFavorite)}
+          className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] hover:text-[var(--color-star)]"
+        >
+          <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-star)]")} />
+        </button>
+        <button
+          type="button"
+          aria-label={`More actions for ${repo.name}`}
+          title="More actions"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((visible) => !visible)}
+          className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-text-muted)] opacity-70 hover:text-[var(--color-text-primary)] focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+            <div role="menu" aria-label={`Actions for ${repo.name}`} className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] py-1 shadow-[var(--shadow-elevated)]">
               <button
                 type="button"
-                onClick={() => onOpen(repo.path)}
-                className="flex min-h-12 min-w-0 items-center gap-3 px-1 text-left"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  void navigator.clipboard.writeText(repo.path);
+                }}
+                className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-warning)]">
-                  <Star className="h-4 w-4 fill-current" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-[var(--color-text-primary)]">
-                    {repo.parentName ? `${repo.parentName} | ${repo.name}` : repo.name}
-                  </span>
-                  <span className="block truncate text-xs text-[var(--color-text-secondary)]">{repo.path}</span>
-                </span>
+                Copy Path
               </button>
               <button
                 type="button"
-                aria-label={`Remove ${repo.name} from favorites`}
-                title="Remove from favorites"
-                onClick={() => onSetFavorite(repo, false)}
-                className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm text-[var(--color-warning)]"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onRemoveRecent(repo.path);
+                }}
+                className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
               >
-                <Star className="h-4 w-4 fill-current" />
+                Remove from Recents
               </button>
             </div>
-          ))
+          </>
         )}
-      </div>
-    </section>
+      </span>
+    </div>
   );
 }
 
-function ActivityFeed() {
+function RepoThumb({ seed }: { seed: string }) {
+  const elements = useMemo(() => {
+    const random = seededRandom(hashString(seed));
+    const nodes = Array.from({ length: 7 }, () => ({
+      x: 16 + Math.round(random() * 288),
+      y: 12 + Math.round(random() * 72),
+      tone: random() > 0.5 ? "accent" : "success",
+      square: random() > 0.75,
+    }));
+    const links = nodes.slice(1).map((node, index) => {
+      const previous = nodes[index];
+      const midX = Math.round((previous.x + node.x) / 2);
+      return `M ${previous.x} ${previous.y} H ${midX} V ${node.y} H ${node.x}`;
+    });
+    return { nodes, links };
+  }, [seed]);
+
   return (
-    <aside className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/80 p-4 xl:block">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Activity Feed</h2>
-      </div>
-      <section className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]/45 p-4">
-        <div className="flex items-start gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-bg-surface)] text-[var(--color-accent)]">
-            <Clock className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Provider activity appears here</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">Connect a provider after opening a repository to see pushes, reviews, and checks.</p>
-          </div>
-        </div>
-      </section>
-    </aside>
+    <svg className="giteye-thumb" viewBox="0 0 320 96" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      {elements.links.map((d, index) => (
+        <path
+          key={index}
+          d={d}
+          fill="none"
+          stroke={index % 2 === 0 ? "var(--color-accent)" : "var(--color-success)"}
+          strokeOpacity="0.3"
+          strokeWidth="1"
+        />
+      ))}
+      {elements.nodes.map((node, index) => {
+        const stroke = node.tone === "accent" ? "var(--color-accent)" : "var(--color-success)";
+        return node.square ? (
+          <rect key={index} x={node.x - 3} y={node.y - 3} width="6" height="6" fill="none" stroke={stroke} strokeOpacity="0.55" />
+        ) : (
+          <circle key={index} cx={node.x} cy={node.y} r="3" fill="none" stroke={stroke} strokeOpacity="0.55" />
+        );
+      })}
+    </svg>
   );
 }
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededRandom(seed: number) {
+  let state = seed || 1;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
 
 function Shortcut({ keys, label }: { keys: string; label: string }) {
   return (
@@ -819,8 +787,3 @@ function Shortcut({ keys, label }: { keys: string; label: string }) {
   );
 }
 
-function basename(path: string) {
-  const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;
-  const slashIndex = path.lastIndexOf("/", normalizedEnd - 1);
-  return path.slice(slashIndex + 1, normalizedEnd);
-}

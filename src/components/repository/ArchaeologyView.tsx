@@ -14,6 +14,7 @@ import { gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { EmptyState } from "../common/EmptyState";
+import { Button, Select } from "../ui";
 import type {
   BlameFileRequest,
   BlameLine,
@@ -173,7 +174,7 @@ export function ArchaeologyView() {
               <form onSubmit={runCommitSearch} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_auto]">
                 <TextField label="Query" value={commitForm.query} required placeholder="fix parser" onChange={(query) => setCommitForm((form) => ({ ...form, query }))} />
                 <LimitField value={commitForm.limit} onChange={(limit) => setCommitForm((form) => ({ ...form, limit }))} />
-                <RunButton disabled={!activeRepoPath || !commitForm.query.trim()} running={commitQuery.isFetching} />
+                <Button type="submit" variant="primary" size="sm" className="self-end" disabled={!activeRepoPath || !commitForm.query.trim() || commitQuery.isFetching}>{commitQuery.isFetching ? "Running…" : "Run"}</Button>
               </form>
               <CommitResults state={queryState(commitQuery, Boolean(commitRequest), "No commits matched", "Try a broader commit message query.")} />
             </ToolPanel>
@@ -184,7 +185,7 @@ export function ArchaeologyView() {
               <form onSubmit={runFileHistory} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_auto]">
                 <TextField label="File path" value={fileForm.filePath} required placeholder="src/lib/git-data.ts" onChange={(filePath) => setFileForm((form) => ({ ...form, filePath }))} />
                 <LimitField value={fileForm.limit} onChange={(limit) => setFileForm((form) => ({ ...form, limit }))} />
-                <RunButton disabled={!activeRepoPath || !fileForm.filePath.trim()} running={fileHistoryQuery.isFetching} />
+                <Button type="submit" variant="primary" size="sm" className="self-end" disabled={!activeRepoPath || !fileForm.filePath.trim() || fileHistoryQuery.isFetching}>{fileHistoryQuery.isFetching ? "Running…" : "Run"}</Button>
               </form>
               <FileHistoryResults state={queryState(fileHistoryQuery, Boolean(fileRequest), "No history returned", "Check that the path is tracked in this repository.")} />
             </ToolPanel>
@@ -196,7 +197,7 @@ export function ArchaeologyView() {
                 <TextField label="File path" value={blameForm.filePath} required placeholder="src/app/App.tsx" onChange={(filePath) => setBlameForm((form) => ({ ...form, filePath }))} />
                 <TextField label="Revision" value={blameForm.revision} placeholder="HEAD" onChange={(revision) => setBlameForm((form) => ({ ...form, revision }))} />
                 <LimitField value={blameForm.limit} onChange={(limit) => setBlameForm((form) => ({ ...form, limit }))} />
-                <RunButton disabled={!activeRepoPath || !blameForm.filePath.trim()} running={blameQuery.isFetching} />
+                <Button type="submit" variant="primary" size="sm" className="self-end" disabled={!activeRepoPath || !blameForm.filePath.trim() || blameQuery.isFetching}>{blameQuery.isFetching ? "Running…" : "Run"}</Button>
               </form>
               <BlameResults state={queryState(blameQuery, Boolean(blameRequest), "No blame lines returned", "Try another revision or a smaller result limit.")} />
             </ToolPanel>
@@ -212,7 +213,7 @@ export function ArchaeologyView() {
                   <input type="checkbox" checked={grepForm.caseSensitive} onChange={(event) => setGrepForm((form) => ({ ...form, caseSensitive: event.target.checked }))} />
                   Case sensitive
                 </label>
-                <RunButton disabled={!activeRepoPath || !grepForm.query.trim()} running={grepQuery.isFetching} />
+                <Button type="submit" variant="primary" size="sm" className="self-end" disabled={!activeRepoPath || !grepForm.query.trim() || grepQuery.isFetching}>{grepQuery.isFetching ? "Running…" : "Run"}</Button>
               </form>
               <GrepResults state={queryState(grepQuery, Boolean(grepRequest), "No content matches", "Try a simpler query or remove the path filter.")} />
             </ToolPanel>
@@ -224,7 +225,7 @@ export function ArchaeologyView() {
                 <TextField label="Needle" value={pickaxeForm.query} required placeholder="functionName" onChange={(query) => setPickaxeForm((form) => ({ ...form, query }))} />
                 <SelectField label="Mode" value={pickaxeForm.mode} onChange={(mode) => setPickaxeForm((form) => ({ ...form, mode: mode as PickaxeSearchMode }))} options={[{ value: "literal", label: "-S literal" }, { value: "regex", label: "-G regex" }]} />
                 <LimitField value={pickaxeForm.limit} onChange={(limit) => setPickaxeForm((form) => ({ ...form, limit }))} />
-                <RunButton disabled={!activeRepoPath || !pickaxeForm.query.trim()} running={pickaxeQuery.isFetching} />
+                <Button type="submit" variant="primary" size="sm" className="self-end" disabled={!activeRepoPath || !pickaxeForm.query.trim() || pickaxeQuery.isFetching}>{pickaxeQuery.isFetching ? "Running…" : "Run"}</Button>
               </form>
               <PickaxeResults state={queryState(pickaxeQuery, Boolean(pickaxeRequest), "No pickaxe hits", "Try the alternate -S/-G mode.")} />
             </ToolPanel>
@@ -284,15 +285,12 @@ function SelectField({ label, value, options, onChange }: { label: string; value
   return (
     <label className="min-w-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
       {label}
-      <select
+      <Select
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-md border border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] px-3 text-[12px] normal-case tracking-normal text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-accent)]"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        options={options}
+        className="mt-1 w-full"
+      />
     </label>
   );
 }
@@ -308,17 +306,6 @@ function LimitField({ value, onChange }: { value: number; onChange: (value: numb
   );
 }
 
-function RunButton({ disabled, running }: { disabled: boolean; running: boolean }) {
-  return (
-    <button
-      type="submit"
-      disabled={disabled || running}
-      className="self-end rounded-md border border-[var(--color-accent)] bg-[var(--color-accent)] px-4 py-2 text-[12px] font-semibold text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {running ? "Running…" : "Run"}
-    </button>
-  );
-}
 
 function CommitResults({ state }: { state: QueryState<CommitSearchResult> }) {
   return <ResultFrame state={state} render={(results) => <CommitList commits={results} />} />;

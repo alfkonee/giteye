@@ -22,6 +22,24 @@ export function truncateHash(hash: string, len = 7): string {
   return hash.slice(0, len);
 }
 
+export type StalenessTone = "fresh" | "recent" | "aging" | "stale";
+
+/**
+ * Buckets a timestamp into staleness tiers: under a week, under a month,
+ * under three months, and older.
+ */
+export function stalenessTone(
+  timestamp: string | null | undefined,
+): { tone: StalenessTone; days: number } | null {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const tone: StalenessTone =
+    days < 7 ? "fresh" : days < 30 ? "recent" : days < 90 ? "aging" : "stale";
+  return { tone, days };
+}
+
 export function formatCount(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);

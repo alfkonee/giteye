@@ -63,6 +63,12 @@ export interface FastForwardBranchRequest {
   upstream: string;
 }
 
+export interface DeleteBranchRequest {
+  branchName: string;
+  /** Force-delete (`-D`) a branch that is not fully merged. */
+  force?: boolean;
+}
+
 export interface AddRemoteRequest {
   name: string;
   url: string;
@@ -181,6 +187,14 @@ export interface MergePullRequestRequest {
   deleteBranch?: boolean;
 }
 
+export interface CreatePullRequestRequest {
+  head: string;
+  base: string | null;
+  title: string;
+  body: string | null;
+  draft: boolean;
+}
+
 export interface GenerateSshKeyRequest {
   name: string;
   comment: string | null;
@@ -230,6 +244,9 @@ export const gitKeys = {
   recentRepositories: () => [...gitKeys.all, "recent-repositories"] as const,
   favoriteRepositories: () =>
     [...gitKeys.all, "favorite-repositories"] as const,
+  toolchainStatus: () => [...gitKeys.all, "toolchain-status"] as const,
+  hubActivity: (paths: readonly string[]) =>
+    [...gitKeys.all, "hub-activity", [...paths]] as const,
   gitJobs: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "jobs", repoPath ?? null] as const,
   aiConfig: () => [...gitKeys.all, "ai-config"] as const,
@@ -681,6 +698,21 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.favoriteRepositories(),
       queryFn: () => gitApi.listFavoriteRepositories(),
+    }),
+
+  toolchainStatus: () =>
+    queryOptions({
+      queryKey: gitKeys.toolchainStatus(),
+      queryFn: () => gitApi.getToolchainStatus(),
+      staleTime: 60_000,
+    }),
+
+  hubActivity: (paths: string[]) =>
+    queryOptions({
+      queryKey: gitKeys.hubActivity(paths),
+      queryFn: () => gitApi.hubCommitActivity(paths),
+      enabled: paths.length > 0,
+      staleTime: 60_000,
     }),
 
   gitJobs: (repoPath?: string | null) =>
@@ -1902,11 +1934,11 @@ export const gitMutations = {
 
   deleteBranch: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (branchName: string) =>
-        gitApi.deleteBranch(repoPath!, branchName),
-      onMutate: (branchName) =>
+      mutationFn: ({ branchName, force }: DeleteBranchRequest) =>
+        gitApi.deleteBranch(repoPath!, branchName, force),
+      onMutate: ({ branchName }) =>
         startGitActionNotice("Deleting branch", branchName, repoPath),
-      onSuccess: async (_data, branchName, context) => {
+      onSuccess: async (_data, { branchName }, context) => {
         await refreshGitStateAfterAction(
           queryClient,
           repoPath,
@@ -1918,7 +1950,38 @@ export const gitMutations = {
           `${branchName} deleted and repository views refreshed.`,
         );
       },
-      onError: (error, _branchName, context) =>
+      onError: (error, _variables, context) =>
+        failGitActionNotice(context, error),
+    }),
+
+  localBranchPrunePlan: (repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: () => gitApi.localBranchPrunePlan(repoPath!),
+    }),
+
+  pruneLocalBranches: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: (branches: string[]) =>
+        gitApi.pruneLocalBranches(repoPath!, branches),
+      onMutate: (branches) =>
+        startGitActionNotice(
+          "Pruning stale local branches",
+          branches.length === 1
+            ? branches[0]
+            : `${branches.length} branches`,
+          repoPath,
+        ),
+      onSuccess: async (_data, _branches, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, [
+          "refs",
+          "worktree",
+        ]);
+        finishGitActionNotice(
+          context,
+          "Local branch prune finished and affected views refreshed.",
+        );
+      },
+      onError: (error, _branches, context) =>
         failGitActionNotice(context, error),
     }),
 
@@ -3105,5 +3168,24 @@ export const gitMutations = {
         finishGitActionNotice(context, `PR #${number} closed.`);
       },
       onError: (error, _number, context) => failGitActionNotice(context, error),
+    }),
+  createPullRequest: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ head, base, title, body, draft }: CreatePullRequestRequest) =>
+        gitApi.createPullRequest({ repoPath: repoPath!, head, base, title, body, draft }),
+      onMutate: ({ head, draft }) =>
+        startGitActionNotice(
+          "Creating pull request",
+          `${head}${draft ? " · draft" : ""}`,
+          repoPath,
+        ),
+      onSuccess: async (url, { head }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        finishGitActionNotice(
+          context,
+          url ? `Pull request created: ${url}` : `Pull request created for ${head}.`,
+        );
+      },
+      onError: (error, _request, context) => failGitActionNotice(context, error),
     }),
 };

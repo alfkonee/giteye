@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { appDialog } from "../components/common/AppDialogProvider";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitMutations } from "./git-data";
 import { useNoticeStore } from "../stores/notice-store";
@@ -6,9 +7,13 @@ import type { Branch } from "../types/git";
 import type { CheckoutBranchStrategy } from "./tauri-api";
 
 /** Local name a remote-tracking ref maps onto: `origin/feature/x` → `feature/x`. */
+export function localNameForRemoteRef(remoteRef: string): string {
+  const separator = remoteRef.indexOf("/");
+  return separator < 1 ? "" : remoteRef.slice(separator + 1);
+}
+
 export function localNameForRemoteBranch(remote: Branch): string {
-  const separator = remote.shortName.indexOf("/");
-  return separator < 1 ? "" : remote.shortName.slice(separator + 1);
+  return localNameForRemoteRef(remote.shortName);
 }
 
 /**
@@ -156,7 +161,7 @@ export function useBranchActivation({
     null,
   );
 
-  const activateBranch = (branch: Branch) => {
+  const activateBranch = async (branch: Branch) => {
     const plan = planBranchActivation(branch, branches);
 
     switch (plan.kind) {
@@ -177,9 +182,10 @@ export function useBranchActivation({
           return;
         }
         if (
-          !window.confirm(
+          !(await appDialog.confirm(
             `No local branch tracks "${plan.remote.shortName}".\n\nCreate local branch "${plan.localName}" from it and check it out?`,
-          )
+            "Create tracking branch?",
+          ))
         ) {
           return;
         }
@@ -193,8 +199,9 @@ export function useBranchActivation({
 
       case "diverged": {
         if (
-          window.confirm(
+          await appDialog.confirm(
             `"${plan.local.shortName}" and "${plan.remote.shortName}" have diverged (${plan.ahead} ahead, ${plan.behind} behind).\n\nFast-forward is not possible. Open the merge & rebase controls prefilled with "${plan.remote.shortName}"?`,
+            "Branches have diverged",
           )
         ) {
           onAdvancedIntegrate?.(plan.remote.shortName);

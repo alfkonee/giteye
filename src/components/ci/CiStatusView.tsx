@@ -26,6 +26,7 @@ import type { PullRequestSummary } from "../../types/git";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { LoadingSpinner } from "../common/LoadingSpinner";
+import { Button, Select } from "../ui";
 
 const bucketFilters: Array<{ value: CheckBucket | "all"; label: string }> = [
   { value: "all", label: "All" },
@@ -100,7 +101,7 @@ function PullRequestButton({
       onClick={onSelect}
       className={`w-full rounded-lg border p-3 text-left text-sm transition-colors ${
         selected
-          ? "border-[var(--color-accent)] bg-[var(--color-bg-selected)]/15"
+          ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]"
           : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"
       }`}
     >
@@ -152,15 +153,16 @@ function CheckRow({ check }: { check: NormalizedCheckRun }) {
       <span className="text-xs text-[var(--color-text-muted)]">
         {formatCheckDuration(check.durationMs)}
       </span>
-      <button
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={<ExternalLink className="h-4 w-4" />}
+        iconOnly
         type="button"
         disabled={!check.url}
         onClick={openCheck}
-        className="grid h-8 w-8 place-items-center rounded-md border border-[var(--color-border-muted)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={check.url ? `Open ${check.name}` : `${check.name} has no URL`}
-      >
-        <ExternalLink className="h-4 w-4" />
-      </button>
+      />
     </article>
   );
 }
@@ -248,13 +250,13 @@ export function CiStatusView() {
         title="No GitHub CI provider"
         description="Add a GitHub origin remote and authenticate with gh to inspect workflow checks."
         action={
-          <button
+          <Button
+            variant="secondary"
             type="button"
             onClick={refresh}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-3 text-sm font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
           >
             <RefreshCw className="h-4 w-4" /> Check again
-          </button>
+          </Button>
         }
       />
     );
@@ -279,15 +281,16 @@ export function CiStatusView() {
             </div>
           </div>
         </div>
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           type="button"
           onClick={refresh}
           disabled={overviewQuery.isFetching || prChecksQuery.isFetching}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-3 text-xs font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${overviewQuery.isFetching || prChecksQuery.isFetching ? "animate-spin" : ""}`} />
           Refresh checks
-        </button>
+        </Button>
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden">
@@ -350,17 +353,13 @@ export function CiStatusView() {
                     className="h-9 w-56 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] pl-8 pr-3 text-sm text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
                   />
                 </label>
-                <select
+                <Select
+                  className="h-9 rounded-lg border-[var(--color-border)] bg-[var(--color-bg-primary)] text-sm"
+                  ariaLabel="Filter checks by result"
                   value={bucketFilter}
-                  onChange={(event) => setBucketFilter(event.target.value as CheckBucket | "all")}
-                  className="h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
-                >
-                  {bucketFilters.map((filter) => (
-                    <option key={filter.value} value={filter.value}>
-                      {filter.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setBucketFilter(value as CheckBucket | "all")}
+                  options={bucketFilters.map((filter) => ({ value: filter.value, label: filter.label }))}
+                />
               </div>
             </div>
 
