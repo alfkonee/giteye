@@ -1,0 +1,23 @@
+# Maintainer: Alfred Neequaye <3909521+alfkonee@users.noreply.github.com>
+# Upstream: https://github.com/alfkonee/giteye
+pkgname=giteye-bin
+_upstream=0.0.2-beta.5
+pkgver=0.0.2beta05
+pkgrel=1
+pkgdesc="Desktop Git client"
+arch=('x86_64')
+url="https://github.com/alfkonee/giteye"
+license=('LicenseRef-unknown')
+depends=('gtk3' 'webkit2gtk-4.1' 'openssl' 'dbus')
+optdepends=('git: repository operations'
+            'github-cli: pull request workflows')
+provides=('giteye')
+conflicts=('giteye')
+source=("GitEye_${_upstream}_amd64.deb::${url}/releases/download/v${_upstream}/GitEye_${_upstream}_amd64.deb")
+sha256sums=('da3c1aec4f2a0be2743c9d0c27b987a646b7c5c3c96b16b4a09310507408e48c')
+options=('!strip')
+
+package() {
+    bsdtar -x -f "${srcdir}/GitEye_${_upstream}_amd64.deb" -C "${srcdir}" data.tar.gz
+    bsdtar -x -z -f "${srcdir}/data.tar.gz" -C "${pkgdir}" --no-same-owner
+}

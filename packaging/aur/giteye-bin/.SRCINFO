@@ -1,0 +1,20 @@
+pkgbase = giteye-bin
+	pkgdesc = Desktop Git client
+	pkgver = 0.0.2beta05
+	pkgrel = 1
+	url = https://github.com/alfkonee/giteye
+	arch = x86_64
+	license = LicenseRef-unknown
+	depends = gtk3
+	depends = webkit2gtk-4.1
+	depends = openssl
+	depends = dbus
+	optdepends = git: repository operations
+	optdepends = github-cli: pull request workflows
+	provides = giteye
+	conflicts = giteye
+	options = !strip
+	source = GitEye_0.0.2-beta.5_amd64.deb::https://github.com/alfkonee/giteye/releases/download/v0.0.2-beta.5/GitEye_0.0.2-beta.5_amd64.deb
+	sha256sums = da3c1aec4f2a0be2743c9d0c27b987a646b7c5c3c96b16b4a09310507408e48c
+
+pkgname = giteye-bin
