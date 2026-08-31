@@ -156,4 +156,5 @@ jobs:
       - name: Push updated PKGBUILD to the AUR
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: node scripts/publish-aur.mjs "${{ github.event.release.tag_name }}"
+          AUR_TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/publish-aur.mjs "$AUR_TAG"

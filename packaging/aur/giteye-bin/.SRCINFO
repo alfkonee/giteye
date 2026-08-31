@@ -1,6 +1,6 @@
 pkgbase = giteye-bin
 	pkgdesc = Desktop Git client
-	pkgver = 0.0.2.beta.5
+	pkgver = 0.0.2beta05
 	pkgrel = 1
 	url = https://github.com/alfkonee/giteye
 	arch = x86_64

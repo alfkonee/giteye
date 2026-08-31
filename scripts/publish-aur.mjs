@@ -42,8 +42,8 @@ if (invokedDirectly) {
 async function main(tag) {
   if (!tag) throw new Error("usage: publish-aur.mjs <release-tag>");
   if (!/^v\d/.test(tag)) throw new Error(`unexpected tag format: ${tag}`);
-  const upstream = tag.slice(1);
-  const pkgver = upstream.replace(/-/g, ".");
+const upstream = tag.slice(1);
+const pkgver = toPkgver(upstream);
   const asset = `GitEye_${upstream}_amd64.deb`;
   const assetUrl = `${REPO_URL}/releases/download/${tag}/${asset}`;
 
@@ -75,6 +75,20 @@ function pkgString(pkgbuild, field) {
   const match = pkgbuild.match(new RegExp(`^${field}=(?:"(.*)"|([^\\s#]+))`, "m"));
   if (!match) throw new Error(`PKGBUILD is missing ${field}`);
   return match[1] ?? match[2];
+}
+
+/**
+ * Converts upstream semver to a vercmp-safe AUR pkgver.
+ * "0.0.2-beta.5" -> "0.0.2beta05": the pre-release marker must live in the
+ * same segment as the patch version so it sorts BELOW the stable "0.0.2"
+ * (a dotted "0.0.2.beta.5" segment would sort ABOVE it), and the counter is
+ * zero-padded so beta05 < beta10 under vercmp's string comparison.
+ */
+export function toPkgver(upstream) {
+  const match = upstream.match(/^(\d+(?:\.\d+){2})-([a-z]+)\.(\d+)$/);
+  if (!match) return upstream;
+  const [, base, phase, count] = match;
+  return `${base}${phase}${count.padStart(2, "0")}`;
 }
 
 /** Expands ${var} references using the PKGBUILD's own string variables, like makepkg does. */
@@ -134,7 +148,8 @@ function pushToAur(workdir) {
     if (existsSync(aurDir)) throw error;
     console.log("AUR package does not exist yet; creating it");
     mkdirSync(aurDir);
-    run("git", ["init", "-b", "main"], aurDir);
+    // The AUR publishes packages from the master branch only.
+    run("git", ["init", "-b", "master"], aurDir);
     run("git", ["remote", "add", "origin", AUR_URL], aurDir, { GIT_SSH_COMMAND: sshCommand });
   }
 

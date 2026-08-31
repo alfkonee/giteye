@@ -2,7 +2,7 @@
 # Upstream: https://github.com/alfkonee/giteye
 pkgname=giteye-bin
 _upstream=0.0.2-beta.5
-pkgver=0.0.2.beta.5
+pkgver=0.0.2beta05
 pkgrel=1
 pkgdesc="Desktop Git client"
 arch=('x86_64')
