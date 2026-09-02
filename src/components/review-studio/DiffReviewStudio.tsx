@@ -43,6 +43,7 @@ import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import { Avatar, Button, Markdown } from "../ui";
 import { appDialog } from "../common/AppDialogProvider";
+import { LoadingSpinner } from "../common/LoadingSpinner";
 import type {
   CheckRunSummary,
   PullRequestSummary,
@@ -406,6 +407,8 @@ export function DiffReviewStudio() {
   const {
     data: githubOverview,
     isError,
+    isFetching: githubOverviewFetching,
+    isLoading: githubOverviewLoading,
     refetch: refetchGithubOverview,
   } = useQuery(gitQueries.githubOverview(activeRepoPath));
   const livePrs = useMemo(
@@ -634,6 +637,18 @@ export function DiffReviewStudio() {
   const diffErrorMessage = formatErrorMessage(prDiffError);
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
   const prFetchWarning = prDiff?.fetchError ?? null;
+  const dataLoadingMessage = githubOverviewLoading
+    ? "Loading GitHub pull request overview..."
+    : githubOverviewFetching
+      ? "Refreshing GitHub pull request overview..."
+      : prDiffLoading && currentPr
+        ? `Loading complete data for PR #${currentPr.number}...`
+        : null;
+  const incompleteDataMessage = diffErrorMessage
+    ? `Pull request details are incomplete: ${diffErrorMessage}`
+    : prFetchWarning
+      ? `Pull request details are incomplete: ${prFetchWarning}`
+      : null;
   const selectedFile =
     visibleChangedFiles.find((file) => file.path === selectedFilePath) ??
     visibleChangedFiles[0] ??
@@ -1092,9 +1107,13 @@ export function DiffReviewStudio() {
             {formatErrorMessage(reviewActionError)}
           </div>
         ) : null}
-        {diffErrorMessage || prFetchWarning ? (
-          <div className="border-b border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-2 text-xs text-[var(--color-danger)]">
-            {diffErrorMessage ?? prFetchWarning}
+        {dataLoadingMessage || incompleteDataMessage ? (
+          <div
+            className={`flex items-center gap-2 border-b px-4 py-2 text-xs ${incompleteDataMessage ? "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"}`}
+            role="status"
+          >
+            {dataLoadingMessage ? <LoadingSpinner size="sm" /> : null}
+            <span>{dataLoadingMessage ?? incompleteDataMessage}</span>
           </div>
         ) : null}
         {activeTab === "files" ? (
