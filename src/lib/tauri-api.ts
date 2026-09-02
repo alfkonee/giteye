@@ -1,5 +1,9 @@
 import { tracedInvoke as invoke } from "./invoke-trace";
-import type { AppSettings, ToolInstallResult, ToolchainStatus } from "../types/app";
+import type {
+  AppSettings,
+  ToolInstallResult,
+  ToolchainStatus,
+} from "../types/app";
 import type {
   RepositoryInfo,
   RepositorySnapshot,
@@ -86,7 +90,6 @@ export interface UpdateRemoteRequest {
   pushUrl?: string | null;
 }
 
-
 export type PatchApplyOperation = "stage" | "unstage" | "discard";
 
 export interface PatchApplyRequest {
@@ -162,8 +165,7 @@ export interface PullRequestDraft {
 export const GIT_JOB_EVENT_NAME = "giteye://git-job-event";
 
 export const gitApi = {
-  getAppSettings: () =>
-    invoke<AppSettings>("get_app_settings"),
+  getAppSettings: () => invoke<AppSettings>("get_app_settings"),
 
   saveAppSettings: (settings: AppSettings) =>
     invoke<AppSettings>("save_app_settings", { settings }),
@@ -242,7 +244,10 @@ export const gitApi = {
     invoke<GitJobSummary>("cancel_git_job", { jobId }),
 
   clearGitJobLog: (repoPath?: string | null, jobId?: string | null) =>
-    invoke<GitJobSummary[]>("clear_git_job_log", { repoPath: repoPath ?? null, jobId: jobId ?? null }),
+    invoke<GitJobSummary[]>("clear_git_job_log", {
+      repoPath: repoPath ?? null,
+      jobId: jobId ?? null,
+    }),
 
   getGitRecoveryState: (repoPath: string) =>
     invoke<GitRecoveryState>("get_git_recovery_state", { repoPath }),
@@ -333,7 +338,10 @@ export const gitApi = {
     }),
 
   previewAmend: (repoPath: string, message?: string | null) =>
-    invoke<AmendPreview>("preview_amend", { repoPath, message: message ?? null }),
+    invoke<AmendPreview>("preview_amend", {
+      repoPath,
+      message: message ?? null,
+    }),
 
   listReflogEntries: (repoPath: string, limit?: number | null) =>
     invoke<ReflogEntry[]>("list_reflog_entries", {
@@ -386,7 +394,11 @@ export const gitApi = {
       limit: limit ?? null,
     }),
 
-  searchReflog: (repoPath: string, query?: string | null, limit?: number | null) =>
+  searchReflog: (
+    repoPath: string,
+    query?: string | null,
+    limit?: number | null,
+  ) =>
     invoke<ReflogEntry[]>("reflog_search", {
       repoPath,
       query: query ?? null,
@@ -435,7 +447,6 @@ export const gitApi = {
       startPoint: startPoint ?? null,
     }),
 
-
   renameBranch: (repoPath: string, oldName: string, newName: string) =>
     invoke<void>("rename_branch", { repoPath, oldName, newName }),
 
@@ -454,10 +465,16 @@ export const gitApi = {
     invoke<void>("fast_forward_branch", { repoPath, branchName, upstream }),
 
   localBranchPrunePlan: (repoPath: string) =>
-    invoke<LocalBranchPruneCandidate[]>("local_branch_prune_plan", { repoPath }),
+    invoke<LocalBranchPruneCandidate[]>("local_branch_prune_plan", {
+      repoPath,
+    }),
 
-  pruneLocalBranches: (repoPath: string, branches: string[]) =>
-    invoke<LocalBranchPruneResult>("prune_local_branches", { repoPath, branches }),
+  pruneLocalBranches: (repoPath: string, branches: string[], force: boolean) =>
+    invoke<LocalBranchPruneResult>("prune_local_branches", {
+      repoPath,
+      branches,
+      force,
+    }),
 
   mergeBranch: (repoPath: string, source: string) =>
     invoke<GitJobSummary>("merge_branch", { repoPath, source }),
@@ -526,7 +543,13 @@ export const gitApi = {
     lockId: string,
     remote?: string | null,
     force = false,
-  ) => invoke<void>("unlock_lfs_file", { repoPath, lockId, remote: remote ?? null, force }),
+  ) =>
+    invoke<void>("unlock_lfs_file", {
+      repoPath,
+      lockId,
+      remote: remote ?? null,
+      force,
+    }),
 
   previewLfsTransfer: (repoPath: string, request: LfsTransferRequest) =>
     invoke<LfsCommandPreview>("preview_lfs_transfer", { repoPath, request }),
@@ -541,10 +564,16 @@ export const gitApi = {
     invoke<GitJobSummary>("start_lfs_prune", { repoPath, request }),
 
   previewLfsFsck: (repoPath: string, revision?: string | null) =>
-    invoke<LfsCommandPreview>("preview_lfs_fsck", { repoPath, revision: revision ?? null }),
+    invoke<LfsCommandPreview>("preview_lfs_fsck", {
+      repoPath,
+      revision: revision ?? null,
+    }),
 
   startLfsFsck: (repoPath: string, revision?: string | null) =>
-    invoke<GitJobSummary>("start_lfs_fsck", { repoPath, revision: revision ?? null }),
+    invoke<GitJobSummary>("start_lfs_fsck", {
+      repoPath,
+      revision: revision ?? null,
+    }),
 
   previewLfsMigration: (repoPath: string, request: LfsMigrationRequest) =>
     invoke<LfsCommandPreview>("preview_lfs_migration", { repoPath, request }),
@@ -629,9 +658,16 @@ export const gitApi = {
   deleteRemoteBranch: (repoPath: string, remote: string, branch: string) =>
     invoke<void>("delete_remote_branch", { repoPath, remote, branch }),
 
-  deleteRemoteBranchDryRun: (repoPath: string, remote: string, branch: string) =>
-    invoke<string[]>("delete_remote_branch_dry_run", { repoPath, remote, branch }),
-
+  deleteRemoteBranchDryRun: (
+    repoPath: string,
+    remote: string,
+    branch: string,
+  ) =>
+    invoke<string[]>("delete_remote_branch_dry_run", {
+      repoPath,
+      remote,
+      branch,
+    }),
 
   // Stashes
   listStashes: (repoPath: string) =>
@@ -707,11 +743,29 @@ export const gitApi = {
   getCommitDiff: (repoPath: string, commitHash: string) =>
     invoke<DiffResult>("get_commit_diff", { repoPath, commitHash }),
 
-  getCommitRangeDiff: (repoPath: string, baseHash: string, targetHash: string, filePath: string) =>
-    invoke<DiffResult>("get_commit_range_diff", { repoPath, baseHash, targetHash, filePath }),
+  getCommitRangeDiff: (
+    repoPath: string,
+    baseHash: string,
+    targetHash: string,
+    filePath: string,
+  ) =>
+    invoke<DiffResult>("get_commit_range_diff", {
+      repoPath,
+      baseHash,
+      targetHash,
+      filePath,
+    }),
 
-  getCommitRangeFiles: (repoPath: string, baseHash: string, targetHash: string) =>
-    invoke<string[]>("get_commit_range_files", { repoPath, baseHash, targetHash }),
+  getCommitRangeFiles: (
+    repoPath: string,
+    baseHash: string,
+    targetHash: string,
+  ) =>
+    invoke<string[]>("get_commit_range_files", {
+      repoPath,
+      baseHash,
+      targetHash,
+    }),
 
   applyPatch: (repoPath: string, request: PatchApplyRequest) =>
     invoke<void>("apply_patch", { repoPath, request }),
@@ -722,11 +776,19 @@ export const gitApi = {
   unstageHunk: (repoPath: string, filePath: string, hunkPatch: string) =>
     invoke<void>("unstage_hunk", { repoPath, filePath, hunkPatch }),
 
-  discardHunk: (repoPath: string, filePath: string, staged: boolean, hunkPatch: string) =>
-    invoke<void>("discard_hunk", { repoPath, filePath, staged, hunkPatch }),
+  discardHunk: (
+    repoPath: string,
+    filePath: string,
+    staged: boolean,
+    hunkPatch: string,
+  ) => invoke<void>("discard_hunk", { repoPath, filePath, staged, hunkPatch }),
 
-  discardFile: (repoPath: string, filePath: string, staged: boolean, untracked: boolean) =>
-    invoke<void>("discard_file", { repoPath, filePath, staged, untracked }),
+  discardFile: (
+    repoPath: string,
+    filePath: string,
+    staged: boolean,
+    untracked: boolean,
+  ) => invoke<void>("discard_file", { repoPath, filePath, staged, untracked }),
 
   discardFiles: (
     repoPath: string,
@@ -879,9 +941,11 @@ export const gitApi = {
   continueRebase: (repoPath: string) =>
     invoke<GitJobSummary>("continue_rebase", { repoPath }),
 
-  abortRebase: (repoPath: string) => invoke<GitJobSummary>("abort_rebase", { repoPath }),
+  abortRebase: (repoPath: string) =>
+    invoke<GitJobSummary>("abort_rebase", { repoPath }),
 
-  skipRebase: (repoPath: string) => invoke<GitJobSummary>("skip_rebase", { repoPath }),
+  skipRebase: (repoPath: string) =>
+    invoke<GitJobSummary>("skip_rebase", { repoPath }),
 
   markFileResolved: (repoPath: string, filePath: string) =>
     invoke<void>("mark_file_resolved", { repoPath, filePath }),
@@ -908,22 +972,37 @@ export const gitApi = {
     }),
 
   bisectGood: (repositoryPath: string, revision?: string | null) =>
-    invoke<BisectActionSummary>("bisect_good", { repositoryPath, revision: revision ?? null }),
+    invoke<BisectActionSummary>("bisect_good", {
+      repositoryPath,
+      revision: revision ?? null,
+    }),
 
   bisectBad: (repositoryPath: string, revision?: string | null) =>
-    invoke<BisectActionSummary>("bisect_bad", { repositoryPath, revision: revision ?? null }),
+    invoke<BisectActionSummary>("bisect_bad", {
+      repositoryPath,
+      revision: revision ?? null,
+    }),
 
   bisectSkip: (repositoryPath: string, revision?: string | null) =>
-    invoke<BisectActionSummary>("bisect_skip", { repositoryPath, revision: revision ?? null }),
+    invoke<BisectActionSummary>("bisect_skip", {
+      repositoryPath,
+      revision: revision ?? null,
+    }),
 
   bisectReset: (repositoryPath: string, revision?: string | null) =>
-    invoke<BisectActionSummary>("bisect_reset", { repositoryPath, revision: revision ?? null }),
+    invoke<BisectActionSummary>("bisect_reset", {
+      repositoryPath,
+      revision: revision ?? null,
+    }),
 
   runGitFsck: (repositoryPath: string, full: boolean, strict: boolean) =>
     invoke<GitFsckSummary>("run_git_fsck", { repositoryPath, full, strict }),
 
   runGitMaintenance: (repositoryPath: string, mode: GitMaintenanceMode) =>
-    invoke<GitMaintenanceSummary>("run_git_maintenance", { repositoryPath, mode }),
+    invoke<GitMaintenanceSummary>("run_git_maintenance", {
+      repositoryPath,
+      mode,
+    }),
 
   verifyGitSignature: (repositoryPath: string, target: string) =>
     invoke<GitSignatureSummary>("verify_git_signature", {
@@ -1036,16 +1115,19 @@ export const gitApi = {
     invoke<string>("export_settings", { outputPath, theme, diffMode }),
 
   importSettings: (inputPath: string) =>
-    invoke<{ theme: string; diffMode: string }>("import_settings", { inputPath }),
+    invoke<{ theme: string; diffMode: string }>("import_settings", {
+      inputPath,
+    }),
 
   runCustomGitCommand: (repoPath: string, args: string[]) =>
-    invoke<{ success: boolean; stdout: string; stderr: string; exitCode: number }>(
-      "run_custom_git_command",
-      { repoPath, args },
-    ),
+    invoke<{
+      success: boolean;
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    }>("run_custom_git_command", { repoPath, args }),
 
-  getAiConfig: () =>
-    invoke<AiConfigView>("get_ai_config"),
+  getAiConfig: () => invoke<AiConfigView>("get_ai_config"),
 
   saveAiConfig: (request: SaveAiConfigRequest) =>
     invoke<AiConfigView>("save_ai_config", { request }),
@@ -1056,10 +1138,15 @@ export const gitApi = {
   resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
     invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),
 
-  suggestCommitMessage: (diffs: Array<{ filePath: string; status: string; diffText: string }>) =>
-    invoke<string>("suggest_commit_message", { diffs }),
+  suggestCommitMessage: (
+    diffs: Array<{ filePath: string; status: string; diffText: string }>,
+  ) => invoke<string>("suggest_commit_message", { diffs }),
 
-  suggestPullRequest: (repoPath: string, headBranch: string, baseBranch: string | null) =>
+  suggestPullRequest: (
+    repoPath: string,
+    headBranch: string,
+    baseBranch: string | null,
+  ) =>
     invoke<PullRequestDraft>("suggest_pull_request", {
       repoPath,
       headBranch,

@@ -328,11 +328,12 @@ pub fn local_prune_candidates(repo_path: &Path) -> Result<Vec<LocalBranchPruneCa
     Ok(candidates)
 }
 
-/// Deletes local branches with the safe `-d` flag. Branches that are not fully
-/// merged are reported as failures instead of being force-deleted.
+/// Deletes local branches with `-d` by default or `-D` after an explicit force
+/// request. Individual failures are reported without stopping the whole batch.
 pub fn prune_local_branches(
     repo_path: &Path,
     branches: &[String],
+    force: bool,
 ) -> Result<LocalBranchPruneResult, AppError> {
     let mut result = LocalBranchPruneResult {
         deleted: Vec::new(),
@@ -341,7 +342,8 @@ pub fn prune_local_branches(
 
     for branch in branches {
         let name = required_git_arg(branch, "branch name")?;
-        match GitCli::run(repo_path, &["branch", "-d", name]) {
+        let flag = if force { "-D" } else { "-d" };
+        match GitCli::run(repo_path, &["branch", flag, name]) {
             Ok(_) => result.deleted.push(name.to_string()),
             Err(error) => result.failed.push(LocalBranchPruneFailure {
                 branch: name.to_string(),
@@ -620,5 +622,28 @@ mod tests {
 
         set_branch_upstream(&work, "trunk", None).expect("unset upstream");
         assert!(GitCli::run(&work, &["rev-parse", "--abbrev-ref", "trunk@{upstream}"]).is_err());
+    }
+
+    #[test]
+    fn force_prune_deletes_an_unmerged_local_branch() {
+        let temp = TestDir::new("force-prune");
+        create_source_repo(&temp.path);
+        git(&temp.path, &["switch", "-c", "unmerged"]);
+        fs::write(temp.path.join("unmerged.txt"), "unmerged\n").expect("write branch file");
+        git(&temp.path, &["add", "unmerged.txt"]);
+        git(&temp.path, &["commit", "-m", "Unmerged work"]);
+        git(&temp.path, &["switch", "main"]);
+        let branches = vec!["unmerged".to_string()];
+
+        let safe = prune_local_branches(&temp.path, &branches, false).expect("safe prune result");
+        assert!(safe.deleted.is_empty());
+        assert_eq!(safe.failed.len(), 1);
+        assert!(GitCli::run(&temp.path, &["rev-parse", "unmerged"]).is_ok());
+
+        let forced =
+            prune_local_branches(&temp.path, &branches, true).expect("forced prune result");
+        assert_eq!(forced.deleted, branches);
+        assert!(forced.failed.is_empty());
+        assert!(GitCli::run(&temp.path, &["rev-parse", "unmerged"]).is_err());
     }
 }

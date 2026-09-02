@@ -36,7 +36,8 @@ import { useNoticeStore } from "../stores/notice-store";
 const enabledRepo = (repoPath: string | null | undefined): repoPath is string =>
   Boolean(repoPath);
 
-type GitInvalidationReason = "worktree" | "refs" | "remote" | "rebase" | "reflog" | "bisect";
+type GitInvalidationReason =
+  "worktree" | "refs" | "remote" | "rebase" | "reflog" | "bisect";
 export interface CheckoutBranchRequest {
   branchName: string;
   strategy: CheckoutBranchStrategy;
@@ -56,7 +57,6 @@ export interface SetBranchUpstreamRequest {
   branchName: string;
   upstream?: string | null;
 }
-
 
 export interface FastForwardBranchRequest {
   branchName: string;
@@ -89,7 +89,6 @@ export interface RemoteTagRequest {
   remote: string;
   name: string;
 }
-
 
 export interface MoveWorktreeRequest {
   path: string;
@@ -255,7 +254,15 @@ export const gitKeys = {
     hasInlineApiKey: boolean,
     inlineApiKeyRevision: number,
     apiKeySource: AiApiKeySource | null,
-  ) => [...gitKeys.all, "ai-models", provider, hasInlineApiKey, inlineApiKeyRevision, apiKeySource] as const,
+  ) =>
+    [
+      ...gitKeys.all,
+      "ai-models",
+      provider,
+      hasInlineApiKey,
+      inlineApiKeyRevision,
+      apiKeySource,
+    ] as const,
   repository: (repoPath: string | null | undefined) =>
     [...gitKeys.all, "repository", repoPath] as const,
   repositorySnapshot: (repoPath: string | null | undefined) =>
@@ -289,19 +296,38 @@ export const gitKeys = {
     baseHash: string | null | undefined,
     targetHash: string | null | undefined,
     filePath: string | null | undefined,
-  ) => [...gitKeys.repository(repoPath), "commit-range-diff", baseHash, targetHash, filePath] as const,
+  ) =>
+    [
+      ...gitKeys.repository(repoPath),
+      "commit-range-diff",
+      baseHash,
+      targetHash,
+      filePath,
+    ] as const,
   commitRangeFiles: (
     repoPath: string | null | undefined,
     baseHash: string | null | undefined,
     targetHash: string | null | undefined,
-  ) => [...gitKeys.repository(repoPath), "commit-range-files", baseHash, targetHash] as const,
+  ) =>
+    [
+      ...gitKeys.repository(repoPath),
+      "commit-range-files",
+      baseHash,
+      targetHash,
+    ] as const,
   reflog: (repoPath: string | null | undefined, limit?: number) =>
     [...gitKeys.repository(repoPath), "reflog", limit ?? null] as const,
   reflogSearch: (
     repoPath: string | null | undefined,
     query: string | null | undefined,
     limit?: number,
-  ) => [...gitKeys.repository(repoPath), "reflog-search", query ?? null, limit ?? null] as const,
+  ) =>
+    [
+      ...gitKeys.repository(repoPath),
+      "reflog-search",
+      query ?? null,
+      limit ?? null,
+    ] as const,
   commitSearch: (
     repoPath: string | null | undefined,
     request: CommitSearchRequest | null | undefined,
@@ -353,7 +379,11 @@ export const gitKeys = {
     repoPath: string | null | undefined,
     recursive: boolean,
   ) =>
-    [...gitKeys.repository(repoPath), "submodule-foreach-status", recursive] as const,
+    [
+      ...gitKeys.repository(repoPath),
+      "submodule-foreach-status",
+      recursive,
+    ] as const,
   rebaseState: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "rebase-state"] as const,
   operationSummary: (repoPath: string | null | undefined) =>
@@ -433,7 +463,13 @@ export function invalidateGitStateByReason(
     );
   }
 
-  if (reason === "refs" || reason === "remote" || reason === "rebase" || reason === "reflog" || reason === "bisect") {
+  if (
+    reason === "refs" ||
+    reason === "remote" ||
+    reason === "rebase" ||
+    reason === "reflog" ||
+    reason === "bisect"
+  ) {
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: gitKeys.branchSummary(repoPath),
@@ -603,7 +639,9 @@ function finishGitActionNotice(
     return;
   }
 
-  useNoticeStore.getState().finishNotice(context.noticeId, "success", detail, context.recoveryHint);
+  useNoticeStore
+    .getState()
+    .finishNotice(context.noticeId, "success", detail, context.recoveryHint);
 }
 
 export function gitActionErrorMessage(error: unknown): string {
@@ -638,12 +676,14 @@ function failGitActionNotice(
     return;
   }
 
-  useNoticeStore.getState().finishNotice(
-    context.noticeId,
-    "error",
-    gitActionErrorMessage(error),
-    context.recoveryHint,
-  );
+  useNoticeStore
+    .getState()
+    .finishNotice(
+      context.noticeId,
+      "error",
+      gitActionErrorMessage(error),
+      context.recoveryHint,
+    );
 }
 
 async function refreshRepositoryLists(
@@ -822,9 +862,19 @@ export const gitQueries = {
     filePath: string | null,
   ) =>
     queryOptions({
-      queryKey: gitKeys.commitRangeDiff(repoPath, baseHash, targetHash, filePath),
-      queryFn: () => gitApi.getCommitRangeDiff(repoPath!, baseHash!, targetHash!, filePath!),
-      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash) && Boolean(filePath),
+      queryKey: gitKeys.commitRangeDiff(
+        repoPath,
+        baseHash,
+        targetHash,
+        filePath,
+      ),
+      queryFn: () =>
+        gitApi.getCommitRangeDiff(repoPath!, baseHash!, targetHash!, filePath!),
+      enabled:
+        enabledRepo(repoPath) &&
+        Boolean(baseHash) &&
+        Boolean(targetHash) &&
+        Boolean(filePath),
     }),
 
   commitRangeFiles: (
@@ -834,8 +884,10 @@ export const gitQueries = {
   ) =>
     queryOptions({
       queryKey: gitKeys.commitRangeFiles(repoPath, baseHash, targetHash),
-      queryFn: () => gitApi.getCommitRangeFiles(repoPath!, baseHash!, targetHash!),
-      enabled: enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash),
+      queryFn: () =>
+        gitApi.getCommitRangeFiles(repoPath!, baseHash!, targetHash!),
+      enabled:
+        enabledRepo(repoPath) && Boolean(baseHash) && Boolean(targetHash),
     }),
 
   reflog: (repoPath: string | null, limit?: number, enabled = true) =>
@@ -853,7 +905,8 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.commitSearch(repoPath, request),
       queryFn: () => gitApi.commitSearch(repoPath!, request!),
-      enabled: enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
+      enabled:
+        enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
     }),
 
   fileHistory: (
@@ -864,7 +917,8 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.fileHistory(repoPath, request),
       queryFn: () => gitApi.fileHistory(repoPath!, request!),
-      enabled: enabledRepo(repoPath) && Boolean(request?.filePath.trim()) && enabled,
+      enabled:
+        enabledRepo(repoPath) && Boolean(request?.filePath.trim()) && enabled,
     }),
 
   blameFile: (
@@ -875,7 +929,8 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.blameFile(repoPath, request),
       queryFn: () => gitApi.blameFile(repoPath!, request!),
-      enabled: enabledRepo(repoPath) && Boolean(request?.filePath.trim()) && enabled,
+      enabled:
+        enabledRepo(repoPath) && Boolean(request?.filePath.trim()) && enabled,
     }),
 
   gitGrep: (
@@ -886,7 +941,8 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.gitGrep(repoPath, request),
       queryFn: () => gitApi.gitGrep(repoPath!, request!),
-      enabled: enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
+      enabled:
+        enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
     }),
 
   pickaxeSearch: (
@@ -897,7 +953,8 @@ export const gitQueries = {
     queryOptions({
       queryKey: gitKeys.pickaxeSearch(repoPath, request),
       queryFn: () => gitApi.pickaxeSearch(repoPath!, request!),
-      enabled: enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
+      enabled:
+        enabledRepo(repoPath) && Boolean(request?.query.trim()) && enabled,
     }),
 
   lostCommits: (repoPath: string | null, limit?: number, enabled = true) =>
@@ -1150,8 +1207,7 @@ export const gitMutations = {
 
   removeRecentRepository: (queryClient: QueryClient) =>
     mutationOptions({
-      mutationFn: (repoPath: string) =>
-        gitApi.removeRecentRepository(repoPath),
+      mutationFn: (repoPath: string) => gitApi.removeRecentRepository(repoPath),
       onMutate: (repoPath) =>
         startGitActionNotice(
           "Removing from recents",
@@ -1178,7 +1234,9 @@ export const gitMutations = {
         ),
       onSuccess: (config, _request, context) => {
         queryClient.setQueryData(gitKeys.aiConfig(), config);
-        void queryClient.invalidateQueries({ queryKey: [...gitKeys.all, "ai-models"] });
+        void queryClient.invalidateQueries({
+          queryKey: [...gitKeys.all, "ai-models"],
+        });
         finishGitActionNotice(context, "AI provider settings saved.");
       },
       onError: (error, _request, context) =>
@@ -1271,9 +1329,19 @@ export const gitMutations = {
   discardHunk: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (request: HunkPatchRequest) =>
-        gitApi.discardHunk(repoPath!, request.filePath, Boolean(request.staged), request.hunkPatch),
+        gitApi.discardHunk(
+          repoPath!,
+          request.filePath,
+          Boolean(request.staged),
+          request.hunkPatch,
+        ),
       onMutate: (request) =>
-        startGitActionNotice("Discarding hunk", request.filePath, repoPath, RECOVERY_HINTS.hardDiscard),
+        startGitActionNotice(
+          "Discarding hunk",
+          request.filePath,
+          repoPath,
+          RECOVERY_HINTS.hardDiscard,
+        ),
       onSuccess: async (_data, _request, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
@@ -1288,9 +1356,19 @@ export const gitMutations = {
   discardFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (request: DiscardFileRequest) =>
-        gitApi.discardFile(repoPath!, request.filePath, request.staged, request.untracked),
+        gitApi.discardFile(
+          repoPath!,
+          request.filePath,
+          request.staged,
+          request.untracked,
+        ),
       onMutate: (request) =>
-        startGitActionNotice("Discarding file changes", request.filePath, repoPath, RECOVERY_HINTS.hardDiscard),
+        startGitActionNotice(
+          "Discarding file changes",
+          request.filePath,
+          repoPath,
+          RECOVERY_HINTS.hardDiscard,
+        ),
       onSuccess: async (_data, _request, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
@@ -1339,9 +1417,10 @@ export const gitMutations = {
         const added = result.added.length
           ? `Added ${result.added.join(", ")} to ${result.file}.`
           : `No new rules: ${result.file} already covered them.`;
-        const skipped = result.added.length && result.skipped.length
-          ? ` Already present: ${result.skipped.join(", ")}.`
-          : "";
+        const skipped =
+          result.added.length && result.skipped.length
+            ? ` Already present: ${result.skipped.join(", ")}.`
+            : "";
         finishGitActionNotice(context, `${added}${skipped}`);
       },
       onError: (error, _request, context) =>
@@ -1416,7 +1495,12 @@ export const gitMutations = {
       mutationFn: ({ commitHash }: HistoryCommitRequest) =>
         gitApi.cherryPickCommit(repoPath!, commitHash),
       onMutate: ({ commitHash }) =>
-        startGitActionNotice("Cherry-picking commit", commitHash, repoPath, RECOVERY_HINTS.cherryPickRevertConflict),
+        startGitActionNotice(
+          "Cherry-picking commit",
+          commitHash,
+          repoPath,
+          RECOVERY_HINTS.cherryPickRevertConflict,
+        ),
       onSuccess: async (_data, { commitHash }, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context, [
           "worktree",
@@ -1437,7 +1521,12 @@ export const gitMutations = {
       mutationFn: ({ commitHash }: HistoryCommitRequest) =>
         gitApi.revertCommit(repoPath!, commitHash),
       onMutate: ({ commitHash }) =>
-        startGitActionNotice("Reverting commit", commitHash, repoPath, RECOVERY_HINTS.cherryPickRevertConflict),
+        startGitActionNotice(
+          "Reverting commit",
+          commitHash,
+          repoPath,
+          RECOVERY_HINTS.cherryPickRevertConflict,
+        ),
       onSuccess: async (_data, { commitHash }, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context, [
           "worktree",
@@ -1502,8 +1591,17 @@ export const gitMutations = {
 
   amendCommit: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ message, signOff, noVerify, allowEmpty }: AmendCommitRequest) =>
-        gitApi.amendCommit(repoPath!, message, { signOff, noVerify, allowEmpty }),
+      mutationFn: ({
+        message,
+        signOff,
+        noVerify,
+        allowEmpty,
+      }: AmendCommitRequest) =>
+        gitApi.amendCommit(repoPath!, message, {
+          signOff,
+          noVerify,
+          allowEmpty,
+        }),
       onMutate: ({ message }) =>
         startGitActionNotice(
           "Amending HEAD commit",
@@ -1663,7 +1761,12 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: async (_data, { branchName }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "refs");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "refs",
+        );
         finishGitActionNotice(
           context,
           `${branchName} tracking updated and refs refreshed.`,
@@ -1672,7 +1775,6 @@ export const gitMutations = {
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
-
 
   fastForwardBranch: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
@@ -1708,7 +1810,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _source, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _source, context) => failGitActionNotice(context, error),
     }),
@@ -1724,13 +1829,19 @@ export const gitMutations = {
             noFf ? "--no-ff" : null,
             squash ? "--squash" : null,
             strategyOption ? `-X ${strategyOption}` : null,
-          ].filter(Boolean).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
           repoPath,
         ),
       onSuccess: (job, _request, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   setGitIdentity: (queryClient: QueryClient, repoPath: string | null) =>
@@ -1842,68 +1953,128 @@ export const gitMutations = {
 
   lockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ path, remote }: { path: string; remote?: string | null }) =>
-        gitApi.lockLfsFile(repoPath!, path, remote),
-      onMutate: ({ path }) => startGitActionNotice("Locking LFS file", path, repoPath),
+      mutationFn: ({
+        path,
+        remote,
+      }: {
+        path: string;
+        remote?: string | null;
+      }) => gitApi.lockLfsFile(repoPath!, path, remote),
+      onMutate: ({ path }) =>
+        startGitActionNotice("Locking LFS file", path, repoPath),
       onSuccess: async (_data, request, context) => {
-        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        await queryClient.invalidateQueries({
+          queryKey: gitKeys.lfsLocks(repoPath, request.remote),
+        });
         finishGitActionNotice(context, "LFS lock acquired.");
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   unlockLfsFile: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ lockId, remote, force }: { lockId: string; remote?: string | null; force: boolean }) =>
-        gitApi.unlockLfsFile(repoPath!, lockId, remote, force),
+      mutationFn: ({
+        lockId,
+        remote,
+        force,
+      }: {
+        lockId: string;
+        remote?: string | null;
+        force: boolean;
+      }) => gitApi.unlockLfsFile(repoPath!, lockId, remote, force),
       onMutate: ({ lockId, force }) =>
-        startGitActionNotice(force ? "Force-unlocking LFS file" : "Unlocking LFS file", lockId, repoPath),
+        startGitActionNotice(
+          force ? "Force-unlocking LFS file" : "Unlocking LFS file",
+          lockId,
+          repoPath,
+        ),
       onSuccess: async (_data, request, context) => {
-        await queryClient.invalidateQueries({ queryKey: gitKeys.lfsLocks(repoPath, request.remote) });
+        await queryClient.invalidateQueries({
+          queryKey: gitKeys.lfsLocks(repoPath, request.remote),
+        });
         finishGitActionNotice(context, "LFS lock released.");
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   startLfsTransfer: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: LfsTransferRequest) => gitApi.startLfsTransfer(repoPath!, request),
+      mutationFn: (request: LfsTransferRequest) =>
+        gitApi.startLfsTransfer(repoPath!, request),
       onMutate: (request) =>
-        startGitActionNotice(`Starting LFS ${request.operation}`, request.remote || "default remote", repoPath),
+        startGitActionNotice(
+          `Starting LFS ${request.operation}`,
+          request.remote || "default remote",
+          repoPath,
+        ),
       onSuccess: (job, _request, context) =>
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        ),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   startLfsPrune: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: LfsPruneRequest) => gitApi.startLfsPrune(repoPath!, request),
-      onMutate: () => startGitActionNotice("Pruning LFS objects", "Local LFS cache", repoPath, RECOVERY_HINTS.hardDiscard),
+      mutationFn: (request: LfsPruneRequest) =>
+        gitApi.startLfsPrune(repoPath!, request),
+      onMutate: () =>
+        startGitActionNotice(
+          "Pruning LFS objects",
+          "Local LFS cache",
+          repoPath,
+          RECOVERY_HINTS.hardDiscard,
+        ),
       onSuccess: (job, _request, context) =>
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        ),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   startLfsFsck: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (revision?: string | null) => gitApi.startLfsFsck(repoPath!, revision),
-      onMutate: (revision) => startGitActionNotice("Repairing LFS integrity", revision || "HEAD", repoPath),
+      mutationFn: (revision?: string | null) =>
+        gitApi.startLfsFsck(repoPath!, revision),
+      onMutate: (revision) =>
+        startGitActionNotice(
+          "Repairing LFS integrity",
+          revision || "HEAD",
+          repoPath,
+        ),
       onSuccess: (job, _request, context) =>
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        ),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   startLfsMigration: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: LfsMigrationRequest) => gitApi.startLfsMigration(repoPath!, request),
+      mutationFn: (request: LfsMigrationRequest) =>
+        gitApi.startLfsMigration(repoPath!, request),
       onMutate: (request) =>
-        startGitActionNotice(`Starting LFS migrate ${request.mode}`, request.include, repoPath, RECOVERY_HINTS.reset),
+        startGitActionNotice(
+          `Starting LFS migrate ${request.mode}`,
+          request.include,
+          repoPath,
+          RECOVERY_HINTS.reset,
+        ),
       onSuccess: (result, _request, context) =>
         finishGitActionNotice(
           context,
           `${result.job.title} queued. Recovery branch ${result.backupBranch} will be created when the job starts.`,
         ),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   generateSshKey: (queryClient: QueryClient) =>
@@ -1961,17 +2132,22 @@ export const gitMutations = {
 
   pruneLocalBranches: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (branches: string[]) =>
-        gitApi.pruneLocalBranches(repoPath!, branches),
-      onMutate: (branches) =>
+      mutationFn: ({
+        branches,
+        force,
+      }: {
+        branches: string[];
+        force: boolean;
+      }) => gitApi.pruneLocalBranches(repoPath!, branches, force),
+      onMutate: ({ branches, force }) =>
         startGitActionNotice(
-          "Pruning stale local branches",
-          branches.length === 1
-            ? branches[0]
-            : `${branches.length} branches`,
+          force
+            ? "Force pruning stale local branches"
+            : "Pruning stale local branches",
+          branches.length === 1 ? branches[0] : `${branches.length} branches`,
           repoPath,
         ),
-      onSuccess: async (_data, _branches, context) => {
+      onSuccess: async (_data, _variables, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context, [
           "refs",
           "worktree",
@@ -1981,7 +2157,7 @@ export const gitMutations = {
           "Local branch prune finished and affected views refreshed.",
         );
       },
-      onError: (error, _branches, context) =>
+      onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
 
@@ -1995,7 +2171,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _remote, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _remote, context) => failGitActionNotice(context, error),
     }),
@@ -2012,7 +2191,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2030,7 +2212,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2043,7 +2228,12 @@ export const gitMutations = {
       onMutate: ({ name, url }) =>
         startGitActionNotice("Adding remote", `${name} → ${url}`, repoPath),
       onSuccess: async (_data, { name }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(context, `${name} added and remotes refreshed.`);
       },
       onError: (error, _variables, context) =>
@@ -2055,10 +2245,22 @@ export const gitMutations = {
       mutationFn: ({ name, fetchUrl, pushUrl }: UpdateRemoteRequest) =>
         gitApi.updateRemote(repoPath!, name, fetchUrl, pushUrl),
       onMutate: ({ name, fetchUrl }) =>
-        startGitActionNotice("Updating remote", `${name} → ${fetchUrl}`, repoPath),
+        startGitActionNotice(
+          "Updating remote",
+          `${name} → ${fetchUrl}`,
+          repoPath,
+        ),
       onSuccess: async (_data, { name }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
-        finishGitActionNotice(context, `${name} updated and remotes refreshed.`);
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
+        finishGitActionNotice(
+          context,
+          `${name} updated and remotes refreshed.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2067,10 +2269,19 @@ export const gitMutations = {
   deleteRemote: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (name: string) => gitApi.deleteRemote(repoPath!, name),
-      onMutate: (name) => startGitActionNotice("Deleting remote", name, repoPath),
+      onMutate: (name) =>
+        startGitActionNotice("Deleting remote", name, repoPath),
       onSuccess: async (_data, name, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
-        finishGitActionNotice(context, `${name} deleted and remotes refreshed.`);
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
+        finishGitActionNotice(
+          context,
+          `${name} deleted and remotes refreshed.`,
+        );
       },
       onError: (error, _name, context) => failGitActionNotice(context, error),
     }),
@@ -2078,9 +2289,20 @@ export const gitMutations = {
   pruneRemote: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: (name: string) => gitApi.pruneRemote(repoPath!, name),
-      onMutate: (name) => startGitActionNotice("Pruning remote", name, repoPath, RECOVERY_HINTS.remotePrune),
+      onMutate: (name) =>
+        startGitActionNotice(
+          "Pruning remote",
+          name,
+          repoPath,
+          RECOVERY_HINTS.remotePrune,
+        ),
       onSuccess: async (_data, name, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(context, `${name} pruned and refs refreshed.`);
       },
       onError: (error, _name, context) => failGitActionNotice(context, error),
@@ -2109,7 +2331,12 @@ export const gitMutations = {
           forceWithLease ? RECOVERY_HINTS.forceWithLease : null,
         ),
       onSuccess: async (_data, { localBranch }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(
           context,
           `${localBranch} pushed and remote refs refreshed.`,
@@ -2130,9 +2357,19 @@ export const gitMutations = {
       mutationFn: ({ remote, branch }: DeleteRemoteBranchRequest) =>
         gitApi.deleteRemoteBranch(repoPath!, remote, branch),
       onMutate: ({ remote, branch }) =>
-        startGitActionNotice("Deleting remote branch", `${remote}/${branch}`, repoPath, RECOVERY_HINTS.deleteRemoteBranch),
+        startGitActionNotice(
+          "Deleting remote branch",
+          `${remote}/${branch}`,
+          repoPath,
+          RECOVERY_HINTS.deleteRemoteBranch,
+        ),
       onSuccess: async (_data, { remote, branch }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(
           context,
           `${remote}/${branch} deleted and remote refs refreshed.`,
@@ -2141,7 +2378,6 @@ export const gitMutations = {
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
-
 
   createStash: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
@@ -2171,7 +2407,11 @@ export const gitMutations = {
 
   createStashForPaths: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ message, includeUntracked, paths }: CreateStashForPathsRequest) =>
+      mutationFn: ({
+        message,
+        includeUntracked,
+        paths,
+      }: CreateStashForPathsRequest) =>
         gitApi.createStashForPaths(repoPath!, message, includeUntracked, paths),
       onMutate: ({ message, paths }) =>
         startGitActionNotice(
@@ -2311,8 +2551,16 @@ export const gitMutations = {
       onMutate: ({ remote, name }) =>
         startGitActionNotice("Pushing tag", `${name} → ${remote}`, repoPath),
       onSuccess: async (_data, { name }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
-        finishGitActionNotice(context, `${name} pushed and remote refs refreshed.`);
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
+        finishGitActionNotice(
+          context,
+          `${name} pushed and remote refs refreshed.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2329,9 +2577,19 @@ export const gitMutations = {
       mutationFn: ({ remote, name }: RemoteTagRequest) =>
         gitApi.deleteRemoteTag(repoPath!, remote, name),
       onMutate: ({ remote, name }) =>
-        startGitActionNotice("Deleting remote tag", `${remote}/${name}`, repoPath, RECOVERY_HINTS.deleteRemoteTag),
+        startGitActionNotice(
+          "Deleting remote tag",
+          `${remote}/${name}`,
+          repoPath,
+          RECOVERY_HINTS.deleteRemoteTag,
+        ),
       onSuccess: async (_data, { name }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(
           context,
           `${name} deleted remotely and refs refreshed.`,
@@ -2340,7 +2598,6 @@ export const gitMutations = {
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
     }),
-
 
   createWorktree: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
@@ -2407,7 +2664,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2423,7 +2683,11 @@ export const gitMutations = {
       mutationFn: ({ path, newPath }: MoveWorktreeRequest) =>
         gitApi.moveWorktree(repoPath!, path, newPath),
       onMutate: ({ path, newPath }) =>
-        startGitActionNotice("Moving worktree", `${path} → ${newPath}`, repoPath),
+        startGitActionNotice(
+          "Moving worktree",
+          `${path} → ${newPath}`,
+          repoPath,
+        ),
       onSuccess: async (_data, _variables, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         finishGitActionNotice(
@@ -2478,7 +2742,10 @@ export const gitMutations = {
       onMutate: (path) =>
         startGitActionNotice("Repairing worktree", path, repoPath),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2486,7 +2753,8 @@ export const gitMutations = {
 
   repairWorktreeDryRun: (repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (path: string) => gitApi.repairWorktreeDryRun(repoPath!, path),
+      mutationFn: (path: string) =>
+        gitApi.repairWorktreeDryRun(repoPath!, path),
     }),
 
   updateSubmodule: (_queryClient: QueryClient, repoPath: string | null) =>
@@ -2500,7 +2768,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2513,7 +2784,12 @@ export const gitMutations = {
       onMutate: ({ url, path, branch, name }) =>
         startGitActionNotice(
           "Adding submodule",
-          [path, url, branch ? `branch ${branch}` : null, name ? `name ${name}` : null]
+          [
+            path,
+            url,
+            branch ? `branch ${branch}` : null,
+            name ? `name ${name}` : null,
+          ]
             .filter(Boolean)
             .join(" · "),
           repoPath,
@@ -2546,7 +2822,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2586,7 +2865,10 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2627,7 +2909,8 @@ export const gitMutations = {
 
   rebaseOnto: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: StartRebaseRequest) => gitApi.rebaseOnto(repoPath!, request),
+      mutationFn: (request: StartRebaseRequest) =>
+        gitApi.rebaseOnto(repoPath!, request),
       onMutate: ({ branch, upstream, onto, autostash }) =>
         startGitActionNotice(
           "Starting rebase",
@@ -2636,19 +2919,26 @@ export const gitMutations = {
             `from ${upstream}`,
             onto ? `onto ${onto}` : null,
             autostash ? "with autostash" : null,
-          ].filter(Boolean).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
       onSuccess: (job, _request, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   rebaseUpstream: (_queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: StartRebaseRequest) => gitApi.rebaseUpstream(repoPath!, request),
+      mutationFn: (request: StartRebaseRequest) =>
+        gitApi.rebaseUpstream(repoPath!, request),
       onMutate: ({ branch, upstream, autostash }) =>
         startGitActionNotice(
           "Rebasing onto upstream",
@@ -2656,19 +2946,26 @@ export const gitMutations = {
             branch ? `${branch} ` : "current branch ",
             upstream,
             autostash ? "with autostash" : null,
-          ].filter(Boolean).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
           repoPath,
           RECOVERY_HINTS.rebase,
         ),
       onSuccess: (job, _request, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   setRerereEnabled: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (enabled: boolean) => gitApi.setRerereEnabled(repoPath!, enabled),
+      mutationFn: (enabled: boolean) =>
+        gitApi.setRerereEnabled(repoPath!, enabled),
       onMutate: (enabled) =>
         startGitActionNotice(
           enabled ? "Enabling rerere" : "Disabling rerere",
@@ -2677,9 +2974,13 @@ export const gitMutations = {
         ),
       onSuccess: (status, _enabled, context) => {
         queryClient.setQueryData(gitKeys.rerereStatus(repoPath), status);
-        finishGitActionNotice(context, status.enabled ? "rerere enabled." : "rerere disabled.");
+        finishGitActionNotice(
+          context,
+          status.enabled ? "rerere enabled." : "rerere disabled.",
+        );
       },
-      onError: (error, _enabled, context) => failGitActionNotice(context, error),
+      onError: (error, _enabled, context) =>
+        failGitActionNotice(context, error),
     }),
 
   continueRebase: (_queryClient: QueryClient, repoPath: string | null) =>
@@ -2693,7 +2994,10 @@ export const gitMutations = {
           RECOVERY_HINTS.rebase,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2710,7 +3014,10 @@ export const gitMutations = {
           RECOVERY_HINTS.rebase,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2727,7 +3034,10 @@ export const gitMutations = {
           RECOVERY_HINTS.rebase,
         ),
       onSuccess: (job, _variables, context) => {
-        finishGitActionNotice(context, `${job.title} queued. Track progress in the command log.`);
+        finishGitActionNotice(
+          context,
+          `${job.title} queued. Track progress in the command log.`,
+        );
       },
       onError: (error, _variables, context) =>
         failGitActionNotice(context, error),
@@ -2819,10 +3129,19 @@ export const gitMutations = {
         ),
       onSuccess: async (summary, _request, context) => {
         queryClient.setQueryData(gitKeys.bisectState(repoPath), summary.state);
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "bisect");
-        finishGitActionNotice(context, "Bisect started and repository views refreshed.");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "bisect",
+        );
+        finishGitActionNotice(
+          context,
+          "Bisect started and repository views refreshed.",
+        );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   bisectGood: (queryClient: QueryClient, repoPath: string | null) =>
@@ -2830,13 +3149,23 @@ export const gitMutations = {
       mutationFn: ({ revision }: BisectMarkRequest = {}) =>
         gitApi.bisectGood(repoPath!, revision),
       onMutate: ({ revision }: BisectMarkRequest = {}) =>
-        startGitActionNotice("Marking bisect revision good", revision || "current checkout", repoPath),
+        startGitActionNotice(
+          "Marking bisect revision good",
+          revision || "current checkout",
+          repoPath,
+        ),
       onSuccess: async (summary, _request, context) => {
         queryClient.setQueryData(gitKeys.bisectState(repoPath), summary.state);
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "bisect");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "bisect",
+        );
         finishGitActionNotice(context, "Good revision recorded.");
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   bisectBad: (queryClient: QueryClient, repoPath: string | null) =>
@@ -2844,13 +3173,23 @@ export const gitMutations = {
       mutationFn: ({ revision }: BisectMarkRequest = {}) =>
         gitApi.bisectBad(repoPath!, revision),
       onMutate: ({ revision }: BisectMarkRequest = {}) =>
-        startGitActionNotice("Marking bisect revision bad", revision || "current checkout", repoPath),
+        startGitActionNotice(
+          "Marking bisect revision bad",
+          revision || "current checkout",
+          repoPath,
+        ),
       onSuccess: async (summary, _request, context) => {
         queryClient.setQueryData(gitKeys.bisectState(repoPath), summary.state);
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "bisect");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "bisect",
+        );
         finishGitActionNotice(context, "Bad revision recorded.");
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   bisectSkip: (queryClient: QueryClient, repoPath: string | null) =>
@@ -2858,13 +3197,23 @@ export const gitMutations = {
       mutationFn: ({ revision }: BisectMarkRequest = {}) =>
         gitApi.bisectSkip(repoPath!, revision),
       onMutate: ({ revision }: BisectMarkRequest = {}) =>
-        startGitActionNotice("Skipping bisect revision", revision || "current checkout", repoPath),
+        startGitActionNotice(
+          "Skipping bisect revision",
+          revision || "current checkout",
+          repoPath,
+        ),
       onSuccess: async (summary, _request, context) => {
         queryClient.setQueryData(gitKeys.bisectState(repoPath), summary.state);
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "bisect");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "bisect",
+        );
         finishGitActionNotice(context, "Revision skipped for this bisect.");
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   bisectReset: (queryClient: QueryClient, repoPath: string | null) =>
@@ -2872,13 +3221,26 @@ export const gitMutations = {
       mutationFn: ({ revision }: BisectMarkRequest = {}) =>
         gitApi.bisectReset(repoPath!, revision),
       onMutate: ({ revision }: BisectMarkRequest = {}) =>
-        startGitActionNotice("Resetting git bisect", revision || "Original branch", repoPath),
+        startGitActionNotice(
+          "Resetting git bisect",
+          revision || "Original branch",
+          repoPath,
+        ),
       onSuccess: async (summary, _request, context) => {
         queryClient.setQueryData(gitKeys.bisectState(repoPath), summary.state);
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "bisect");
-        finishGitActionNotice(context, "Bisect reset and repository views refreshed.");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "bisect",
+        );
+        finishGitActionNotice(
+          context,
+          "Bisect reset and repository views refreshed.",
+        );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   runGitFsck: (_queryClient: QueryClient, repoPath: string | null) =>
@@ -2893,7 +3255,8 @@ export const gitMutations = {
         ),
       onSuccess: (_result, _request, context) =>
         finishGitActionNotice(context, "Repository object check complete."),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   runGitMaintenance: (_queryClient: QueryClient, repoPath: string | null) =>
@@ -2910,9 +3273,12 @@ export const gitMutations = {
       onSuccess: (_result, { mode }, context) =>
         finishGitActionNotice(
           context,
-          mode === "gc" ? "Garbage collection complete." : "Maintenance complete.",
+          mode === "gc"
+            ? "Garbage collection complete."
+            : "Maintenance complete.",
         ),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   verifyGitSignature: (_queryClient: QueryClient, repoPath: string | null) =>
@@ -2924,9 +3290,12 @@ export const gitMutations = {
       onSuccess: (result, { target }, context) =>
         finishGitActionNotice(
           context,
-          result.status === "valid" ? `${target} has a valid signature.` : `${target} signature status: ${result.status}.`,
+          result.status === "valid"
+            ? `${target} has a valid signature.`
+            : `${target} signature status: ${result.status}.`,
         ),
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 
   checkoutPullRequest: (queryClient: QueryClient, repoPath: string | null) =>
@@ -3126,7 +3495,12 @@ export const gitMutations = {
 
   mergePullRequest: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ number, method, admin, deleteBranch }: MergePullRequestRequest) =>
+      mutationFn: ({
+        number,
+        method,
+        admin,
+        deleteBranch,
+      }: MergePullRequestRequest) =>
         gitApi.mergePullRequest(repoPath!, number, method, {
           admin: admin ?? false,
           deleteBranch: deleteBranch ?? true,
@@ -3171,8 +3545,21 @@ export const gitMutations = {
     }),
   createPullRequest: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: ({ head, base, title, body, draft }: CreatePullRequestRequest) =>
-        gitApi.createPullRequest({ repoPath: repoPath!, head, base, title, body, draft }),
+      mutationFn: ({
+        head,
+        base,
+        title,
+        body,
+        draft,
+      }: CreatePullRequestRequest) =>
+        gitApi.createPullRequest({
+          repoPath: repoPath!,
+          head,
+          base,
+          title,
+          body,
+          draft,
+        }),
       onMutate: ({ head, draft }) =>
         startGitActionNotice(
           "Creating pull request",
@@ -3180,12 +3567,20 @@ export const gitMutations = {
           repoPath,
         ),
       onSuccess: async (url, { head }, context) => {
-        await refreshGitStateAfterAction(queryClient, repoPath, context, "remote");
+        await refreshGitStateAfterAction(
+          queryClient,
+          repoPath,
+          context,
+          "remote",
+        );
         finishGitActionNotice(
           context,
-          url ? `Pull request created: ${url}` : `Pull request created for ${head}.`,
+          url
+            ? `Pull request created: ${url}`
+            : `Pull request created for ${head}.`,
         );
       },
-      onError: (error, _request, context) => failGitActionNotice(context, error),
+      onError: (error, _request, context) =>
+        failGitActionNotice(context, error),
     }),
 };

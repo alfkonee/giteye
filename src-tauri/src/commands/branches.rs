@@ -170,9 +170,10 @@ pub async fn local_branch_prune_plan(
 pub async fn prune_local_branches(
     repo_path: String,
     branches: Vec<String>,
+    force: bool,
 ) -> Result<LocalBranchPruneResult, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        branch_service::prune_local_branches(Path::new(&repo_path), &branches)
+        branch_service::prune_local_branches(Path::new(&repo_path), &branches, force)
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
