@@ -29,11 +29,19 @@ import {
   isUnmergedStatus,
   visibleBranches,
 } from "./sidebar/BranchTree";
-import { SidebarCountBadge, SidebarNavItem, SidebarNote, SidebarSection } from "./sidebar/SidebarNav";
+import {
+  SidebarCountBadge,
+  SidebarNavItem,
+  SidebarNote,
+  SidebarSection,
+} from "./sidebar/SidebarNav";
 import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
 import { appDialog } from "../common/AppDialogProvider";
 import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
-import { describeBranchActivation, useBranchActivation } from "../../lib/branch-activation";
+import {
+  describeBranchActivation,
+  useBranchActivation,
+} from "../../lib/branch-activation";
 import { AppSidebar } from "./AppSidebar";
 
 export function Sidebar() {
@@ -56,13 +64,17 @@ export function Sidebar() {
     x: number;
     y: number;
   } | null>(null);
-  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(
+    null,
+  );
   const [prBranch, setPrBranch] = useState<Branch | null>(null);
   const [localBranchesExpanded, setLocalBranchesExpanded] = useState(true);
   const [remoteBranchesExpanded, setRemoteBranchesExpanded] = useState(false);
   const [showAllLocalBranches, setShowAllLocalBranches] = useState(false);
   const [showAllRemoteBranches, setShowAllRemoteBranches] = useState(false);
-  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia("(max-width: 820px)").matches);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(
+    () => window.matchMedia("(max-width: 820px)").matches,
+  );
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -119,10 +131,18 @@ export function Sidebar() {
   const mergeBranchMutation = useMutation(
     gitMutations.mergeBranch(queryClient, activeRepoPath),
   );
-  const pushBranchMutation = useMutation(gitMutations.pushBranch(queryClient, activeRepoPath));
-  const pushBranchDryRunMutation = useMutation(gitMutations.pushBranchDryRun(activeRepoPath));
-  const deleteRemoteBranchMutation = useMutation(gitMutations.deleteRemoteBranch(queryClient, activeRepoPath));
-  const deleteRemoteBranchDryRunMutation = useMutation(gitMutations.deleteRemoteBranchDryRun(activeRepoPath));
+  const pushBranchMutation = useMutation(
+    gitMutations.pushBranch(queryClient, activeRepoPath),
+  );
+  const pushBranchDryRunMutation = useMutation(
+    gitMutations.pushBranchDryRun(activeRepoPath),
+  );
+  const deleteRemoteBranchMutation = useMutation(
+    gitMutations.deleteRemoteBranch(queryClient, activeRepoPath),
+  );
+  const deleteRemoteBranchDryRunMutation = useMutation(
+    gitMutations.deleteRemoteBranchDryRun(activeRepoPath),
+  );
   const githubOverviewQuery = useQuery(
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
@@ -158,7 +178,9 @@ export function Sidebar() {
   });
 
   const statusFileCount = snapshot?.summary.totalCount;
-  const pullRequestCount = githubOverviewQuery.data?.pullRequests.length;
+  const pullRequestCount = githubOverviewQuery.data?.pullRequests.filter(
+    (pr) => pr.state.toLowerCase() === "open",
+  ).length;
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
@@ -169,12 +191,12 @@ export function Sidebar() {
   const collaborationOverview = githubOverviewQuery.data;
   const hasCollaborationData = Boolean(
     collaborationOverview &&
-      (collaborationOverview.providerAvailable ||
-        collaborationOverview.isGithubRepository ||
-        collaborationOverview.pullRequests.length > 0 ||
-        collaborationOverview.checkRuns.length > 0 ||
-        collaborationOverview.reviews.length > 0 ||
-        collaborationOverview.activity.length > 0),
+    (collaborationOverview.providerAvailable ||
+      collaborationOverview.isGithubRepository ||
+      collaborationOverview.pullRequests.length > 0 ||
+      collaborationOverview.checkRuns.length > 0 ||
+      collaborationOverview.reviews.length > 0 ||
+      collaborationOverview.activity.length > 0),
   );
   const showCollaborationViews =
     hasCollaborationData || isCollaborationView(activeView);
@@ -186,7 +208,7 @@ export function Sidebar() {
     stashes: stashesQuery.data?.length,
     tags: tagsQuery.data?.length,
     lfs: lfsQuery.data?.files.length,
-    "stacked-prs": pullRequestCount,
+    "review-studio": pullRequestCount,
   };
   const viewCountBadges: Partial<Record<ViewType, SidebarCountBadge[]>> = {
     branches: branchSummary
@@ -259,7 +281,8 @@ export function Sidebar() {
         `Merge "${branch.shortName}" into the current branch? Your working tree must be clean.`,
         "Merge branch?",
       ))
-    ) return;
+    )
+      return;
     mergeBranchMutation.mutate(branch.shortName);
   };
 
@@ -269,7 +292,11 @@ export function Sidebar() {
   };
 
   const remoteNames = Array.from(
-    new Set(remoteBranches.map((branch) => branch.shortName.split("/", 1)[0]).filter(Boolean)),
+    new Set(
+      remoteBranches
+        .map((branch) => branch.shortName.split("/", 1)[0])
+        .filter(Boolean),
+    ),
   );
   const pushBranch = async (branch: Branch, forceWithLease: boolean) => {
     if (branch.isRemote) return;
@@ -296,11 +323,14 @@ export function Sidebar() {
         await deleteRemoteBranchDryRunMutation.mutateAsync(request),
         "Git did not report a ref deletion for this remote branch dry run.",
       );
-      if (!(await appDialog.confirm(
-        `Delete remote branch “${target}”?\n\nPreview:\n${preview}`,
-        "Delete remote branch?",
-        "danger",
-      ))) return;
+      if (
+        !(await appDialog.confirm(
+          `Delete remote branch “${target}”?\n\nPreview:\n${preview}`,
+          "Delete remote branch?",
+          "danger",
+        ))
+      )
+        return;
       deleteRemoteBranchMutation.mutate(request);
     } catch (error) {
       await appDialog.alert(
@@ -336,7 +366,9 @@ export function Sidebar() {
     );
   };
 
-  const sidebarHidden = isNarrowViewport ? !narrowSidebarOpen : sidebarCollapsed;
+  const sidebarHidden = isNarrowViewport
+    ? !narrowSidebarOpen
+    : sidebarCollapsed;
   if (sidebarHidden) {
     return (
       <div className="giteye-sidebar-rail flex w-12 shrink-0 flex-col items-center border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/90 backdrop-blur-sm">
@@ -359,7 +391,6 @@ export function Sidebar() {
 
   return (
     <AppSidebar>
-
       <div className="flex-1 overflow-y-auto py-1.5">
         {viewGroups.map((group) => {
           const views = getViewsForGroup(group.id).filter(shouldShowView);
@@ -411,12 +442,17 @@ export function Sidebar() {
               title="Remote Branches"
               count={remoteBranches.length}
               expanded={remoteBranchesExpanded}
-              onToggle={() => setRemoteBranchesExpanded((expanded) => !expanded)}
+              onToggle={() =>
+                setRemoteBranchesExpanded((expanded) => !expanded)
+              }
             />
             {remoteBranchesExpanded ? (
               <>
                 <BranchTree
-                  branches={visibleBranches(remoteBranches, showAllRemoteBranches)}
+                  branches={visibleBranches(
+                    remoteBranches,
+                    showAllRemoteBranches,
+                  )}
                   onSwitch={branchActivation.activateBranch}
                   onContextMenu={openBranchContextMenu}
                   describeActivation={describeActivation}
@@ -425,7 +461,9 @@ export function Sidebar() {
                   <ShowMoreButton
                     expanded={showAllRemoteBranches}
                     hiddenCount={Math.max(0, remoteBranches.length - 8)}
-                    onClick={() => setShowAllRemoteBranches((showAll) => !showAll)}
+                    onClick={() =>
+                      setShowAllRemoteBranches((showAll) => !showAll)
+                    }
                   />
                 ) : null}
               </>
@@ -441,7 +479,8 @@ export function Sidebar() {
           <SidebarNote>Loading worktrees…</SidebarNote>
         ) : shouldLoadWorktrees && worktreesQuery.error ? (
           <SidebarNote>Worktrees unavailable</SidebarNote>
-        ) : !shouldLoadWorktrees && (workspaceSummary?.worktreeCount ?? 0) > 0 ? (
+        ) : !shouldLoadWorktrees &&
+          (workspaceSummary?.worktreeCount ?? 0) > 0 ? (
           <SidebarNote>Open Worktrees to load linked paths</SidebarNote>
         ) : worktrees.length === 0 ? (
           <SidebarNote>No linked worktrees</SidebarNote>
@@ -474,7 +513,8 @@ export function Sidebar() {
           <SidebarNote>Loading submodules…</SidebarNote>
         ) : shouldLoadSubmodules && submodulesQuery.error ? (
           <SidebarNote>Submodules unavailable</SidebarNote>
-        ) : !shouldLoadSubmodules && (workspaceSummary?.submoduleCount ?? 0) > 0 ? (
+        ) : !shouldLoadSubmodules &&
+          (workspaceSummary?.submoduleCount ?? 0) > 0 ? (
           <SidebarNote>Open Submodules to load configured paths</SidebarNote>
         ) : submodules.length === 0 ? (
           <SidebarNote>No submodules configured</SidebarNote>
@@ -496,7 +536,6 @@ export function Sidebar() {
       </div>
 
       <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
-
         <button
           type="button"
           onClick={() => {
@@ -557,7 +596,6 @@ export function Sidebar() {
     </AppSidebar>
   );
 }
-
 
 function basename(path: string) {
   const normalizedEnd = path.endsWith("/") ? path.length - 1 : path.length;

@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { GitPullRequest, PlugZap, RefreshCw, ShieldCheck, Terminal } from "lucide-react";
+import {
+  GitPullRequest,
+  PlugZap,
+  RefreshCw,
+  ShieldCheck,
+  Terminal,
+} from "lucide-react";
 import { gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { EmptyState } from "../common/EmptyState";
@@ -14,12 +20,16 @@ export function CollaborationConnect() {
     gitQueries.githubOverview(activeRepoPath, Boolean(activeRepoPath)),
   );
   const overview = providerQuery.data;
-  const providerLabel = overview?.owner && overview.repo
-    ? `${overview.owner}/${overview.repo}`
-    : "this repository";
+  const providerLabel =
+    overview?.owner && overview.repo
+      ? `${overview.owner}/${overview.repo}`
+      : "this repository";
   const canOpenProviderViews = Boolean(
     overview?.providerAvailable && overview.isGithubRepository,
   );
+  const openPullRequestCount =
+    overview?.pullRequests.filter((pr) => pr.state.toLowerCase() === "open")
+      .length ?? 0;
 
   if (!activeRepoPath) {
     return (
@@ -46,9 +56,10 @@ export function CollaborationConnect() {
               Connect provider context
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-              GitEye keeps local Git tools primary. Provider views load only after
-              this explicit entry is opened, so background PR/review requests do
-              not run while you are working in core repository views.
+              GitEye keeps local Git tools primary. Provider views load only
+              after this explicit entry is opened, so background PR/review
+              requests do not run while you are working in core repository
+              views.
             </p>
           </div>
         </div>
@@ -60,7 +71,9 @@ export function CollaborationConnect() {
               Checking provider capability for the active repository…
             </div>
           ) : providerQuery.error ? (
-            <ErrorCallout message={`Provider metadata unavailable: ${String(providerQuery.error)}`} />
+            <ErrorCallout
+              message={`Provider metadata unavailable: ${String(providerQuery.error)}`}
+            />
           ) : canOpenProviderViews ? (
             <div className="space-y-4">
               <div className="flex items-start gap-3">
@@ -72,7 +85,11 @@ export function CollaborationConnect() {
                   <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
                     {overview?.account
                       ? `Connected as ${overview.account.login}.`
-                      : "No account login was returned; public repository data may still be available."} {overview?.pullRequests.length ?? 0} pull requests, {overview?.checkRuns.length ?? 0} checks, and {overview?.reviews.length ?? 0} reviews are cached for this repository.
+                      : "No account login was returned; public repository data may still be available."}{" "}
+                    {openPullRequestCount} open pull requests,{" "}
+                    {overview?.checkRuns.length ?? 0} checks, and{" "}
+                    {overview?.reviews.length ?? 0} reviews are cached for this
+                    repository.
                   </p>
                 </div>
               </div>
@@ -80,10 +97,10 @@ export function CollaborationConnect() {
                 <Button
                   variant="primary"
                   type="button"
-                  onClick={() => setActiveView("stacked-prs")}
+                  onClick={() => setActiveView("review-studio")}
                 >
                   <GitPullRequest className="h-4 w-4" />
-                  Open Pull Requests
+                  Open Review Studio
                 </Button>
                 <Button
                   variant="secondary"
@@ -92,13 +109,6 @@ export function CollaborationConnect() {
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Open CI Status
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => setActiveView("review-studio")}
-                >
-                  Open Review Studio
                 </Button>
                 <Button
                   variant="secondary"
@@ -130,13 +140,18 @@ export function CollaborationConnect() {
                   <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
                   <div className="min-w-0">
                     <p className="text-xs text-[var(--color-text-secondary)]">
-                      GitEye uses the <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono text-[10px]">gh</code> CLI for GitHub integration. Authenticate in your terminal:
+                      GitEye uses the{" "}
+                      <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono text-[10px]">
+                        gh
+                      </code>{" "}
+                      CLI for GitHub integration. Authenticate in your terminal:
                     </p>
                     <code className="mt-1.5 block rounded bg-[var(--color-bg-surface)] px-3 py-2 font-mono text-xs text-[var(--color-text-primary)]">
                       gh auth login
                     </code>
                     <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
-                      After authentication, return here and click "Check Again" to load pull requests, CI checks, and review data.
+                      After authentication, return here and click "Check Again"
+                      to load pull requests, CI checks, and review data.
                     </p>
                   </div>
                 </div>

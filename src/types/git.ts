@@ -488,7 +488,6 @@ export interface ReviewRequestSummary {
   kind: string;
 }
 
-
 export interface PullRequestSummary {
   number: number;
   title: string;
@@ -688,7 +687,6 @@ export interface LostCommit {
   source: string;
 }
 
-
 export interface GitCommandSafety {
   requiresExplicitAction: boolean;
   changesWorktree: boolean;
@@ -764,7 +762,8 @@ export interface GitMaintenanceSummary {
 
 export type GitMaintenanceMode = "maintenance" | "gc";
 
-export type GitSignatureStatus = "valid" | "invalid" | "unsigned" | "unknown" | "unsupported";
+export type GitSignatureStatus =
+  "valid" | "invalid" | "unsigned" | "unknown" | "unsupported";
 
 export interface GitSignatureSummary {
   target: string;
@@ -841,7 +840,6 @@ export type RepositoryViewType =
   | "lfs"
   | "collaboration-connect"
   | "ci-status"
-  | "stacked-prs"
   | "review-studio"
   | "worktrees"
   | "submodules"
@@ -903,7 +901,12 @@ export function parseFileStatus(xyStatus: string): FileStatus {
   const x = xyStatus[0];
   const y = xyStatus[1];
 
-  if ((x === "D" && y === "D") || (x === "A" && y === "A") || (x === "U" && y === "U")) return "conflict";
+  if (
+    (x === "D" && y === "D") ||
+    (x === "A" && y === "A") ||
+    (x === "U" && y === "U")
+  )
+    return "conflict";
   if (x === "?" && y === "?") return "untracked";
   if (x === "!" && y === "!") return "ignored";
   if (x === "R") return "renamed";

@@ -192,7 +192,11 @@ pub fn get_repository_github_overview(repo_path: &Path) -> RepositoryGithubOverv
     if !github_request_active(&request_context) {
         return overview;
     }
-    if let Some(first_pr) = overview.pull_requests.first() {
+    if let Some(first_pr) = overview
+        .pull_requests
+        .iter()
+        .find(|pr| pr.state.eq_ignore_ascii_case("open"))
+    {
         overview.reviews = fetch_reviews(
             repo_path,
             &owner,
@@ -793,27 +797,34 @@ fn fetch_pull_requests(
     }
 
     let repository = format!("{owner}/{repo}");
-    let output = run_process_for_request(
-        "gh",
-        &[
-            "pr",
-            "list",
-            "--repo",
-            &repository,
-            "--limit",
-            "20",
-            "--json",
-            "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
-        ],
-        repo_path,
-        GhOp::Read,
-        request_context,
-    );
-
-    output
+    let fetch_state = |state: &str, limit: &str| {
+        run_process_for_request(
+            "gh",
+            &[
+                "pr",
+                "list",
+                "--repo",
+                &repository,
+                "--limit",
+                limit,
+                "--state",
+                state,
+                "--json",
+                "number,title,state,author,url,headRefName,baseRefName,isDraft,updatedAt,labels,reviewRequests,reviewDecision,mergeStateStatus",
+            ],
+            repo_path,
+            GhOp::Read,
+            request_context,
+        )
         .and_then(|json| serde_json::from_str::<Vec<GhPullRequest>>(&json).ok())
         .unwrap_or_default()
+    };
+
+    // Separate quotas prevent a busy closed history from pushing open PRs out
+    // of the bounded overview. GitHub/gh's `closed` state includes merged PRs.
+    fetch_state("open", "20")
         .into_iter()
+        .chain(fetch_state("closed", "30"))
         .map(|pr| PullRequestSummary {
             number: pr.number.unwrap_or_default(),
             title: pr.title.unwrap_or_default(),
