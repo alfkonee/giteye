@@ -20,6 +20,25 @@ interface MarkdownProps {
   className?: string;
 }
 
+let mermaidRenderQueue: Promise<void> = Promise.resolve();
+
+function renderMermaid(id: string, source: string, theme: "dark" | "default") {
+  const rendering = mermaidRenderQueue.then(async () => {
+    const { default: mermaid } = await import("mermaid");
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme,
+    });
+    return mermaid.render(id, source);
+  });
+  mermaidRenderQueue = rendering.then(
+    () => undefined,
+    () => undefined,
+  );
+  return rendering;
+}
+
 function MermaidDiagram({ source }: { source: string }) {
   const reactId = useId();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -49,15 +68,9 @@ function MermaidDiagram({ source }: { source: string }) {
     container.replaceChildren();
     setError(null);
 
-    void import("mermaid")
-      .then(async ({ default: mermaid }) => {
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict",
-          theme,
-        });
-        const renderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}-${renderCountRef.current++}`;
-        const { svg, bindFunctions } = await mermaid.render(renderId, source);
+    const renderId = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}-${renderCountRef.current++}`;
+    void renderMermaid(renderId, source, theme)
+      .then(({ svg, bindFunctions }) => {
         if (!active) return;
         container.innerHTML = svg;
         bindFunctions?.(container);
