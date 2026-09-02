@@ -60,12 +60,22 @@ pub fn get_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppErr
     let repo_key = canonical_repo_key(path);
     let fingerprint = snapshot_fingerprint(path, &repo_key)?;
 
-    if let Some(snapshot) = cached_snapshot(&repo_key, &fingerprint)? {
-        return Ok(snapshot);
+    // A dirty file inside a submodule does not update the parent repository's
+    // refs or index, so the cheap fingerprint below can look unchanged while
+    // `git status` would now report the submodule path as modified. Avoid stale
+    // clean snapshots for repos that have submodules.
+    let cacheable = !path.join(".gitmodules").is_file();
+
+    if cacheable {
+        if let Some(snapshot) = cached_snapshot(&repo_key, &fingerprint)? {
+            return Ok(snapshot);
+        }
     }
 
     let snapshot = build_repository_snapshot(path)?;
-    store_snapshot(repo_key, fingerprint, snapshot.clone())?;
+    if cacheable {
+        store_snapshot(repo_key, fingerprint, snapshot.clone())?;
+    }
     Ok(snapshot)
 }
 fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError> {
@@ -77,6 +87,7 @@ fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError
             "--porcelain=v2",
             "--branch",
             "--untracked-files=all",
+            "--ignore-submodules=none",
             "-z",
         ],
     )?;
@@ -778,6 +789,46 @@ mod tests {
                 .to_string_lossy()
         );
         assert_eq!(parent_info.submodule_path, "modules/source");
+    }
+
+    #[test]
+    fn repository_snapshot_reports_dirty_submodule_after_clean_snapshot() {
+        let temp = TestDir::new("dirty-submodule-status");
+        let source = temp.path.join("source");
+        let parent = temp.path.join("parent");
+        fs::create_dir_all(&source).expect("create source");
+        fs::create_dir_all(&parent).expect("create parent");
+        create_source_repo(&source);
+        create_source_repo(&parent);
+        git(
+            &parent,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                source.to_str().expect("source path"),
+                "modules/source",
+            ],
+        );
+        git(&parent, &["commit", "-am", "Add source submodule"]);
+        git(&parent, &["config", "submodule.modules/source.ignore", "all"]);
+
+        let clean = get_repository_snapshot(&parent).expect("clean snapshot");
+        assert!(clean.repository_info.is_clean);
+
+        fs::write(parent.join("modules/source/README.md"), "# source\ndirty\n")
+            .expect("dirty submodule file");
+
+        let dirty = get_repository_snapshot(&parent).expect("dirty snapshot");
+        let submodule = dirty
+            .files
+            .iter()
+            .find(|file| file.path == "modules/source")
+            .expect("dirty submodule entry");
+        assert_eq!(submodule.status, ".M");
+        assert!(!submodule.staged);
+        assert!(submodule.unstaged);
     }
 
     #[test]
