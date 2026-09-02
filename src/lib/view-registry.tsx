@@ -6,7 +6,6 @@ import {
   Database,
   GitBranch,
   GitFork,
-  GitPullRequest,
   HardDrive,
   Layers,
   LayoutPanelLeft,
@@ -25,8 +24,12 @@ import { CollaborationConnect } from "../components/collaboration/CollaborationC
 import { GitWorkspace } from "../components/git-workspace/GitWorkspace";
 import { ArchaeologyView } from "../components/repository/ArchaeologyView";
 import { DiagnosticsView } from "../components/repository/DiagnosticsView";
-import { LfsView, RemotesView, StashesView, TagsView } from "../components/repository/LocalGitViews";
-import { StackedPrBoard } from "../components/stacked-prs/StackedPrBoard";
+import {
+  LfsView,
+  RemotesView,
+  StashesView,
+  TagsView,
+} from "../components/repository/LocalGitViews";
 import { WorktreesSubmodules } from "../components/workspaces/WorktreesSubmodules";
 import { DiffReviewStudio } from "../components/review-studio/DiffReviewStudio";
 import { CustomCommandView } from "../components/repository/CustomCommandView";
@@ -61,7 +64,8 @@ export const viewDefinitions: ViewDefinition[] = [
   {
     id: "workspace",
     label: "Workspace",
-    description: "Stage, commit, browse history, merge, rebase, and resolve conflicts in one pane",
+    description:
+      "Stage, commit, browse history, merge, rebase, and resolve conflicts in one pane",
     group: "core",
     icon: LayoutPanelLeft,
     render: () => <GitWorkspace />,
@@ -94,7 +98,8 @@ export const viewDefinitions: ViewDefinition[] = [
   {
     id: "repo-settings",
     label: "Repository Settings",
-    description: "Repository appearance, remotes, hooks, and workspace danger zone",
+    description:
+      "Repository appearance, remotes, hooks, and workspace danger zone",
     group: "repository",
     icon: Settings2,
     render: () => <RepositorySettings />,
@@ -168,25 +173,18 @@ export const viewDefinitions: ViewDefinition[] = [
   {
     id: "ci-status",
     label: "CI Status",
-    description: "Inspect GitHub workflow checks for the current branch and selected PR",
+    description:
+      "Inspect GitHub workflow checks for the current branch and selected PR",
     group: "collaboration",
     icon: ShieldCheck,
     render: () => <CiStatusView />,
     collaboration: true,
   },
   {
-    id: "stacked-prs",
-    label: "Pull Requests",
-    description: "Review and land provider pull requests when available",
-    group: "collaboration",
-    icon: GitPullRequest,
-    render: () => <StackedPrBoard />,
-    collaboration: true,
-  },
-  {
     id: "review-studio",
     label: "Review Studio",
-    description: "Inspect provider diffs, comments, checks, and reviews",
+    description:
+      "Review, manage, and land provider pull requests in one workspace",
     group: "collaboration",
     icon: GitFork,
     render: () => <DiffReviewStudio />,

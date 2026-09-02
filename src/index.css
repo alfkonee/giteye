@@ -122,8 +122,12 @@
   --color-conflict-result-bg: rgba(119, 207, 103, 0.13);
 
   /* Typography */
-  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, Consolas, monospace;
+  --font-ui:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Liberation Mono",
+    Menlo, Consolas, monospace;
   --font-size-ui: 13px;
   --font-size-caption: 11px;
   --font-size-title: 16px;
@@ -155,11 +159,15 @@
   --radius-pill: 999px;
 
   /* Elevation */
-  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 4px 12px rgba(0, 0, 0, 0.20);
-  --shadow-elevated: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 28px rgba(0, 0, 0, 0.30);
-  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.30);
-  --shadow-drag: 0 12px 28px rgba(0, 0, 0, 0.30), 0 0 0 1px var(--color-border-accent);
-  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-panel:
+    0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-elevated:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 28px rgba(0, 0, 0, 0.3);
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.3);
+  --shadow-drag:
+    0 12px 28px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--color-border-accent);
+  --shadow-soft:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.18);
 
   /* Motion */
   --duration-fast: 120ms;
@@ -261,7 +269,8 @@
   --shadow-panel: 0 1px 2px rgba(24, 24, 27, 0.04);
   --shadow-elevated: 0 4px 16px rgba(24, 24, 27, 0.08);
   --shadow-popover: 0 8px 24px rgba(24, 24, 27, 0.12);
-  --shadow-drag: 0 16px 36px rgba(24, 24, 27, 0.16), 0 0 0 1px var(--color-border-accent);
+  --shadow-drag:
+    0 16px 36px rgba(24, 24, 27, 0.16), 0 0 0 1px var(--color-border-accent);
   --shadow-soft: 0 1px 2px rgba(24, 24, 27, 0.05);
 }
 
@@ -506,7 +515,6 @@ a {
   color: var(--color-danger);
 }
 
-
 .giteye-window-control > svg {
   width: 18px;
   height: 18px;
@@ -620,7 +628,11 @@ a {
 }
 
 .giteye-selected-row:hover {
-  background: color-mix(in srgb, var(--color-bg-selected-muted) 78%, var(--color-bg-hover));
+  background: color-mix(
+    in srgb,
+    var(--color-bg-selected-muted) 78%,
+    var(--color-bg-hover)
+  );
 }
 
 .giteye-nav-active {
@@ -751,7 +763,11 @@ a {
 }
 
 .giteye-btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-danger-bg) 70%, var(--color-bg-hover));
+  background: color-mix(
+    in srgb,
+    var(--color-danger-bg) 70%,
+    var(--color-bg-hover)
+  );
 }
 
 .giteye-btn-icon {
@@ -807,7 +823,8 @@ a {
 
 .giteye-input:focus {
   border-color: var(--color-border-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 28%, transparent);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-focus-ring) 28%, transparent);
 }
 
 .giteye-segmented {
@@ -1074,7 +1091,6 @@ a {
   color: var(--color-diff-deleted-text);
 }
 
-
 .giteye-menu-item {
   min-height: 26px;
   font-size: 12px;
@@ -1169,13 +1185,11 @@ a {
   color: var(--color-text-primary);
 }
 
-
 [role="menu"] button,
 [role="menuitem"],
 [role="option"] {
   min-height: 24px;
 }
-
 
 /* Quake-style drop-down console: slides out of the top edge of the window. */
 .giteye-quake-console {
@@ -1293,7 +1307,6 @@ a {
     width: min(200px, 40vw) !important;
   }
 }
-
 
 @media (max-height: 600px) {
   .giteye-window-chrome {
@@ -1453,6 +1466,13 @@ a {
 .markdown-body img {
   max-width: 100%;
   border-radius: 6px;
+}
+
+.markdown-body .mermaid-diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
 }
 
 .markdown-body hr {

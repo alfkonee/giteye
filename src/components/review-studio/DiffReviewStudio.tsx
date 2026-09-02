@@ -12,8 +12,10 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequestArrow,
+  Layers3,
   Link2,
   MessageSquarePlus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Tag,
@@ -32,6 +34,11 @@ import {
   splitPullRequestDiff,
   summarizePullRequestDiffFiles,
 } from "../../lib/pr-diff";
+import {
+  derivePullRequestLandingOrder,
+  formatPullRequestLandingPreflight,
+  pullRequestLandingSafetyProblems,
+} from "../../lib/pr-stack";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
 import { Avatar, Button, Markdown } from "../ui";
@@ -78,9 +85,9 @@ interface ConversationItem {
   createdAt: string | null;
 }
 
-type ReviewStudioTab = "conversations" | "files" | "checks";
+type ReviewStudioTab = "conversations" | "files" | "checks" | "stack";
+type PullRequestListTab = "open" | "closed";
 type MergeMethod = "merge" | "rebase" | "squash";
-
 
 const mergeMethodLabels: Record<MergeMethod, string> = {
   merge: "Create merge commit",
@@ -123,6 +130,20 @@ const stateLabel = (state: string | null | undefined) => {
   return `${state.slice(0, 1).toUpperCase()}${state.slice(1).toLowerCase()}`;
 };
 
+const pullRequestStateClass = (pr: PullRequestSummary) => {
+  const state = pr.isDraft ? "draft" : pr.state.toLowerCase();
+  if (state === "open") {
+    return "bg-[var(--color-success-bg)] text-[var(--color-success)]";
+  }
+  if (state === "merged") {
+    return "bg-[var(--color-bg-selected-muted)] text-[var(--color-purple)]";
+  }
+  if (state === "draft") {
+    return "bg-[var(--color-warning-bg)] text-[var(--color-warning)]";
+  }
+  return "bg-[var(--color-danger-bg)] text-[var(--color-danger)]";
+};
+
 const statusFromCheck = (check: CheckRunSummary): CheckRow => {
   const normalized = (
     check.conclusion ??
@@ -145,7 +166,8 @@ const reviewFromSummary = (
   author: string | null | undefined,
 ): ReviewRow => {
   const state = stateLabel(review.state);
-  const body = review.body?.trim() || `Submitted a ${state.toLowerCase()} review.`;
+  const body =
+    review.body?.trim() || `Submitted a ${state.toLowerCase()} review.`;
   return {
     name: review.author ?? "GitHub reviewer",
     state,
@@ -183,7 +205,10 @@ function reviewStateInfo(state: string | null | undefined): {
   if (normalized.includes("APPROVED")) {
     return { label: "approved these changes", tone: "success" };
   }
-  if (normalized.includes("CHANGES_REQUESTED") || normalized.includes("REQUEST_CHANGES")) {
+  if (
+    normalized.includes("CHANGES_REQUESTED") ||
+    normalized.includes("REQUEST_CHANGES")
+  ) {
     return { label: "requested changes", tone: "danger" };
   }
   if (normalized.includes("DISMISSED")) {
@@ -223,7 +248,8 @@ function eventIcon(kind: string) {
 function eventTone(kind: string): string {
   if (kind === "merged") return "text-[var(--color-success)]";
   if (kind === "closed") return "text-[var(--color-danger)]";
-  if (kind === "labeled" || kind === "review_requested") return "text-[var(--color-info)]";
+  if (kind === "labeled" || kind === "review_requested")
+    return "text-[var(--color-info)]";
   if (kind.startsWith("head_ref_")) return "text-[var(--color-warning)]";
   return "text-[var(--color-text-muted)]";
 }
@@ -248,8 +274,10 @@ function CommentCard({
   const isReview = item.kind === "review";
   const isReviewComment = item.kind === "reviewComment";
   const reviewInfo = isReview ? reviewStateInfo(item.state) : null;
-  const verb = reviewInfo?.label ?? (isReviewComment ? "commented on" : "commented");
-  const approved = isReview && (item.state ?? "").toUpperCase().includes("APPROVED");
+  const verb =
+    reviewInfo?.label ?? (isReviewComment ? "commented on" : "commented");
+  const approved =
+    isReview && (item.state ?? "").toUpperCase().includes("APPROVED");
   const requestedChanges =
     isReview &&
     ((item.state ?? "").toUpperCase().includes("CHANGES_REQUESTED") ||
@@ -262,14 +290,22 @@ function CommentCard({
       </span>
       <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--color-border-muted)] px-3 py-2">
-          <b className="text-sm font-semibold text-[var(--color-text-primary)]">{item.author}</b>
+          <b className="text-sm font-semibold text-[var(--color-text-primary)]">
+            {item.author}
+          </b>
           <AssociationBadge value={item.association} />
           <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-            {approved ? <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-success)]" /> : null}
-            {requestedChanges ? <XCircle className="h-3.5 w-3.5 text-[var(--color-danger)]" /> : null}
+            {approved ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-success)]" />
+            ) : null}
+            {requestedChanges ? (
+              <XCircle className="h-3.5 w-3.5 text-[var(--color-danger)]" />
+            ) : null}
             {verb}
           </span>
-          <span className="ml-auto text-xs text-[var(--color-text-muted)]">{item.age}</span>
+          <span className="ml-auto text-xs text-[var(--color-text-muted)]">
+            {item.age}
+          </span>
         </div>
         {item.detail ? (
           <button
@@ -312,10 +348,14 @@ function EventRow({ item }: { item: ConversationItem }) {
       </span>
       <Icon className={`h-3.5 w-3.5 shrink-0 ${eventTone(kind)}`} />
       <span className="min-w-0 flex-1">
-        <b className="font-medium text-[var(--color-text-secondary)]">{item.author}</b>{" "}
+        <b className="font-medium text-[var(--color-text-secondary)]">
+          {item.author}
+        </b>{" "}
         {item.detail}
       </span>
-      <span className="shrink-0 text-[var(--color-text-muted)]">{item.age}</span>
+      <span className="shrink-0 text-[var(--color-text-muted)]">
+        {item.age}
+      </span>
     </div>
   );
 }
@@ -363,15 +403,21 @@ function PrSummary({
 export function DiffReviewStudio() {
   const queryClient = useQueryClient();
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const { data: githubOverview, isError } = useQuery(
-    gitQueries.githubOverview(activeRepoPath),
+  const {
+    data: githubOverview,
+    isError,
+    refetch: refetchGithubOverview,
+  } = useQuery(gitQueries.githubOverview(activeRepoPath));
+  const livePrs = useMemo(
+    () => githubOverview?.pullRequests ?? [],
+    [githubOverview?.pullRequests],
   );
-  const livePrs = githubOverview?.pullRequests ?? [];
   const selectedPullRequestId = useAppStore((s) => s.selectedPullRequestId);
   const setSelectedPullRequestId = useAppStore(
     (s) => s.setSelectedPullRequestId,
   );
   const [prFilter, setPrFilter] = useState("");
+  const [prListTab, setPrListTab] = useState<PullRequestListTab>("open");
   const [fileFilter, setFileFilter] = useState("");
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [lineCommentTarget, setLineCommentTarget] =
@@ -386,17 +432,28 @@ export function DiffReviewStudio() {
   const selectedPrNumber = selectedPullRequestId
     ? Number(selectedPullRequestId)
     : null;
+  const openPrs = useMemo(
+    () => livePrs.filter((pr) => pr.state.toLowerCase() === "open"),
+    [livePrs],
+  );
+  const closedPrs = useMemo(
+    () => livePrs.filter((pr) => pr.state.toLowerCase() !== "open"),
+    [livePrs],
+  );
+  const listedPrs = prListTab === "open" ? openPrs : closedPrs;
   const currentPr =
-    livePrs.find((pr) => pr.number === selectedPrNumber) ?? livePrs[0] ?? null;
+    listedPrs.find((pr) => pr.number === selectedPrNumber) ??
+    listedPrs[0] ??
+    null;
   const filteredPrs = useMemo(() => {
     const query = prFilter.trim().toLowerCase();
-    if (!query) return livePrs;
-    return livePrs.filter((pr) =>
+    if (!query) return listedPrs;
+    return listedPrs.filter((pr) =>
       [`#${pr.number}`, pr.title, pr.author, pr.headRefName, pr.baseRefName]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query)),
     );
-  }, [livePrs, prFilter]);
+  }, [listedPrs, prFilter]);
 
   useEffect(() => {
     if (!activeRepoPath) return;
@@ -418,14 +475,15 @@ export function DiffReviewStudio() {
     data: prDiff,
     isLoading: prDiffLoading,
     error: prDiffError,
+    refetch: refetchPrDiff,
   } = useQuery(
     gitQueries.pullRequestDiff(activeRepoPath, currentPr?.number ?? null),
   );
   const currentPrIndex = currentPr
-    ? livePrs.findIndex((pr) => pr.number === currentPr.number)
+    ? listedPrs.findIndex((pr) => pr.number === currentPr.number)
     : -1;
   const parentPr =
-    currentPrIndex >= 0 ? (livePrs[currentPrIndex + 1] ?? null) : null;
+    currentPrIndex >= 0 ? (listedPrs[currentPrIndex + 1] ?? null) : null;
   const requestReviewMutation = useMutation(
     gitMutations.requestPullRequestReview(queryClient, activeRepoPath),
   );
@@ -447,11 +505,18 @@ export function DiffReviewStudio() {
   const closePrMutation = useMutation(
     gitMutations.closePullRequest(queryClient, activeRepoPath),
   );
-  const checkRows = (prDiff?.checkRuns ?? []).map(
-    statusFromCheck,
+  const checkoutPrMutation = useMutation(
+    gitMutations.checkoutPullRequest(queryClient, activeRepoPath),
   );
+  const updatePrBranchMutation = useMutation(
+    gitMutations.updatePullRequestBranch(queryClient, activeRepoPath),
+  );
+  const checkRows = (prDiff?.checkRuns ?? []).map(statusFromCheck);
   const reviewRows = useMemo(
-    () => (prDiff?.reviews ?? []).map((review) => reviewFromSummary(review, currentPr?.author)),
+    () =>
+      (prDiff?.reviews ?? []).map((review) =>
+        reviewFromSummary(review, currentPr?.author),
+      ),
     [prDiff?.reviews, currentPr?.author],
   );
   const conversationItems = useMemo<ConversationItem[]>(() => {
@@ -506,7 +571,9 @@ export function DiffReviewStudio() {
           avatarUrl: item.avatarUrl,
           association: item.authorAssociation,
           body: isComment ? item.title?.trim() || null : null,
-          detail: isComment ? null : (item.title?.trim() || stateLabel(item.kind)),
+          detail: isComment
+            ? null
+            : item.title?.trim() || stateLabel(item.kind),
           state: null,
           eventKind: isComment ? null : item.kind,
           path: null,
@@ -539,7 +606,9 @@ export function DiffReviewStudio() {
     livePrs.length > 0
       ? "text-[var(--color-success)]"
       : "text-[var(--color-text-muted)]";
-  const commentCount = conversationItems.filter((item) => item.kind !== "event").length;
+  const commentCount = conversationItems.filter(
+    (item) => item.kind !== "event",
+  ).length;
   const filePatches = useMemo(
     () => splitPullRequestDiff(prDiff?.diffText),
     [prDiff?.diffText],
@@ -556,7 +625,9 @@ export function DiffReviewStudio() {
     const query = fileFilter.trim().toLowerCase();
     if (!query) return changedFiles;
     return changedFiles.filter((file) =>
-      [file.path, file.status].some((value) => value.toLowerCase().includes(query)),
+      [file.path, file.status].some((value) =>
+        value.toLowerCase().includes(query),
+      ),
     );
   }, [changedFiles, fileFilter]);
   const firstChangedFilePath = changedFiles[0]?.path ?? null;
@@ -567,7 +638,10 @@ export function DiffReviewStudio() {
     visibleChangedFiles.find((file) => file.path === selectedFilePath) ??
     visibleChangedFiles[0] ??
     null;
-  const selectedPatch = findPullRequestFilePatch(filePatches, selectedFile?.path);
+  const selectedPatch = findPullRequestFilePatch(
+    filePatches,
+    selectedFile?.path,
+  );
   const selectedDiffText = selectedPatch?.patchText ?? null;
   const commentCountsByPath = useMemo(() => {
     const counts = new Map<string, number>();
@@ -578,10 +652,30 @@ export function DiffReviewStudio() {
     return counts;
   }, [prDiff?.comments]);
   const selectedFileCommentCount = selectedFile
-    ? commentCountsByPath.get(selectedFile.path) ?? 0
+    ? (commentCountsByPath.get(selectedFile.path) ?? 0)
     : 0;
   const pendingReviewers = currentPr?.reviewRequests ?? [];
   const labels = currentPr?.labels ?? [];
+  const stackCandidates = openPrs;
+  const stackLandingOrder = derivePullRequestLandingOrder(stackCandidates);
+  const canLandStack =
+    stackLandingOrder.length > 1 &&
+    stackLandingOrder.length === stackCandidates.length;
+  const stackLandingBlocked =
+    stackCandidates.length > 1 &&
+    stackLandingOrder.length !== stackCandidates.length;
+  const stackLandingSafetyIssues = canLandStack
+    ? pullRequestLandingSafetyProblems(stackLandingOrder)
+    : [];
+  const canSafelyLandStack =
+    canLandStack && stackLandingSafetyIssues.length === 0;
+  const stackLandingUnavailableReason = stackLandingBlocked
+    ? "Cannot derive a linear stack from PR head/base branches."
+    : !canLandStack
+      ? "Need at least two open pull requests in a linear stack."
+      : stackLandingSafetyIssues.length > 0
+        ? stackLandingSafetyIssues.join(" ")
+        : undefined;
   const reviewActionPending =
     requestReviewMutation.isPending ||
     submitReviewMutation.isPending ||
@@ -589,7 +683,9 @@ export function DiffReviewStudio() {
     removeLabelMutation.isPending ||
     lineCommentMutation.isPending ||
     mergePrMutation.isPending ||
-    closePrMutation.isPending;
+    closePrMutation.isPending ||
+    checkoutPrMutation.isPending ||
+    updatePrBranchMutation.isPending;
   const reviewActionError =
     requestReviewMutation.error ??
     submitReviewMutation.error ??
@@ -597,7 +693,9 @@ export function DiffReviewStudio() {
     removeLabelMutation.error ??
     lineCommentMutation.error ??
     mergePrMutation.error ??
-    closePrMutation.error;
+    closePrMutation.error ??
+    checkoutPrMutation.error ??
+    updatePrBranchMutation.error;
   const canMutateCurrentPr = Boolean(
     currentPr && currentPr.state?.toLowerCase() === "open",
   );
@@ -616,7 +714,9 @@ export function DiffReviewStudio() {
     if (reviewers.length === 0) return;
     requestReviewMutation.mutate({ number: currentPr.number, reviewers });
   };
-  const submitReview = async (event: "approve" | "request_changes" | "comment") => {
+  const submitReview = async (
+    event: "approve" | "request_changes" | "comment",
+  ) => {
     if (!currentPr) return;
     const body = await appDialog.prompt(
       event === "approve"
@@ -625,7 +725,11 @@ export function DiffReviewStudio() {
           ? "Describe requested changes."
           : "Enter your review comment.",
       "",
-      event === "approve" ? "Approve pull request" : event === "request_changes" ? "Request changes" : "Comment on pull request",
+      event === "approve"
+        ? "Approve pull request"
+        : event === "request_changes"
+          ? "Request changes"
+          : "Comment on pull request",
     );
     if (body === null) return;
     if (event !== "approve" && !body.trim()) return;
@@ -665,7 +769,8 @@ export function DiffReviewStudio() {
         "Complete pull request?",
         finalizeWithAdmin ? "danger" : "warning",
       ))
-    ) return;
+    )
+      return;
     mergePrMutation.mutate({
       number: currentPr.number,
       method: mergeMethod,
@@ -675,12 +780,50 @@ export function DiffReviewStudio() {
   };
   const closePullRequest = async () => {
     if (!currentPr) return;
-    if (!(await appDialog.confirm(
-      `Close PR #${currentPr.number} without merging?`,
-      "Close pull request?",
-      "danger",
-    ))) return;
+    if (
+      !(await appDialog.confirm(
+        `Close PR #${currentPr.number} without merging?`,
+        "Close pull request?",
+        "danger",
+      ))
+    )
+      return;
     closePrMutation.mutate(currentPr.number);
+  };
+  const refreshPullRequestMetadata = () => {
+    void refetchGithubOverview();
+    void refetchPrDiff();
+  };
+  const checkoutPullRequest = () => {
+    if (currentPr) checkoutPrMutation.mutate(currentPr.number);
+  };
+  const updatePullRequestBranch = () => {
+    if (currentPr) updatePrBranchMutation.mutate(currentPr.number);
+  };
+  const landPullRequestStack = async () => {
+    if (!canSafelyLandStack) {
+      await appDialog.alert(
+        `Cannot land stack yet.\n\n${stackLandingUnavailableReason ?? "Refresh PR metadata and try again."}`,
+        "Stack is not ready",
+      );
+      return;
+    }
+    if (
+      !(await appDialog.confirm(
+        formatPullRequestLandingPreflight(stackLandingOrder),
+        "Land pull request stack?",
+        "danger",
+      ))
+    )
+      return;
+    for (const pr of stackLandingOrder) {
+      await mergePrMutation.mutateAsync({
+        number: pr.number,
+        method: "squash",
+        admin: false,
+        deleteBranch: false,
+      });
+    }
   };
   const submitLineComment = () => {
     if (!currentPr || !lineCommentTarget || !lineCommentBody.trim()) return;
@@ -713,14 +856,18 @@ export function DiffReviewStudio() {
       if (selectedFilePath) setSelectedFilePath(null);
       return;
     }
-    if (selectedFilePath && visibleChangedFiles.some((file) => file.path === selectedFilePath)) {
+    if (
+      selectedFilePath &&
+      visibleChangedFiles.some((file) => file.path === selectedFilePath)
+    ) {
       return;
     }
     setSelectedFilePath(visibleChangedFiles[0].path);
   }, [selectedFilePath, visibleChangedFiles]);
 
   useEffect(() => {
-    if (!lineCommentTarget || lineCommentTarget.filePath === selectedFile?.path) return;
+    if (!lineCommentTarget || lineCommentTarget.filePath === selectedFile?.path)
+      return;
     setLineCommentTarget(null);
     setLineCommentBody("");
   }, [lineCommentTarget, selectedFile?.path]);
@@ -729,6 +876,28 @@ export function DiffReviewStudio() {
     <section className="grid h-full min-h-0 grid-cols-1 overflow-auto bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] xl:grid-cols-[260px_minmax(650px,1fr)_300px] xl:overflow-hidden">
       <aside className="flex min-h-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
         <div className="border-b border-[var(--color-border)] p-3">
+          <div className="mb-3 grid grid-cols-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-1">
+            {(
+              [
+                ["open", "Open", openPrs.length],
+                ["closed", "Closed", closedPrs.length],
+              ] as const
+            ).map(([tab, label, count]) => (
+              <button
+                key={tab}
+                type="button"
+                aria-pressed={prListTab === tab}
+                onClick={() => {
+                  setPrListTab(tab);
+                  setPrFilter("");
+                  setSelectedFilePath(null);
+                }}
+                className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${prListTab === tab ? "bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-secondary)]"}`}
+              >
+                {label} <span className="ml-1 opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
           <label className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] px-2 py-2 text-xs text-[var(--color-text-muted)]">
             <Search className="h-4 w-4" />
             <input
@@ -740,10 +909,11 @@ export function DiffReviewStudio() {
           </label>
           <div className="mt-3 flex items-center justify-between text-xs">
             <span>
-              {filteredPrs.length} / {livePrs.length} pull requests
+              {filteredPrs.length} / {listedPrs.length} {prListTab} pull
+              requests
             </span>
             <span className="rounded-full bg-[var(--color-bg-surface)] px-2 py-0.5 text-[var(--color-text-muted)]">
-              live
+              {prListTab === "open" ? "live" : "history"}
             </span>
           </div>
         </div>
@@ -767,9 +937,11 @@ export function DiffReviewStudio() {
             ) : (
               <EmptyState
                 message={
-                  livePrs.length > 0
-                    ? "No pull requests match this filter."
-                    : "No pull requests returned by GitHub."
+                  livePrs.length === 0
+                    ? "No pull requests returned by GitHub."
+                    : listedPrs.length === 0
+                      ? `No ${prListTab} pull requests returned by GitHub.`
+                      : "No pull requests match this filter."
                 }
               />
             )}
@@ -788,42 +960,44 @@ export function DiffReviewStudio() {
           </label>
           <div className="space-y-2">
             {changedFiles.length > 0 ? (
-              visibleChangedFiles.length > 0 ? visibleChangedFiles.map((file) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  onClick={() => {
-                    setSelectedFilePath(file.path);
-                    setActiveTab("files");
-                  }}
-                  className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selectedFile?.path === file.path ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-mono text-xs text-[var(--color-text-secondary)]">
-                      {file.path}
-                    </span>
-                    {commentCountsByPath.get(file.path) ? (
-                      <span className="shrink-0 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[10px] text-[var(--color-accent)]">
-                        {commentCountsByPath.get(file.path)} comments
+              visibleChangedFiles.length > 0 ? (
+                visibleChangedFiles.map((file) => (
+                  <button
+                    key={file.path}
+                    type="button"
+                    onClick={() => {
+                      setSelectedFilePath(file.path);
+                      setActiveTab("files");
+                    }}
+                    className={`w-full rounded-md border p-3 text-left text-sm transition-colors ${selectedFile?.path === file.path ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-hover)]"}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-mono text-xs text-[var(--color-text-secondary)]">
+                        {file.path}
                       </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-2 flex gap-3 text-xs">
-                    <span className="text-[var(--color-success)]">
-                      +{file.additions}
-                    </span>
-                    <span className="text-[var(--color-danger)]">
-                      -{file.deletions}
-                    </span>
-                    <span className="text-[var(--color-text-muted)]">
-                      {file.status}
-                    </span>
-                  </div>
-                </button>
-              )) : (
+                      {commentCountsByPath.get(file.path) ? (
+                        <span className="shrink-0 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-[10px] text-[var(--color-accent)]">
+                          {commentCountsByPath.get(file.path)} comments
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 flex gap-3 text-xs">
+                      <span className="text-[var(--color-success)]">
+                        +{file.additions}
+                      </span>
+                      <span className="text-[var(--color-danger)]">
+                        -{file.deletions}
+                      </span>
+                      <span className="text-[var(--color-text-muted)]">
+                        {file.status}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              ) : (
                 <EmptyState message="No changed files match this filter." />
               )
-            ) : livePrs.length > 0 ? (
+            ) : currentPr ? (
               <EmptyState
                 message={
                   prDiffLoading
@@ -863,7 +1037,9 @@ export function DiffReviewStudio() {
               {currentPr?.title ?? "No pull request selected"}
             </h2>
             {currentPr ? (
-              <span className="rounded bg-[color:rgba(63,185,80,0.12)] px-2 py-1 text-xs text-[var(--color-success)]">
+              <span
+                className={`rounded px-2 py-1 text-xs ${pullRequestStateClass(currentPr)}`}
+              >
                 {stateLabel(currentPr.isDraft ? "draft" : currentPr.state)}
               </span>
             ) : null}
@@ -889,6 +1065,7 @@ export function DiffReviewStudio() {
                 ["conversations", "Conversations", commentCount],
                 ["files", "Files Changed", changedFiles.length],
                 ["checks", "Checks", checkRows.length],
+                ["stack", "Stack", stackCandidates.length],
               ] as const
             ).map(([tab, label, count]) => (
               <button
@@ -935,7 +1112,8 @@ export function DiffReviewStudio() {
                 ) : null}
                 {selectedFileCommentCount > 0 ? (
                   <span className="shrink-0 rounded-full bg-[var(--color-accent)]/15 px-2 py-0.5 text-xs text-[var(--color-accent)]">
-                    {selectedFileCommentCount} line comment{selectedFileCommentCount === 1 ? "" : "s"}
+                    {selectedFileCommentCount} line comment
+                    {selectedFileCommentCount === 1 ? "" : "s"}
                   </span>
                 ) : null}
               </span>
@@ -953,7 +1131,11 @@ export function DiffReviewStudio() {
               {selectedDiffText ? (
                 <UnifiedDiffFallback
                   diffText={selectedDiffText}
-                  filePath={selectedPatch?.path ?? selectedFile?.path ?? `PR #${prDiff?.number ?? "selected"}`}
+                  filePath={
+                    selectedPatch?.path ??
+                    selectedFile?.path ??
+                    `PR #${prDiff?.number ?? "selected"}`
+                  }
                   oldFilePath={selectedPatch?.oldPath}
                   mode="unified"
                   focusedFilePath={selectedFile?.path ?? undefined}
@@ -973,15 +1155,17 @@ export function DiffReviewStudio() {
                           : diffErrorMessage
                             ? diffErrorMessage
                             : selectedFile
-                              ? prFetchWarning ?? "No text patch returned for the selected file. It may be binary, too large, or omitted by GitHub."
-                              : prFetchWarning ?? "No diff text returned for this pull request."
+                              ? (prFetchWarning ??
+                                "No text patch returned for the selected file. It may be binary, too large, or omitted by GitHub.")
+                              : (prFetchWarning ??
+                                "No diff text returned for this pull request.")
                         : providerDetail
                     }
                   />
                 </div>
               )}
             </div>
-            {currentPr ? (
+            {canMutateCurrentPr ? (
               <section className="border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
                 <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-3">
                   <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--color-text-secondary)]">
@@ -1034,6 +1218,120 @@ export function DiffReviewStudio() {
               </section>
             ) : null}
           </>
+        ) : activeTab === "stack" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg-secondary)] p-4">
+            <div className="mx-auto max-w-4xl space-y-4">
+              <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Layers3 className="h-5 w-5 text-[var(--color-purple)]" />
+                      <h3 className="font-semibold">Pull request stack</h3>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">
+                      Dependency order is derived from each open pull request's
+                      head and base branches. Landing uses squash merge, no
+                      admin bypass, and preserves branches.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={reviewActionPending}
+                      onClick={refreshPullRequestMetadata}
+                    >
+                      <RefreshCw className="h-4 w-4" /> Refresh
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={!canSafelyLandStack || reviewActionPending}
+                      onClick={() => void landPullRequestStack()}
+                      title={stackLandingUnavailableReason}
+                    >
+                      <Layers3 className="h-4 w-4" /> Land stack
+                    </Button>
+                  </div>
+                </div>
+
+                {stackLandingOrder.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    {stackLandingOrder.map((pr, index) => (
+                      <button
+                        key={pr.number}
+                        type="button"
+                        onClick={() =>
+                          setSelectedPullRequestId(String(pr.number))
+                        }
+                        className={`grid w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-3 text-left ${currentPr?.number === pr.number ? "border-[var(--color-border-accent)] bg-[var(--color-bg-selected-muted)]" : "border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] hover:bg-[var(--color-bg-hover)]"}`}
+                      >
+                        <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-bg-surface)] text-xs font-semibold text-[var(--color-text-secondary)]">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">
+                            #{pr.number} {pr.title}
+                          </span>
+                          <span className="mt-1 block truncate font-mono text-xs text-[var(--color-text-muted)]">
+                            {pr.headRefName ?? "head unavailable"} →{" "}
+                            {pr.baseRefName ?? "base unavailable"}
+                          </span>
+                        </span>
+                        <span className="flex flex-col items-end gap-1 text-[10px]">
+                          <span
+                            className={
+                              pr.reviewDecision?.toLowerCase() === "approved"
+                                ? "text-[var(--color-success)]"
+                                : "text-[var(--color-warning)]"
+                            }
+                          >
+                            {pr.reviewDecision ?? "review unknown"}
+                          </span>
+                          <span
+                            className={
+                              pr.mergeStateStatus?.toLowerCase() === "clean"
+                                ? "text-[var(--color-success)]"
+                                : "text-[var(--color-warning)]"
+                            }
+                          >
+                            {pr.mergeStateStatus ?? "merge unknown"}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <EmptyState
+                      message={
+                        stackLandingUnavailableReason ??
+                        "No open pull requests returned by GitHub."
+                      }
+                    />
+                  </div>
+                )}
+              </section>
+
+              {stackLandingSafetyIssues.length > 0 ? (
+                <section className="rounded-xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] p-4">
+                  <h3 className="text-sm font-semibold text-[var(--color-danger)]">
+                    Stack is not ready
+                  </h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[var(--color-text-secondary)]">
+                    {stackLandingSafetyIssues.map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                </section>
+              ) : canSafelyLandStack ? (
+                <section className="rounded-xl border border-[var(--color-success-border)] bg-[var(--color-success-bg)] p-4 text-sm text-[var(--color-success)]">
+                  All {stackLandingOrder.length} pull requests are approved,
+                  clean, and ready to land in order.
+                </section>
+              ) : null}
+            </div>
+          </div>
         ) : activeTab === "checks" ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--color-bg-secondary)] p-4">
             <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]">
@@ -1043,7 +1341,11 @@ export function DiffReviewStudio() {
                 onClick={() => setChecksExpanded((expanded) => !expanded)}
                 className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-[var(--color-bg-hover)]"
               >
-                {checksExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                {checksExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
                 <h3 className="font-semibold">Checks</h3>
                 <span className="ml-auto text-xs text-[var(--color-text-secondary)]">
                   {passingChecks} of {checkRows.length} passing
@@ -1057,24 +1359,42 @@ export function DiffReviewStudio() {
                         key={`${check.name}-${index}`}
                         type="button"
                         disabled={!check.url}
-                        onClick={() => check.url && window.open(check.url, "_blank")}
+                        onClick={() =>
+                          check.url && window.open(check.url, "_blank")
+                        }
                         title={check.name}
                         className="grid min-h-20 grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-2 bg-[var(--color-bg-primary)] p-3 text-left hover:bg-[var(--color-bg-hover)] disabled:cursor-default"
                       >
-                        <span className={check.passed ? "text-[var(--color-success)]" : "text-[var(--color-text-muted)]"}>
-                          {check.passed ? <CheckCircle2 className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+                        <span
+                          className={
+                            check.passed
+                              ? "text-[var(--color-success)]"
+                              : "text-[var(--color-text-muted)]"
+                          }
+                        >
+                          {check.passed ? (
+                            <CheckCircle2 className="h-5 w-5" />
+                          ) : (
+                            <ShieldCheck className="h-5 w-5" />
+                          )}
                         </span>
                         <span className="min-w-0">
                           <span className="line-clamp-3 block break-words text-[11px] font-medium leading-4 text-[var(--color-text-primary)]">
                             {check.name}
                           </span>
-                          {(check.workflow || check.description) ? (
+                          {check.workflow || check.description ? (
                             <span className="mt-1 line-clamp-2 block text-[10px] leading-4 text-[var(--color-text-muted)]">
                               {check.workflow ?? check.description}
                             </span>
                           ) : null}
                         </span>
-                        <span className={check.passed ? "text-[10px] text-[var(--color-success)]" : "text-[10px] text-[var(--color-text-muted)]"}>
+                        <span
+                          className={
+                            check.passed
+                              ? "text-[10px] text-[var(--color-success)]"
+                              : "text-[10px] text-[var(--color-text-muted)]"
+                          }
+                        >
                           {check.status}
                         </span>
                       </button>
@@ -1099,7 +1419,7 @@ export function DiffReviewStudio() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    disabled={!currentPr || reviewActionPending}
+                    disabled={!canMutateCurrentPr || reviewActionPending}
                     onClick={() => submitReview("approve")}
                     className="text-[var(--color-success)]"
                   >
@@ -1108,7 +1428,7 @@ export function DiffReviewStudio() {
                   <Button
                     variant="danger"
                     size="sm"
-                    disabled={!currentPr || reviewActionPending}
+                    disabled={!canMutateCurrentPr || reviewActionPending}
                     onClick={() => submitReview("request_changes")}
                   >
                     Request changes
@@ -1116,7 +1436,7 @@ export function DiffReviewStudio() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    disabled={!currentPr || reviewActionPending}
+                    disabled={!canMutateCurrentPr || reviewActionPending}
                     onClick={() => submitReview("comment")}
                   >
                     Comment
@@ -1156,7 +1476,9 @@ export function DiffReviewStudio() {
                         <b className="font-semibold text-[var(--color-text-primary)]">
                           {prDiff?.author ?? currentPr?.author ?? "GitHub"}
                         </b>
-                        <AssociationBadge value={prDiff?.authorAssociation ?? null} />
+                        <AssociationBadge
+                          value={prDiff?.authorAssociation ?? null}
+                        />
                         <span className="text-[var(--color-text-secondary)]">
                           opened this pull request
                         </span>
@@ -1244,7 +1566,9 @@ export function DiffReviewStudio() {
                   <input
                     type="checkbox"
                     checked={finalizeWithAdmin}
-                    onChange={(event) => setFinalizeWithAdmin(event.target.checked)}
+                    onChange={(event) =>
+                      setFinalizeWithAdmin(event.target.checked)
+                    }
                   />
                   Bypass required checks/reviews with admin override
                 </label>
@@ -1252,7 +1576,9 @@ export function DiffReviewStudio() {
                   <input
                     type="checkbox"
                     checked={deleteHeadBranch}
-                    onChange={(event) => setDeleteHeadBranch(event.target.checked)}
+                    onChange={(event) =>
+                      setDeleteHeadBranch(event.target.checked)
+                    }
                   />
                   Delete head branch after merge
                 </label>
@@ -1266,7 +1592,9 @@ export function DiffReviewStudio() {
               </div>
             </div>
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-              Admin bypass maps to <code>gh pr merge --admin</code>; GitHub will reject it unless the authenticated account can override branch protection.
+              Admin bypass maps to <code>gh pr merge --admin</code>; GitHub will
+              reject it unless the authenticated account can override branch
+              protection.
             </p>
           </section>
         ) : null}
@@ -1277,7 +1605,9 @@ export function DiffReviewStudio() {
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">Current PR</h3>
             {currentPr ? (
-              <span className="rounded bg-[color:rgba(63,185,80,0.12)] px-2 py-1 text-xs text-[var(--color-success)]">
+              <span
+                className={`rounded px-2 py-1 text-xs ${pullRequestStateClass(currentPr)}`}
+              >
                 {stateLabel(currentPr.isDraft ? "draft" : currentPr.state)}
               </span>
             ) : null}
@@ -1298,6 +1628,33 @@ export function DiffReviewStudio() {
                 <span className="rounded bg-[var(--color-bg-surface)] px-2 py-1">
                   Merge: {currentPr.mergeStateStatus ?? "unknown"}
                 </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={reviewActionPending}
+                  onClick={checkoutPullRequest}
+                >
+                  <GitBranch className="h-3.5 w-3.5" /> Checkout
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={!canMutateCurrentPr || reviewActionPending}
+                  onClick={updatePullRequestBranch}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Update branch
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={reviewActionPending}
+                  onClick={refreshPullRequestMetadata}
+                  className="col-span-2"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh metadata
+                </Button>
               </div>
               <div className="mt-4 text-xs">
                 <Button
@@ -1388,7 +1745,7 @@ export function DiffReviewStudio() {
             <Button
               variant="ghost"
               size="sm"
-              disabled={!currentPr || reviewActionPending}
+              disabled={!canMutateCurrentPr || reviewActionPending}
               onClick={requestReview}
               className="text-[var(--color-accent)]"
             >
