@@ -1113,7 +1113,7 @@ export function DiffReviewStudio() {
             role="status"
           >
             {dataLoadingMessage ? <LoadingSpinner size="sm" /> : null}
-            <span>{dataLoadingMessage ?? incompleteDataMessage}</span>
+            <span>{incompleteDataMessage ?? dataLoadingMessage}</span>
           </div>
         ) : null}
         {activeTab === "files" ? (
