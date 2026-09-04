@@ -236,7 +236,7 @@ export const useAppStore = create<AppStore>((set) => ({
   setActiveRepoPath: (path) =>
     set((state) => {
       if (!path) {
-        return emptyActiveState();
+        return { ...emptyActiveState(), activityPanelOpen: false };
       }
 
       const session = normalizeRepositorySession(
@@ -277,6 +277,7 @@ export const useAppStore = create<AppStore>((set) => ({
           openRepoPaths,
           repoSessions,
           ...emptyActiveState(),
+          activityPanelOpen: false,
         };
       }
 
@@ -292,6 +293,7 @@ export const useAppStore = create<AppStore>((set) => ({
           [nextRepoPath]: nextSession,
         },
         ...activeStateFromSession(nextSession),
+        activityPanelOpen: false,
       };
     }),
 
