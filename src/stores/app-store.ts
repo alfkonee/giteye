@@ -103,6 +103,9 @@ export interface AppStore {
   // Sidebar
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  activityPanelOpen: boolean;
+  setActivityPanelOpen: (open: boolean) => void;
+  toggleActivityPanel: () => void;
 
   // Diff mode
   diffMode: DiffMode;
@@ -196,7 +199,7 @@ function syncActiveSession(
 
   const currentSession = normalizeRepositorySession(
     state.repoSessions[state.activeRepoPath] ??
-      createRepositorySession(state.activeRepoPath, state.activeView),
+    createRepositorySession(state.activeRepoPath, state.activeView),
     state.activeRepoPath,
   );
   const nextSession: RepositorySessionState = {
@@ -220,10 +223,15 @@ export const useAppStore = create<AppStore>((set) => ({
   ...emptyActiveState(),
   openRepoPaths: [],
   repoSessions: {},
+  activityPanelOpen: false,
+  setActivityPanelOpen: (open) => set({ activityPanelOpen: open }),
+  toggleActivityPanel: () =>
+    set((state) => ({ activityPanelOpen: !state.activityPanelOpen })),
   setGlobalView: (view) =>
     set({
       ...emptyActiveState(),
       route: { area: "global", view },
+      activityPanelOpen: false,
     }),
   setActiveRepoPath: (path) =>
     set((state) => {
