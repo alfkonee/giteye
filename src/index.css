@@ -998,6 +998,30 @@ a {
   color: var(--color-text-primary);
 }
 
+.giteye-command-search {
+  width: 224px;
+}
+
+.giteye-chrome-nav-btn {
+  min-width: 32px;
+  width: auto;
+  gap: 6px;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .giteye-command-search {
+    width: 32px;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .giteye-command-search-label {
+    display: none;
+  }
+}
+
 .giteye-avatar {
   display: inline-flex;
   align-items: center;

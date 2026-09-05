@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Bell, Circle, FolderGit2, GitBranch, Home, Plus, Search, Settings, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,8 +18,10 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const setGlobalView = useAppStore((s) => s.setGlobalView);
   const route = useAppStore((s) => s.route);
+  const activityPanelOpen = useAppStore((s) => s.activityPanelOpen);
+  const setActivityPanelOpen = useAppStore((s) => s.setActivityPanelOpen);
+  const toggleActivityPanel = useAppStore((s) => s.toggleActivityPanel);
   const operationTranscript = useNoticeStore((s) => s.operationTranscript);
-  const [showNotifications, setShowNotifications] = useState(false);
   const initMutation = useMutation(gitMutations.initRepository(queryClient, setActiveRepoPath));
   const { data: identity } = useQuery(gitQueries.gitIdentity(activeRepoPath));
   const globalView = route.area === "global" ? route.view : "repo-hub";
@@ -63,40 +65,42 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
           />
         </div>
 
-        <nav className="space-y-1 px-3 pb-2">
-          <button
-            type="button"
-            onClick={() => setGlobalView("repo-hub")}
-            aria-current={route.area === "global" && globalView === "repo-hub" ? "page" : undefined}
-            className="giteye-side-nav"
-          >
-            <Home className={cn("h-4 w-4", route.area === "global" && globalView === "repo-hub" && "text-[var(--color-accent)]")} />
-            Repo Hub
-          </button>
-          <button
-            type="button"
-            onClick={() => setGlobalView("settings")}
-            aria-current={route.area === "global" && globalView === "settings" ? "page" : undefined}
-            className="giteye-side-nav"
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowNotifications((visible) => !visible)}
-            aria-expanded={showNotifications}
-            className={cn("giteye-side-nav", showNotifications && "bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]")}
-          >
-            <Bell className="h-4 w-4" />
-            Activity
-            {operationTranscript.length > 0 && (
-              <span className="ml-auto giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
-                {Math.min(operationTranscript.length, 99)}
-              </span>
-            )}
-          </button>
-        </nav>
+        {!activeRepoPath ? (
+          <nav className="space-y-1 px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => setGlobalView("repo-hub")}
+              aria-current={route.area === "global" && globalView === "repo-hub" ? "page" : undefined}
+              className="giteye-side-nav"
+            >
+              <Home className={cn("h-4 w-4", route.area === "global" && globalView === "repo-hub" && "text-[var(--color-accent)]")} />
+              Repo Hub
+            </button>
+            <button
+              type="button"
+              onClick={() => setGlobalView("settings")}
+              aria-current={route.area === "global" && globalView === "settings" ? "page" : undefined}
+              className="giteye-side-nav"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
+            <button
+              type="button"
+              onClick={toggleActivityPanel}
+              aria-expanded={activityPanelOpen}
+              className={cn("giteye-side-nav", activityPanelOpen && "bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]")}
+            >
+              <Bell className="h-4 w-4" />
+              Activity
+              {operationTranscript.length > 0 && (
+                <span className="ml-auto giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
+                  {Math.min(operationTranscript.length, 99)}
+                </span>
+              )}
+            </button>
+          </nav>
+        ) : null}
 
         {children ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
@@ -178,13 +182,13 @@ export function AppSidebar({ children }: { children?: ReactNode }) {
         </div>
       </aside>
 
-      {showNotifications && (
+      {activityPanelOpen && (
         <aside className="flex w-[320px] shrink-0 flex-col border-r border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]">
           <div className="flex items-center justify-between border-b border-[var(--color-border-muted)] px-4 py-3">
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Activity</h2>
             <button
               type="button"
-              onClick={() => setShowNotifications(false)}
+              onClick={() => setActivityPanelOpen(false)}
               aria-label="Close activity"
               className="rounded-md p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-text-primary)]"
             >
@@ -232,6 +236,11 @@ export function useAppChromeSlots() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
   const paletteKeys = getShortcutBinding("command-palette").replace("Mod+", "⌘");
+  const setGlobalView = useAppStore((s) => s.setGlobalView);
+  const activityPanelOpen = useAppStore((s) => s.activityPanelOpen);
+  const setActivityPanelOpen = useAppStore((s) => s.setActivityPanelOpen);
+  const toggleActivityPanel = useAppStore((s) => s.toggleActivityPanel);
+  const operationTranscript = useNoticeStore((s) => s.operationTranscript);
 
   return {
     leading: repoInfo ? (
@@ -251,15 +260,69 @@ export function useAppChromeSlots() {
       </span>
     ),
     trailing: (
-      <button
-        type="button"
-        onClick={openCommandPalette}
-        className="giteye-input flex h-8 w-56 items-center gap-2 px-2.5 text-left text-[12px] text-[var(--color-text-muted)]"
-      >
-        <Search className="h-3.5 w-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">Search commands…</span>
-        <kbd className="giteye-kbd">{paletteKeys}</kbd>
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          aria-label="Search commands"
+          title="Search commands"
+          className="giteye-input giteye-command-search flex h-8 items-center gap-2 px-2.5 text-left text-[12px] text-[var(--color-text-muted)]"
+        >
+          <Search className="h-3.5 w-3.5 shrink-0" />
+          <span className="giteye-command-search-label min-w-0 flex-1 truncate">Search commands…</span>
+          <kbd className="giteye-command-search-label giteye-kbd">{paletteKeys}</kbd>
+        </button>
+        {activeRepoPath ? (
+          <>
+            <span className="mx-0.5 h-5 w-px bg-[var(--color-border-muted)]" aria-hidden="true" />
+            <button
+              type="button"
+              className="giteye-topbar-btn giteye-chrome-nav-btn"
+              onClick={() => {
+                setActivityPanelOpen(false);
+                setGlobalView("repo-hub");
+              }}
+              aria-label="Open Repo Hub"
+              title="Repo Hub"
+            >
+              <Home className="h-4 w-4" />
+              <span className="hidden xl:inline">Repo Hub</span>
+            </button>
+            <button
+              type="button"
+              className="giteye-topbar-btn giteye-chrome-nav-btn"
+              onClick={() => {
+                setActivityPanelOpen(false);
+                setGlobalView("settings");
+              }}
+              aria-label="Open Settings"
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+              <span className="hidden xl:inline">Settings</span>
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "giteye-topbar-btn giteye-chrome-nav-btn",
+                activityPanelOpen && "bg-[var(--color-bg-selected-muted)] text-[var(--color-text-primary)]",
+              )}
+              onClick={toggleActivityPanel}
+              aria-label="Toggle Activity"
+              aria-expanded={activityPanelOpen}
+              title="Activity"
+            >
+              <Bell className="h-4 w-4" />
+              <span className="hidden xl:inline">Activity</span>
+              {operationTranscript.length > 0 ? (
+                <span className="giteye-chip h-4 min-w-4 justify-center px-1 text-[9px] text-[var(--color-accent)]">
+                  {Math.min(operationTranscript.length, 99)}
+                </span>
+              ) : null}
+            </button>
+          </>
+        ) : null}
+      </>
     ),
   };
 }
