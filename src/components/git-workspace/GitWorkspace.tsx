@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
@@ -20,7 +21,10 @@ import { CommitHistory } from "../commit-history/CommitHistory";
 import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
 import { IntegratePanel } from "./IntegratePanel";
 import { BranchPruneButton } from "../branches/BranchPruneDialog";
+import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { appDialog } from "../common/AppDialogProvider";
+import { useBranchActivation } from "../../lib/branch-activation";
+import type { Branch } from "../../types/git";
 
 type DrawerTab = "integrate" | "conflicts";
 
@@ -37,9 +41,11 @@ export function GitWorkspace() {
 
   const [drawerTab, setDrawerTab] = useState<DrawerTab | null>(null);
   const [prefillRef, setPrefillRef] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const autoOpenedOperation = useRef<string | null>(null);
 
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const branchesQuery = useQuery(gitQueries.branches(activeRepoPath));
   const operationQuery = useQuery(
     gitQueries.operationSummary(activeRepoPath, Boolean(activeRepoPath)),
   );
@@ -57,6 +63,16 @@ export function GitWorkspace() {
 
   const repoInfo = snapshot?.repositoryInfo;
   const summary = snapshot?.summary;
+  const branches = branchesQuery.data ?? [];
+  const localBranches = branches.filter((branch) => !branch.isRemote);
+  const branchActivation = useBranchActivation({
+    repoPath: activeRepoPath,
+    branches,
+    onAdvancedIntegrate: (ref) => {
+      setPrefillRef(ref);
+      setDrawerTab("integrate");
+    },
+  });
   const operation = operationQuery.data;
   const headTags = repoInfo?.headCommit
     ? tags.filter((tag) => tag.commitHash === repoInfo.headCommit)
@@ -70,6 +86,12 @@ export function GitWorkspace() {
     skipRebaseMutation.isPending ||
     abortRebaseMutation.isPending ||
     recoverMutation.isPending;
+
+  const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || !activeRepoPath) return;
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  };
 
   // A ref chosen elsewhere (branch context menu, commit menu, sidebar) opens
   // the integrate drawer prefilled instead of navigating to another page.
@@ -104,7 +126,10 @@ export function GitWorkspace() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
+    <div
+      className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]"
+      onContextMenu={openContextMenu}
+    >
       <header className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]/90 px-2.5 py-1">
         <div className="flex items-center gap-1.5">
           <div className="flex min-w-0 items-center gap-1.5">
@@ -310,8 +335,140 @@ export function GitWorkspace() {
           </>
         ) : null}
       </PanelGroup>
+      <WorkspaceContextMenu
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        open={Boolean(contextMenu)}
+        localBranches={localBranches}
+        branchesLoading={branchesQuery.isLoading}
+        branchesUnavailable={Boolean(branchesQuery.error)}
+        switching={branchActivation.isPending}
+        onSwitch={(branch) => void branchActivation.activateBranch(branch)}
+        onClose={() => setContextMenu(null)}
+      />
+      <BranchSwitchDialog
+        branch={branchActivation.switchBranch}
+        isClean={repoInfo?.isClean ?? true}
+        isPending={branchActivation.switchPending}
+        followUpNote={branchActivation.switchFollowUp}
+        onCancel={branchActivation.cancelSwitch}
+        onConfirm={branchActivation.confirmSwitch}
+      />
     </div>
   );
+}
+
+function WorkspaceContextMenu({
+  x,
+  y,
+  open,
+  localBranches,
+  branchesLoading,
+  branchesUnavailable,
+  switching,
+  onSwitch,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  open: boolean;
+  localBranches: Branch[];
+  branchesLoading: boolean;
+  branchesUnavailable: boolean;
+  switching: boolean;
+  onSwitch: (branch: Branch) => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return;
+
+    const updatePosition = () => {
+      const { width, height } = menuRef.current!.getBoundingClientRect();
+      setPosition({
+        left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+        top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    return () => window.removeEventListener("resize", updatePosition);
+  }, [open, x, y]);
+
+  if (!open) return null;
+
+  const visibleBranches = localBranches.slice(0, 20);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[110]"
+      role="presentation"
+      onMouseDown={onClose}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-label="Workspace actions"
+        className="giteye-context-menu fixed max-h-[calc(100vh-16px)] w-[300px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
+        style={position}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="giteye-context-header border-b border-[var(--color-border-muted)]">
+          <span className="text-[11.5px] font-medium text-[var(--color-text-primary)]">
+            Switch local branch
+          </span>
+          <p className="mt-0.5 text-[10.5px] text-[var(--color-text-muted)]">
+            Uses the same working-copy safeguards as Branches.
+          </p>
+        </div>
+        {branchesLoading ? (
+          <WorkspaceMenuNote>Loading branches…</WorkspaceMenuNote>
+        ) : branchesUnavailable ? (
+          <WorkspaceMenuNote>Branches unavailable</WorkspaceMenuNote>
+        ) : visibleBranches.length === 0 ? (
+          <WorkspaceMenuNote>No local branches</WorkspaceMenuNote>
+        ) : (
+          visibleBranches.map((branch) => (
+            <button
+              key={branch.name}
+              type="button"
+              role="menuitem"
+              disabled={branch.isCurrent || switching}
+              title={branch.isCurrent ? `${branch.shortName} is current` : `Switch to ${branch.shortName}`}
+              onClick={() => {
+                if (branch.isCurrent || switching) return;
+                onClose();
+                onSwitch(branch);
+              }}
+              className="giteye-context-item"
+            >
+              <span className="giteye-context-label">{branch.shortName}</span>
+              <span className="giteye-context-detail">
+                {branch.isCurrent ? "current" : branch.upstream ?? "local"}
+              </span>
+            </button>
+          ))
+        )}
+        {localBranches.length > visibleBranches.length ? (
+          <WorkspaceMenuNote>
+            Showing first {visibleBranches.length} of {localBranches.length} local branches.
+          </WorkspaceMenuNote>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function WorkspaceMenuNote({ children }: { children: ReactNode }) {
+  return <div className="px-3 py-2 text-[11px] text-[var(--color-text-muted)]">{children}</div>;
 }
 
 function ConflictsTab({
