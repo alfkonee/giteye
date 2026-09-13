@@ -17,6 +17,9 @@ export function AppSettingsSync() {
   const queryClient = useQueryClient();
   const theme = useAppStore((state) => state.theme);
   const diffMode = useAppStore((state) => state.diffMode);
+  const backgroundPullRequestLoading = useAppStore(
+    (state) => state.backgroundPullRequestLoading,
+  );
   const [hydrated, setHydrated] = useState(false);
   const skipNextSave = useRef(false);
   const latestSettings = useRef(DEFAULT_SETTINGS);
@@ -52,6 +55,8 @@ export function AppSettingsSync() {
     useAppStore.setState({
       theme: settingsQuery.data.theme,
       diffMode: settingsQuery.data.diffMode,
+      backgroundPullRequestLoading:
+        settingsQuery.data.backgroundPullRequestLoading,
     });
     skipNextSave.current = true;
     setHydrated(true);
@@ -73,10 +78,17 @@ export function AppSettingsSync() {
         ...latestSettings.current,
         theme,
         diffMode,
+        backgroundPullRequestLoading,
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [diffMode, hydrated, saveAppSettings, theme]);
+  }, [
+    backgroundPullRequestLoading,
+    diffMode,
+    hydrated,
+    saveAppSettings,
+    theme,
+  ]);
 
   return null;
 }

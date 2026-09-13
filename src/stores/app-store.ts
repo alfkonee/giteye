@@ -111,6 +111,10 @@ export interface AppStore {
   diffMode: DiffMode;
   setDiffMode: (mode: DiffMode) => void;
 
+  // Remote collaboration
+  backgroundPullRequestLoading: boolean;
+  setBackgroundPullRequestLoading: (enabled: boolean) => void;
+
   // Theme
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -531,6 +535,10 @@ export const useAppStore = create<AppStore>((set) => ({
 
   diffMode: "unified",
   setDiffMode: (mode) => set({ diffMode: mode }),
+
+  backgroundPullRequestLoading: false,
+  setBackgroundPullRequestLoading: (enabled) =>
+    set({ backgroundPullRequestLoading: enabled }),
 
   theme: "dark",
   setTheme: (theme) => set({ theme }),

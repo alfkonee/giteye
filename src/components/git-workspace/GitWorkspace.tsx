@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   GitBranch,
   GitMerge,
+  GitPullRequest,
   RefreshCw,
   Tag,
   X,
@@ -25,6 +26,7 @@ import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { appDialog } from "../common/AppDialogProvider";
 import { useBranchActivation } from "../../lib/branch-activation";
 import type { Branch } from "../../types/git";
+import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
 
 type DrawerTab = "integrate" | "conflicts";
 
@@ -42,6 +44,7 @@ export function GitWorkspace() {
   const [drawerTab, setDrawerTab] = useState<DrawerTab | null>(null);
   const [prefillRef, setPrefillRef] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [prBranch, setPrBranch] = useState<Branch | null>(null);
   const autoOpenedOperation = useRef<string | null>(null);
 
   const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
@@ -65,6 +68,7 @@ export function GitWorkspace() {
   const summary = snapshot?.summary;
   const branches = branchesQuery.data ?? [];
   const localBranches = branches.filter((branch) => !branch.isRemote);
+  const currentBranch = localBranches.find((branch) => branch.isCurrent) ?? null;
   const branchActivation = useBranchActivation({
     repoPath: activeRepoPath,
     branches,
@@ -101,6 +105,11 @@ export function GitWorkspace() {
     setDrawerTab("integrate");
     setPendingAdvancedBranchName(null);
   }, [pendingAdvancedBranchName, setPendingAdvancedBranchName]);
+
+  // Never combine a branch selected in one repository with another repository's path.
+  useEffect(() => {
+    setPrBranch(null);
+  }, [activeRepoPath]);
 
   // Surface conflicts once per operation; reopening stays the user's choice.
   useEffect(() => {
@@ -199,6 +208,20 @@ export function GitWorkspace() {
               <span className="sr-only">Refresh</span>
             </button>
             <BranchPruneButton repoPath={activeRepoPath} compact />
+            <button
+              type="button"
+              disabled={!currentBranch}
+              onClick={() => setPrBranch(currentBranch)}
+              className="giteye-btn giteye-btn-sm giteye-btn-secondary"
+              title={
+                currentBranch
+                  ? `Create a pull request from ${currentBranch.shortName}`
+                  : "Check out a local branch to create a pull request"
+              }
+            >
+              <GitPullRequest className="h-3.5 w-3.5" />
+              Create PR
+            </button>
             <button
               type="button"
               onClick={() => openDrawer("integrate")}
@@ -353,6 +376,11 @@ export function GitWorkspace() {
         followUpNote={branchActivation.switchFollowUp}
         onCancel={branchActivation.cancelSwitch}
         onConfirm={branchActivation.confirmSwitch}
+      />
+      <CreatePullRequestDialog
+        branch={prBranch}
+        repoPath={activeRepoPath}
+        onClose={() => setPrBranch(null)}
       />
     </div>
   );
