@@ -106,6 +106,11 @@ export function GitWorkspace() {
     setPendingAdvancedBranchName(null);
   }, [pendingAdvancedBranchName, setPendingAdvancedBranchName]);
 
+  // Never combine a branch selected in one repository with another repository's path.
+  useEffect(() => {
+    setPrBranch(null);
+  }, [activeRepoPath]);
+
   // Surface conflicts once per operation; reopening stays the user's choice.
   useEffect(() => {
     if (!activeOperation) {
