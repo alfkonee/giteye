@@ -1111,11 +1111,25 @@ export const gitApi = {
       draft: options.draft,
     }),
 
-  exportSettings: (outputPath: string, theme: string, diffMode: string) =>
-    invoke<string>("export_settings", { outputPath, theme, diffMode }),
+  exportSettings: (
+    outputPath: string,
+    theme: string,
+    diffMode: string,
+    backgroundPullRequestLoading: boolean,
+  ) =>
+    invoke<string>("export_settings", {
+      outputPath,
+      theme,
+      diffMode,
+      backgroundPullRequestLoading,
+    }),
 
   importSettings: (inputPath: string) =>
-    invoke<{ theme: string; diffMode: string }>("import_settings", {
+    invoke<{
+      theme: string;
+      diffMode: string;
+      backgroundPullRequestLoading: boolean;
+    }>("import_settings", {
       inputPath,
     }),
 

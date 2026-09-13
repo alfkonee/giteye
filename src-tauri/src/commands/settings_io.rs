@@ -13,6 +13,8 @@ pub struct ExportBundle {
     pub theme: String,
     pub diff_mode: String,
     #[serde(default)]
+    pub background_pull_request_loading: bool,
+    #[serde(default)]
     pub ai_config: Option<AiExportConfig>,
     pub recent_repositories: Vec<storage::RecentRepo>,
     pub favorite_repositories: Vec<storage::FavoriteRepo>,
@@ -33,6 +35,7 @@ pub async fn export_settings(
     output_path: String,
     theme: String,
     diff_mode: String,
+    background_pull_request_loading: bool,
 ) -> Result<String, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let recents = storage::load_recent_repositories(&app_handle)?;
@@ -44,6 +47,7 @@ pub async fn export_settings(
             exported_at: chrono::Utc::now().to_rfc3339(),
             theme,
             diff_mode,
+            background_pull_request_loading,
             ai_config: Some(AiExportConfig {
                 provider: ai_config.provider,
                 model: ai_config.model,

@@ -74,6 +74,7 @@ pub struct AppSettings {
     pub user_name: Option<String>,
     pub user_email: Option<String>,
     pub diff_mode: String,
+    pub background_pull_request_loading: bool,
 }
 
 impl Default for AppSettings {
@@ -84,6 +85,7 @@ impl Default for AppSettings {
             user_name: None,
             user_email: None,
             diff_mode: "unified".to_string(),
+            background_pull_request_loading: false,
         }
     }
 }
@@ -521,6 +523,7 @@ mod tests {
             user_name: Some("  ".to_string()),
             user_email: Some(" user@example.com ".to_string()),
             diff_mode: "side-by-side".to_string(),
+            background_pull_request_loading: true,
         });
 
         assert_eq!(settings.theme, "dark");
@@ -531,6 +534,7 @@ mod tests {
         assert_eq!(settings.user_name, None);
         assert_eq!(settings.user_email.as_deref(), Some("user@example.com"));
         assert_eq!(settings.diff_mode, "unified");
+        assert!(settings.background_pull_request_loading);
     }
 
     #[test]
@@ -540,6 +544,7 @@ mod tests {
 
         assert_eq!(settings.theme, "light");
         assert_eq!(settings.diff_mode, "unified");
+        assert!(!settings.background_pull_request_loading);
         assert_eq!(settings.git_executable_path, None);
     }
 }

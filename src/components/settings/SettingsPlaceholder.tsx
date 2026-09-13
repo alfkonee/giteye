@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Copy, FileText, GitBranch, KeyRound, Monitor, Moon, Palette, Save, ShieldCheck, SlidersHorizontal, Sun, Undo2, User, Trash2, Radio, Download, Upload, Wrench, type LucideIcon } from "lucide-react";
+import { Bot, Copy, FileText, GitBranch, GitPullRequest, KeyRound, Monitor, Moon, Palette, Save, ShieldCheck, SlidersHorizontal, Sun, Undo2, User, Trash2, Radio, Download, Upload, Wrench, type LucideIcon } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi, type AiProvider } from "../../lib/tauri-api";
@@ -18,6 +18,12 @@ export function SettingsPlaceholder() {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const diffMode = useAppStore((s) => s.diffMode);
+  const backgroundPullRequestLoading = useAppStore(
+    (s) => s.backgroundPullRequestLoading,
+  );
+  const setBackgroundPullRequestLoading = useAppStore(
+    (s) => s.setBackgroundPullRequestLoading,
+  );
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const { data: gitIdentity, isLoading: identityLoading, error: identityError } = useQuery(gitQueries.gitIdentity(activeRepoPath));
@@ -65,7 +71,12 @@ export function SettingsPlaceholder() {
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!filePath) return;
-      return gitApi.exportSettings(filePath, theme, diffMode);
+      return gitApi.exportSettings(
+        filePath,
+        theme,
+        diffMode,
+        backgroundPullRequestLoading,
+      );
     },
     onSuccess: (result) => setExportImportMessage(result ?? null),
     onError: (error) => setExportImportMessage(`Export failed: ${error}`),
@@ -88,6 +99,9 @@ export function SettingsPlaceholder() {
       if (!bundle) return;
       if (bundle.theme) setTheme(bundle.theme as Theme);
       if (bundle.diffMode) setDiffMode(bundle.diffMode as "unified" | "split");
+      setBackgroundPullRequestLoading(
+        bundle.backgroundPullRequestLoading,
+      );
       void queryClient.invalidateQueries({ queryKey: ["git", "recent-repositories"] });
       void queryClient.invalidateQueries({ queryKey: ["git", "favorite-repositories"] });
       setExportImportMessage("Settings imported successfully. Restart any open repositories to apply all changes.");
@@ -114,9 +128,9 @@ export function SettingsPlaceholder() {
   const selectedAiProvider = aiProviders.find((provider) => provider.id === aiProvider) ?? aiProviders[0];
   const aiModelRequest = selectedAiProvider
     ? {
-        provider: aiProvider,
-        apiKey: aiApiKey.trim() || null,
-      }
+      provider: aiProvider,
+      apiKey: aiApiKey.trim() || null,
+    }
     : null;
   const aiModelsQuery = useQuery(
     gitQueries.aiModels(
@@ -228,7 +242,12 @@ export function SettingsPlaceholder() {
     setSavingPreferences(true);
     try {
       const persisted = await gitApi.getAppSettings();
-      await gitApi.saveAppSettings({ ...persisted, theme, diffMode });
+      await gitApi.saveAppSettings({
+        ...persisted,
+        theme,
+        diffMode,
+        backgroundPullRequestLoading,
+      });
       useNoticeStore.getState().startNotice({
         title: "Preferences saved",
         detail: "Global preferences persisted.",
@@ -252,6 +271,9 @@ export function SettingsPlaceholder() {
       const persisted = await gitApi.getAppSettings();
       setTheme(persisted.theme);
       setDiffMode(persisted.diffMode);
+      setBackgroundPullRequestLoading(
+        persisted.backgroundPullRequestLoading,
+      );
       useNoticeStore.getState().startNotice({
         title: "Changes discarded",
         detail: "Theme and diff mode restored from the last save.",
@@ -610,6 +632,52 @@ export function SettingsPlaceholder() {
             <>
               <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
                 <SettingsHeader
+                  icon={<GitPullRequest className="h-4 w-4" />}
+                  title="Pull Requests"
+                  description="Control remote collaboration work performed while you stay in the workspace."
+                />
+                <div className="flex items-center justify-between gap-4 px-4 py-3">
+                  <div>
+                    <div className="text-[13px] font-medium text-[var(--color-text-primary)]">
+                      Load pull requests in the background
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+                      Connect to GitHub and preload pull request metadata whenever a repository opens.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={backgroundPullRequestLoading}
+                    onClick={() =>
+                      setBackgroundPullRequestLoading(
+                        !backgroundPullRequestLoading,
+                      )
+                    }
+                    className={cn(
+                      "relative h-6 w-11 shrink-0 rounded-full border transition-colors",
+                      backgroundPullRequestLoading
+                        ? "border-[var(--color-accent)] bg-[var(--color-accent)]"
+                        : "border-[var(--color-border)] bg-[var(--color-bg-tertiary)]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform",
+                        backgroundPullRequestLoading
+                          ? "translate-x-5"
+                          : "translate-x-0.5",
+                      )}
+                    />
+                    <span className="sr-only">
+                      Load pull requests in the background
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
+                <SettingsHeader
                   icon={<User className="h-4 w-4" />}
                   title="Identity"
                   description="Git author information for commits."
@@ -650,7 +718,7 @@ export function SettingsPlaceholder() {
                 />
                 <div className="space-y-4 px-4 py-3 text-[12px]">
                   <p className="text-[var(--color-text-secondary)]">
-                    Export settings includes your theme, diff mode preferences, AI provider/model and prompts, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
+                    Export settings includes your theme, diff mode, background pull request loading preference, AI provider/model and prompts, recent repositories, and favorites. API keys, SSH private keys, and credential secrets are never exported.
                   </p>
                   {exportImportMessage ? (
                     <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5 p-3 text-[11px] text-[var(--color-accent)]">
