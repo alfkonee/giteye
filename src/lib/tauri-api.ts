@@ -172,6 +172,8 @@ export const gitApi = {
   saveAppSettings: (settings: AppSettings) =>
     invoke<AppSettings>("save_app_settings", { settings }),
 
+  rememberCliSetup: () => invoke<AppSettings>("remember_cli_setup"),
+
   getToolchainStatus: () => invoke<ToolchainStatus>("get_toolchain_status"),
 
   installGitToolchain: (version?: string | null) =>

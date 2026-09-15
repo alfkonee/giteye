@@ -1,8 +1,12 @@
+use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
+use cap_std::fs::{Dir, File, OpenOptions};
+use cap_tempfile::TempFile;
 use directories::BaseDirs;
 use serde::Serialize;
-use std::fs::{self, OpenOptions};
+#[cfg(test)]
+use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[cfg(windows)]
 const LAUNCHER_NAME: &str = "giteye.cmd";
@@ -55,11 +59,10 @@ fn user_paths(install_dir: Option<&Path>) -> Result<(PathBuf, PathBuf), String> 
     };
     #[cfg(not(windows))]
     let scope = home;
-    ensure_user_directory(&directory, &scope)?;
     Ok((directory, scope))
 }
 
-fn ensure_user_directory(directory: &Path, home: &Path) -> Result<(), String> {
+fn resolve_user_directory(directory: &Path, home: &Path) -> Result<PathBuf, String> {
     let mut ancestor = directory;
     while !ancestor.try_exists().map_err(|error| error.to_string())? {
         ancestor = ancestor
@@ -71,11 +74,57 @@ fn ensure_user_directory(directory: &Path, home: &Path) -> Result<(), String> {
         || !resolved.is_dir()
         || directory
             .components()
-            .any(|component| component == std::path::Component::ParentDir)
+            .any(|component| component == Component::ParentDir)
     {
         return Err("The CLI launcher directory must be inside your home directory. System-wide installation is not supported.".to_string());
     }
-    Ok(())
+    Ok(resolved.join(
+        directory
+            .strip_prefix(ancestor)
+            .map_err(|error| error.to_string())?,
+    ))
+}
+
+fn open_user_directory(directory: &Path, home: &Path, create: bool) -> Result<Option<Dir>, String> {
+    let resolved = resolve_user_directory(directory, home)?;
+    let root: PathBuf = home
+        .components()
+        .take_while(|component| !matches!(component, Component::Normal(_)))
+        .collect();
+    let mut opened = Dir::open_ambient_dir(&root, cap_std::ambient_authority())
+        .map_err(|error| error.to_string())?;
+    // Pin every ancestor, not just the final directory. Canonicalization alone
+    // cannot prevent a writable ancestor from being replaced with a symlink.
+    for component in home
+        .strip_prefix(&root)
+        .map_err(|error| error.to_string())?
+        .components()
+    {
+        opened = opened
+            .open_dir_nofollow(component.as_os_str())
+            .map_err(|error| error.to_string())?;
+    }
+    for component in resolved
+        .strip_prefix(home)
+        .map_err(|error| error.to_string())?
+        .components()
+    {
+        if create {
+            match opened.create_dir(component.as_os_str()) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+        match opened.open_dir_nofollow(component.as_os_str()) {
+            Ok(directory) => opened = directory,
+            Err(error) if !create && error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(None)
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(Some(opened))
 }
 
 fn stable_executable() -> Result<PathBuf, String> {
@@ -137,8 +186,8 @@ fn launcher_contents(executable: &Path) -> Result<String, String> {
     }
 }
 
-fn owned_launcher(path: &Path) -> Result<bool, String> {
-    match fs::symlink_metadata(path) {
+fn owned_launcher(directory: &Dir, path: &Path) -> Result<bool, String> {
+    match directory.symlink_metadata(LAUNCHER_NAME) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error.to_string()),
         Ok(metadata) => {
@@ -148,11 +197,24 @@ fn owned_launcher(path: &Path) -> Result<bool, String> {
                     path.display()
                 ));
             }
+            let mut options = OpenOptions::new();
+            options.read(true).follow(FollowSymlinks::No);
+            let mut file = directory
+                .open_with(LAUNCHER_NAME, &options)
+                .map_err(|error| error.to_string())?;
+            if !file
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .is_file()
+            {
+                return Err(format!(
+                    "Refusing to modify '{}': it is not a regular file.",
+                    path.display()
+                ));
+            }
             let mut header = [0; OWNERSHIP_HEADER.len()];
-            let matches = fs::File::open(path)
-                .and_then(|mut file| file.read_exact(&mut header))
-                .is_ok()
-                && header == OWNERSHIP_HEADER.as_bytes();
+            let matches =
+                file.read_exact(&mut header).is_ok() && header == OWNERSHIP_HEADER.as_bytes();
             if !matches {
                 return Err(format!("Refusing to modify '{}': an unrelated command already exists. Choose another user directory with --install-dir.", path.display()));
             }
@@ -199,37 +261,58 @@ fn install_at(
     home: &Path,
     executable: &Path,
 ) -> Result<CliLauncherStatus, String> {
-    ensure_user_directory(directory, home)?;
     let contents = launcher_contents(executable)?;
+    let opened = open_user_directory(directory, home, true)?
+        .ok_or("Cannot open the CLI launcher directory.")?;
     let target = directory.join(LAUNCHER_NAME);
-    let installed = owned_launcher(&target)?;
-    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
-    // Recheck after directory creation to reject symlinks escaping the user scope.
-    ensure_user_directory(directory, home)?;
-    let mut options = OpenOptions::new();
-    options.write(true);
-    if installed {
-        options.truncate(true);
-    } else {
-        options.create_new(true);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o755);
-    }
-    let mut file = options
-        .open(&target)
-        .map_err(|error| format!("Cannot install '{}': {error}", target.display()))?;
+    let installed = owned_launcher(&opened, &target)?;
+    write_launcher(&opened, &target, &contents, installed)?;
+    Ok(status_at(directory, true))
+}
+
+fn write_launcher_file(file: &mut File, contents: &str) -> Result<(), String> {
     file.write_all(contents.as_bytes())
         .map_err(|error| error.to_string())?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o755))
+        use cap_std::fs::PermissionsExt;
+        file.set_permissions(cap_std::fs::Permissions::from_mode(0o755))
             .map_err(|error| error.to_string())?;
     }
-    Ok(status_at(directory, true))
+    Ok(())
+}
+
+fn write_launcher(
+    directory: &Dir,
+    target: &Path,
+    contents: &str,
+    installed: bool,
+) -> Result<(), String> {
+    if installed {
+        // Never write or chmod an existing inode: even a marked launcher may
+        // have hard links elsewhere. Renaming a fresh file also cannot follow
+        // a target symlink swapped in after the ownership check.
+        let mut staged = TempFile::new(directory).map_err(|error| error.to_string())?;
+        write_launcher_file(staged.as_file_mut(), contents)?;
+        if !owned_launcher(directory, target)? {
+            return Err(
+                "The CLI launcher changed during installation. Please try again.".to_string(),
+            );
+        }
+        staged
+            .replace(LAUNCHER_NAME)
+            .map_err(|error| format!("Cannot install '{}': {error}", target.display()))?;
+    } else {
+        // Preserve no-clobber semantics if another command appears after the
+        // absence check. All access remains relative to the pinned directory.
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = directory
+            .open_with(LAUNCHER_NAME, &options)
+            .map_err(|error| format!("Cannot install '{}': {error}", target.display()))?;
+        write_launcher_file(&mut file, contents)?;
+    }
+    Ok(())
 }
 
 pub fn install(install_dir: Option<&Path>) -> Result<CliLauncherStatus, String> {
@@ -238,28 +321,36 @@ pub fn install(install_dir: Option<&Path>) -> Result<CliLauncherStatus, String> 
 }
 
 pub fn uninstall(install_dir: Option<&Path>) -> Result<CliLauncherStatus, String> {
-    let (directory, _) = user_paths(install_dir)?;
-    uninstall_at(&directory)
+    let (directory, home) = user_paths(install_dir)?;
+    uninstall_at(&directory, &home)
 }
 
-fn uninstall_at(directory: &Path) -> Result<CliLauncherStatus, String> {
-    let target = directory.join(LAUNCHER_NAME);
-    if owned_launcher(&target)? {
-        fs::remove_file(&target)
-            .map_err(|error| format!("Cannot remove '{}': {error}", target.display()))?;
+fn uninstall_at(directory: &Path, home: &Path) -> Result<CliLauncherStatus, String> {
+    if let Some(opened) = open_user_directory(directory, home, false)? {
+        remove_launcher(&opened, &directory.join(LAUNCHER_NAME))?;
     }
     let mut status = status_at(directory, false);
     status.instructions = "GitEye CLI launcher removed. No directories, application files, PATH entries, or shell profiles were removed.".to_string();
     Ok(status)
 }
 
+fn remove_launcher(directory: &Dir, target: &Path) -> Result<(), String> {
+    if owned_launcher(directory, target)? {
+        directory
+            .remove_file(LAUNCHER_NAME)
+            .map_err(|error| format!("Cannot remove '{}': {error}", target.display()))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn get_cli_launcher_status() -> Result<CliLauncherStatus, String> {
-    let (directory, _) = user_paths(None)?;
-    Ok(status_at(
-        &directory,
-        owned_launcher(&directory.join(LAUNCHER_NAME))?,
-    ))
+    let (directory, home) = user_paths(None)?;
+    let installed = match open_user_directory(&directory, &home, false)? {
+        Some(opened) => owned_launcher(&opened, &directory.join(LAUNCHER_NAME))?,
+        None => false,
+    };
+    Ok(status_at(&directory, installed))
 }
 
 #[tauri::command]
@@ -302,7 +393,7 @@ mod tests {
         let target = home.0.join(LAUNCHER_NAME);
         fs::write(&target, "unrelated command").unwrap();
         assert!(install_at(&home.0, &home.0, Path::new("giteye")).is_err());
-        assert!(uninstall_at(&home.0).is_err());
+        assert!(uninstall_at(&home.0, &home.0).is_err());
         assert_eq!(fs::read_to_string(target).unwrap(), "unrelated command");
     }
 
@@ -321,11 +412,133 @@ mod tests {
             launcher_contents(Path::new("second giteye")).unwrap()
         );
         fs::write(directory.join("keep"), "sibling").unwrap();
-        assert!(!uninstall_at(&directory).unwrap().installed);
+        assert!(!uninstall_at(&directory, &home.0).unwrap().installed);
         assert_eq!(
             fs::read_to_string(directory.join("keep")).unwrap(),
             "sibling"
         );
+    }
+
+    #[test]
+    fn reinstall_does_not_write_through_a_hardlinked_launcher() {
+        let home = TemporaryHome::new();
+        let victim = home.0.join("keep");
+        let original = launcher_contents(Path::new("original application")).unwrap();
+        fs::write(&victim, &original).unwrap();
+        let target = home.0.join(LAUNCHER_NAME);
+        fs::hard_link(&victim, &target).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&victim, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+
+        install_at(&home.0, &home.0, Path::new("updated application")).unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), original);
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            launcher_contents(Path::new("updated application")).unwrap()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&victim).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        uninstall_at(&home.0, &home.0).unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), original);
+    }
+
+    #[test]
+    fn a_command_appearing_after_the_absence_check_is_not_replaced() {
+        let home = TemporaryHome::new();
+        let opened = open_user_directory(&home.0, &home.0, false)
+            .unwrap()
+            .unwrap();
+        let target = home.0.join(LAUNCHER_NAME);
+        assert!(!owned_launcher(&opened, &target).unwrap());
+        fs::write(&target, "another command").unwrap();
+
+        assert!(write_launcher(&opened, &target, "new launcher", false).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "another command");
+    }
+
+    #[test]
+    fn an_unrelated_replacement_after_the_ownership_check_is_not_modified() {
+        let home = TemporaryHome::new();
+        install_at(&home.0, &home.0, Path::new("original application")).unwrap();
+        let opened = open_user_directory(&home.0, &home.0, false)
+            .unwrap()
+            .unwrap();
+        let target = home.0.join(LAUNCHER_NAME);
+        assert!(owned_launcher(&opened, &target).unwrap());
+        fs::remove_file(&target).unwrap();
+        fs::write(&target, "another command").unwrap();
+
+        assert!(write_launcher(&opened, &target, "new launcher", true).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "another command");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_launcher_swapped_for_a_symlink_never_writes_to_its_target() {
+        let home = TemporaryHome::new();
+        let other = TemporaryHome::new();
+        let victim = other.0.join("keep");
+        let original = launcher_contents(Path::new("unrelated application")).unwrap();
+        fs::write(&victim, &original).unwrap();
+        install_at(&home.0, &home.0, Path::new("original application")).unwrap();
+        let opened = open_user_directory(&home.0, &home.0, false)
+            .unwrap()
+            .unwrap();
+        let target = home.0.join(LAUNCHER_NAME);
+        assert!(owned_launcher(&opened, &target).unwrap());
+        fs::remove_file(&target).unwrap();
+        std::os::unix::fs::symlink(&victim, &target).unwrap();
+
+        assert!(write_launcher(&opened, &target, "new launcher", true).is_err());
+        assert!(remove_launcher(&opened, &target).is_err());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), original);
+        assert!(fs::symlink_metadata(&target)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_ancestor_swap_cannot_redirect_reinstall_or_uninstall() {
+        let home = TemporaryHome::new();
+        let other = TemporaryHome::new();
+        let parent = home.0.join("custom");
+        let directory = parent.join("bin");
+        install_at(&directory, &home.0, Path::new("original application")).unwrap();
+        let opened = open_user_directory(&directory, &home.0, false)
+            .unwrap()
+            .unwrap();
+        let target = directory.join(LAUNCHER_NAME);
+        assert!(owned_launcher(&opened, &target).unwrap());
+
+        fs::create_dir(other.0.join("bin")).unwrap();
+        let victim = other.0.join("bin").join(LAUNCHER_NAME);
+        let original = launcher_contents(Path::new("unrelated application")).unwrap();
+        fs::write(&victim, &original).unwrap();
+        let moved = home.0.join("moved");
+        fs::rename(&parent, &moved).unwrap();
+        std::os::unix::fs::symlink(&other.0, &parent).unwrap();
+
+        let updated = launcher_contents(Path::new("updated application")).unwrap();
+        write_launcher(&opened, &target, &updated, true).unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), original);
+        assert_eq!(
+            fs::read_to_string(moved.join("bin").join(LAUNCHER_NAME)).unwrap(),
+            updated
+        );
+        remove_launcher(&opened, &target).unwrap();
+        assert!(!moved.join("bin").join(LAUNCHER_NAME).exists());
+        assert_eq!(fs::read_to_string(&victim).unwrap(), original);
     }
 
     #[cfg(unix)]
@@ -336,7 +549,7 @@ mod tests {
         let target = home.0.join(LAUNCHER_NAME);
         std::os::unix::fs::symlink(other.0.join("unrelated"), &target).unwrap();
         assert!(install_at(&home.0, &home.0, Path::new("giteye")).is_err());
-        assert!(uninstall_at(&home.0).is_err());
+        assert!(uninstall_at(&home.0, &home.0).is_err());
         assert!(install_at(&other.0, &home.0, Path::new("giteye")).is_err());
     }
 

@@ -10,9 +10,7 @@ const CLI_STATUS_KEY = ["cli-launcher-status"] as const;
 const APP_SETTINGS_KEY = ["app-settings"] as const;
 
 async function rememberCliSetup(queryClient: QueryClient) {
-  const current = await gitApi.getAppSettings();
-  if (current.cliSetupPrompted) return;
-  const settings = await gitApi.saveAppSettings({ ...current, cliSetupPrompted: true });
+  const settings = await gitApi.rememberCliSetup();
   queryClient.setQueryData(APP_SETTINGS_KEY, settings);
 }
 
