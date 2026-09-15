@@ -10,32 +10,46 @@ import type { WorkingTreePathTarget } from "./WorkingTreePathContextMenu";
 
 interface IgnorePathDialogProps {
   target: WorkingTreePathTarget;
+  initialScope: IgnoreScope;
   isPending: boolean;
   onCancel: () => void;
-  onConfirm: (patterns: string[], scope: IgnoreScope) => void;
+  onConfirm: (patterns: string[], scope: IgnoreScope, affectTracked: boolean) => void;
 }
 
 const CUSTOM_OPTION = "custom";
 
-export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: IgnorePathDialogProps) {
+export function IgnorePathDialog({
+  target,
+  initialScope,
+  isPending,
+  onCancel,
+  onConfirm,
+}: IgnorePathDialogProps) {
   const suggestions = useMemo(
     () => buildIgnoreSuggestions(target.path, target.kind),
     [target.path, target.kind],
   );
   const [selectedId, setSelectedId] = useState(suggestions[0]?.id ?? CUSTOM_OPTION);
   const [customPattern, setCustomPattern] = useState("");
-  const [scope, setScope] = useState<IgnoreScope>("repository");
+  const [scope, setScope] = useState<IgnoreScope>(initialScope);
+  const [affectTracked, setAffectTracked] = useState(false);
 
   const trackedCount = target.files.filter(
     (file) => parseFileStatus(file.status) !== "untracked",
   ).length;
+  const exact = suggestions.find((suggestion) => suggestion.id === "exact");
   const selected = suggestions.find((suggestion) => suggestion.id === selectedId);
-  const pattern = selectedId === CUSTOM_OPTION ? customPattern.trim() : (selected?.pattern ?? "");
+  const pattern = affectTracked
+    ? (exact?.pattern ?? "")
+    : selectedId === CUSTOM_OPTION ? customPattern.trim() : (selected?.pattern ?? "");
+  const undoPath = target.kind === "directory"
+    ? "'path/to/tracked-file'"
+    : `'${target.path.replace(/'/g, "'\\''")}'`;
   const canSubmit = pattern.length > 0 && !isPending;
 
   const submit = () => {
     if (!canSubmit) return;
-    onConfirm([pattern], scope);
+    onConfirm([pattern], scope, affectTracked);
   };
 
   return createPortal(
@@ -44,7 +58,7 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
         role="dialog"
         aria-modal="true"
         aria-labelledby="ignore-path-title"
-        className="w-[calc(100vw-2rem)] max-w-xl rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-5 shadow-[var(--shadow-elevated)]"
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-xl overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-5 shadow-[var(--shadow-elevated)]"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
@@ -56,7 +70,7 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
               Ignore {target.kind === "directory" ? "folder" : "file"}
             </h2>
             <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-              Adds a rule so Git stops reporting this path as a change.
+              Add an ignore rule, with an optional action for tracked files.
             </p>
             <code className="mt-1 block break-all font-mono text-xs text-[var(--color-text-secondary)]">
               {target.path}
@@ -67,14 +81,14 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
           </span>
         </div>
 
-        {trackedCount > 0 && (
+        {!affectTracked && (trackedCount > 0 || target.kind === "directory") && (
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-3 py-2.5 text-xs text-[var(--color-warning)]">
             <FileWarning className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              {trackedCount === 1
-                ? "1 file here is already tracked by Git and will keep showing changes."
-                : `${trackedCount} files here are already tracked by Git and will keep showing changes.`}{" "}
-              Ignore rules only apply to untracked paths.
+              {target.kind === "directory"
+                ? "This folder may include tracked files, including unchanged files not shown in this list."
+                : "This file is already tracked by Git."}{" "}
+              Rules alone only ignore untracked paths; tracked changes will still appear.
             </p>
           </div>
         )}
@@ -84,7 +98,7 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
             Pattern
           </legend>
           <div className="mt-2 space-y-1.5">
-            {suggestions.map((suggestion) => (
+            {suggestions.filter((suggestion) => !affectTracked || suggestion.id === "exact").map((suggestion) => (
               <OptionRow
                 key={suggestion.id}
                 name="ignore-pattern"
@@ -99,24 +113,31 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
                 }
               />
             ))}
-            <OptionRow
-              name="ignore-pattern"
-              checked={selectedId === CUSTOM_OPTION}
-              onSelect={() => setSelectedId(CUSTOM_OPTION)}
-              title="Custom pattern"
-              description="Write a gitignore pattern by hand."
-            >
-              <Input
-                value={customPattern}
-                onChange={(event) => setCustomPattern(event.target.value)}
-                onFocus={() => setSelectedId(CUSTOM_OPTION)}
-                placeholder="e.g. build/**/*.tmp"
-                aria-label="Custom ignore pattern"
-                className="mt-2 font-mono text-xs"
-                spellCheck={false}
-              />
-            </OptionRow>
+            {!affectTracked && (
+              <OptionRow
+                name="ignore-pattern"
+                checked={selectedId === CUSTOM_OPTION}
+                onSelect={() => setSelectedId(CUSTOM_OPTION)}
+                title="Custom pattern"
+                description="Write a gitignore pattern by hand."
+              >
+                <Input
+                  value={customPattern}
+                  onChange={(event) => setCustomPattern(event.target.value)}
+                  onFocus={() => setSelectedId(CUSTOM_OPTION)}
+                  placeholder="e.g. build/**/*.tmp"
+                  aria-label="Custom ignore pattern"
+                  className="mt-2 font-mono text-xs"
+                  spellCheck={false}
+                />
+              </OptionRow>
+            )}
           </div>
+          {affectTracked && (
+            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+              Locked to this exact path. Other locations matching a name, extension, or custom pattern will not be changed.
+            </p>
+          )}
         </fieldset>
 
         <fieldset className="mt-4">
@@ -143,6 +164,67 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
           </div>
         </fieldset>
 
+        <fieldset className="mt-4" disabled={isPending}>
+          <legend className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+            Tracked files
+          </legend>
+          <div className="mt-2 space-y-1.5">
+            <OptionRow
+              name="ignore-tracked"
+              checked={!affectTracked}
+              onSelect={() => setAffectTracked(false)}
+              title="Add rules only"
+              description="Leave tracked files and their changes alone."
+            />
+            <OptionRow
+              name="ignore-tracked"
+              checked={affectTracked}
+              onSelect={() => {
+                setSelectedId("exact");
+                setAffectTracked(true);
+              }}
+              title={scope === "repository" ? "Also stop tracking selected files" : "Also hide tracked edits locally"}
+              description={target.kind === "directory"
+                ? "Applies to all tracked files inside this folder, including unchanged descendants."
+                : trackedCount > 0
+                  ? "Applies only to this tracked file."
+                  : "Applies only if this file is tracked when the action runs."}
+            />
+          </div>
+        </fieldset>
+
+        {affectTracked && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-3 py-2.5 text-xs text-[var(--color-warning)]">
+            <FileWarning className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0 space-y-2">
+              {scope === "repository" ? (
+                <p>
+                  Stops tracking the selected files but keeps their local contents.
+                  Removals from Git are staged: commit them with the .gitignore change
+                  to share this behavior. Git will reject unsafe removals rather than discard staged data.
+                </p>
+              ) : (
+                <>
+                  <p>
+                    Uses skip-worktree to hide tracked edits in this clone; .git/info/exclude
+                    alone cannot do that. Files remain tracked. This can block branch switching
+                    or merging and is not a protection against overwriting files.
+                    Staged changes, conflicts, missing files, and submodules are rejected.
+                  </p>
+                  <p>
+                    Undo from the repository root{target.kind === "directory"
+                      ? ": run this for each affected tracked file, replacing the example path. This command takes file paths, not a folder."
+                      : ":"}
+                  </p>
+                  <code className="block break-all font-mono text-[11px]">
+                    git update-index --no-skip-worktree -- {undoPath}
+                  </code>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button
             type="button"
@@ -159,7 +241,9 @@ export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: Ign
             disabled={!canSubmit}
             icon={<EyeOff className="h-4 w-4" />}
           >
-            Add ignore rule
+            {affectTracked
+              ? scope === "repository" ? "Ignore and stop tracking" : "Ignore and hide tracked edits"
+              : "Add ignore rule"}
           </Button>
         </div>
       </form>

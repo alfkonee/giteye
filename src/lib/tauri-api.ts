@@ -67,7 +67,7 @@ import type {
   GitSignatureSummary,
   GitJobRecord,
   GitJobSummary,
-  IgnoreScope,
+  IgnoreRuleRequest,
   IgnoreRuleResult,
   GitRecoveryState,
   LocalBranchPruneCandidate,
@@ -796,10 +796,10 @@ export const gitApi = {
   ) => invoke<void>("discard_files", { repoPath, files }),
 
   // Ignore rules
-  addIgnoreRules: (repoPath: string, patterns: string[], scope: IgnoreScope) =>
+  addIgnoreRules: (repoPath: string, request: IgnoreRuleRequest) =>
     invoke<IgnoreRuleResult>("add_ignore_rules", {
       repoPath,
-      request: { patterns, scope },
+      request,
     }),
 
   // Worktrees

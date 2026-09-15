@@ -11,8 +11,9 @@ import {
   Minus,
   Plus,
   Trash2,
+  Users,
 } from "lucide-react";
-import type { GitStatusFile } from "../../types/git";
+import type { GitStatusFile, IgnoreScope } from "../../types/git";
 import { parseFileStatus } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
 
@@ -34,7 +35,7 @@ interface WorkingTreePathContextMenuProps {
   onUnstage: (path: string) => void;
   onStash: (target: WorkingTreePathTarget) => void;
   onDiscard: (target: WorkingTreePathTarget) => void;
-  onIgnore: (target: WorkingTreePathTarget) => void;
+  onIgnore: (target: WorkingTreePathTarget, scope: IgnoreScope) => void;
   onOpenSubmodule: (path: string) => void;
   onClose: () => void;
 }
@@ -91,10 +92,6 @@ export function WorkingTreePathContextMenu({
   const targetExists = target.files.some(
     (file) => parseFileStatus(file.status) !== "deleted",
   );
-  // Git only skips untracked paths; a path already in the index keeps reporting changes.
-  const ignorable = target.files.some(
-    (file) => parseFileStatus(file.status) === "untracked",
-  );
   const absolutePath = joinRepoPath(repoPath, target.path);
   const fallbackRelativePath = target.path.includes("/")
     ? target.path.slice(0, target.path.lastIndexOf("/"))
@@ -133,7 +130,7 @@ export function WorkingTreePathContextMenu({
         ref={menuRef}
         role="menu"
         aria-label={`${target.kind === "directory" ? "Folder" : "File"} actions for ${target.path}`}
-        className="giteye-context-menu fixed max-h-[calc(100vh-16px)] w-[248px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
+        className="giteye-context-menu fixed max-h-[calc(100vh-16px)] w-[280px] overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg-tertiary)] shadow-[var(--shadow-elevated)]"
         style={position}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -194,16 +191,22 @@ export function WorkingTreePathContextMenu({
 
         <div className="giteye-context-separator" />
         <MenuItem
-          icon={<EyeOff />}
-          label={`Ignore ${label}…`}
-          disabled={pending || !ignorable}
-          title={
-            ignorable
-              ? `Add a gitignore rule for this ${label}`
-              : `Only untracked paths can be ignored; this ${label} is already tracked by Git`
-          }
+          icon={<Users />}
+          label={`Ignore ${label} in .gitignore…`}
+          disabled={pending}
+          title={`Add a shared rule and optionally stop tracking this ${label}`}
           onClick={() => {
-            onIgnore(target);
+            onIgnore(target, "repository");
+            onClose();
+          }}
+        />
+        <MenuItem
+          icon={<EyeOff />}
+          label={`Ignore ${label} in .git/info/exclude…`}
+          disabled={pending}
+          title={`Add a local rule and optionally hide tracked edits for this ${label}`}
+          onClick={() => {
+            onIgnore(target, "local");
             onClose();
           }}
         />
@@ -265,9 +268,8 @@ function MenuItem({
       disabled={disabled}
       onClick={onClick}
       title={label}
-      className={`giteye-context-item ${
-        tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--color-text-primary)]"
-      }`}
+      className={`giteye-context-item ${tone === "danger" ? "text-[var(--color-danger)]" : "text-[var(--color-text-primary)]"
+        }`}
     >
       {icon}
       <span className="giteye-context-label">{label}</span>
