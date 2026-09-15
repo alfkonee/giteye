@@ -97,7 +97,10 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
-  const [ignoreTarget, setIgnoreTarget] = useState<WorkingTreePathTarget | null>(null);
+  const [ignoreTarget, setIgnoreTarget] = useState<{
+    target: WorkingTreePathTarget;
+    scope: IgnoreScope;
+  } | null>(null);
   const setSelectedFile = useAppStore((s) => s.setSelectedFile);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const queryClient = useQueryClient();
@@ -225,7 +228,6 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
 
   const openFileContextMenu = (event: MouseEvent, file: GitStatusFile) => {
     event.preventDefault();
-    setSelectedFile(file.path, staged);
     setContextTarget({
       kind: "file",
       path: file.path,
@@ -305,7 +307,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
   const handleIgnoreTarget = (patterns: string[], scope: IgnoreScope) => {
     if (!ignoreTarget) return;
     addIgnoreRulesMutation.mutate(
-      { path: ignoreTarget.path, patterns, scope },
+      { path: ignoreTarget.target.path, patterns, scope },
       { onSuccess: () => setIgnoreTarget(null) },
     );
   };
@@ -531,14 +533,15 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
         onUnstage={(path) => unstageMutation.mutate(path)}
         onStash={handleStashTarget}
         onDiscard={handleDiscardTarget}
-        onIgnore={setIgnoreTarget}
+        onIgnore={(target, scope) => setIgnoreTarget({ target, scope })}
         onOpenSubmodule={handleOpenSubmodule}
         onClose={() => setContextTarget(null)}
       />
       {ignoreTarget && (
         <IgnorePathDialog
-          key={`${ignoreTarget.kind}:${ignoreTarget.path}`}
-          target={ignoreTarget}
+          key={`${ignoreTarget.target.kind}:${ignoreTarget.target.path}:${ignoreTarget.scope}`}
+          target={ignoreTarget.target}
+          initialScope={ignoreTarget.scope}
           isPending={addIgnoreRulesMutation.isPending}
           onCancel={() => setIgnoreTarget(null)}
           onConfirm={handleIgnoreTarget}

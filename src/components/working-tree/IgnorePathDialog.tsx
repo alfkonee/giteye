@@ -10,6 +10,7 @@ import type { WorkingTreePathTarget } from "./WorkingTreePathContextMenu";
 
 interface IgnorePathDialogProps {
   target: WorkingTreePathTarget;
+  initialScope: IgnoreScope;
   isPending: boolean;
   onCancel: () => void;
   onConfirm: (patterns: string[], scope: IgnoreScope) => void;
@@ -17,14 +18,20 @@ interface IgnorePathDialogProps {
 
 const CUSTOM_OPTION = "custom";
 
-export function IgnorePathDialog({ target, isPending, onCancel, onConfirm }: IgnorePathDialogProps) {
+export function IgnorePathDialog({
+  target,
+  initialScope,
+  isPending,
+  onCancel,
+  onConfirm,
+}: IgnorePathDialogProps) {
   const suggestions = useMemo(
     () => buildIgnoreSuggestions(target.path, target.kind),
     [target.path, target.kind],
   );
   const [selectedId, setSelectedId] = useState(suggestions[0]?.id ?? CUSTOM_OPTION);
   const [customPattern, setCustomPattern] = useState("");
-  const [scope, setScope] = useState<IgnoreScope>("repository");
+  const [scope, setScope] = useState<IgnoreScope>(initialScope);
 
   const trackedCount = target.files.filter(
     (file) => parseFileStatus(file.status) !== "untracked",

@@ -663,10 +663,10 @@ export function SettingsPlaceholder() {
                   >
                     <span
                       className={cn(
-                        "absolute top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform",
+                        "absolute left-0.5 top-0.5 h-4.5 w-4.5 rounded-full bg-white shadow-sm transition-transform",
                         backgroundPullRequestLoading
                           ? "translate-x-5"
-                          : "translate-x-0.5",
+                          : "translate-x-0",
                       )}
                     />
                     <span className="sr-only">
