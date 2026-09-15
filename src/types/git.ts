@@ -880,10 +880,18 @@ export type Theme = "dark" | "light" | "system";
 /** `repository` writes to `.gitignore`, `local` to `.git/info/exclude`. */
 export type IgnoreScope = "repository" | "local";
 
+export interface IgnoreRuleRequest {
+  path: string;
+  patterns: string[];
+  scope: IgnoreScope;
+  affectTracked: boolean;
+}
+
 export interface IgnoreRuleResult {
   file: string;
   added: string[];
   skipped: string[];
+  affectedTracked: number;
 }
 
 export type FileStatus =

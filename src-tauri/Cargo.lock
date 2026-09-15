@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "giteye"
-version = "0.0.2-alpha.2"
+version = "0.0.2-beta.8"
 dependencies = [
  "bzip2",
  "chrono",

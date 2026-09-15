@@ -304,10 +304,10 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
     });
   };
 
-  const handleIgnoreTarget = (patterns: string[], scope: IgnoreScope) => {
+  const handleIgnoreTarget = (patterns: string[], scope: IgnoreScope, affectTracked: boolean) => {
     if (!ignoreTarget) return;
     addIgnoreRulesMutation.mutate(
-      { path: ignoreTarget.target.path, patterns, scope },
+      { path: ignoreTarget.target.path, patterns, scope, affectTracked },
       { onSuccess: () => setIgnoreTarget(null) },
     );
   };

@@ -21,7 +21,7 @@ import type {
   FileHistoryRequest,
   GitGrepRequest,
   GitMaintenanceMode,
-  IgnoreScope,
+  IgnoreRuleRequest,
   PickaxeSearchRequest,
   MergeWithOptionsRequest,
   StartRebaseRequest,
@@ -150,11 +150,6 @@ export interface DiscardFilesRequest {
   files: DiscardFileRequest[];
 }
 
-export interface AddIgnoreRulesRequest {
-  path: string;
-  patterns: string[];
-  scope: IgnoreScope;
-}
 export interface RequestPullRequestReviewRequest {
   number: number;
   reviewers: string[];
@@ -1404,15 +1399,15 @@ export const gitMutations = {
 
   addIgnoreRules: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (request: AddIgnoreRulesRequest) =>
-        gitApi.addIgnoreRules(repoPath!, request.patterns, request.scope),
+      mutationFn: (request: IgnoreRuleRequest) =>
+        gitApi.addIgnoreRules(repoPath!, request),
       onMutate: (request) =>
         startGitActionNotice(
           "Adding ignore rules",
           `${request.path} · ${request.patterns.join(", ")}`,
           repoPath,
         ),
-      onSuccess: async (result, _request, context) => {
+      onSuccess: async (result, request, context) => {
         await refreshGitStateAfterAction(queryClient, repoPath, context);
         const added = result.added.length
           ? `Added ${result.added.join(", ")} to ${result.file}.`
@@ -1421,7 +1416,14 @@ export const gitMutations = {
           result.added.length && result.skipped.length
             ? ` Already present: ${result.skipped.join(", ")}.`
             : "";
-        finishGitActionNotice(context, `${added}${skipped}`);
+        const tracked = request.affectTracked
+          ? result.affectedTracked > 0
+            ? request.scope === "repository"
+              ? ` Stopped tracking ${result.affectedTracked} file(s); local files kept. Commit the staged removals.`
+              : ` Set skip-worktree on ${result.affectedTracked} file(s); their tracked edits are now hidden locally.`
+            : " No tracked files needed changing."
+          : " Tracked files are unchanged.";
+        finishGitActionNotice(context, `${added}${skipped}${tracked}`);
       },
       onError: (error, _request, context) =>
         failGitActionNotice(context, error),

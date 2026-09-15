@@ -92,10 +92,6 @@ export function WorkingTreePathContextMenu({
   const targetExists = target.files.some(
     (file) => parseFileStatus(file.status) !== "deleted",
   );
-  // Git only skips untracked paths; a path already in the index keeps reporting changes.
-  const ignorable = target.files.some(
-    (file) => parseFileStatus(file.status) === "untracked",
-  );
   const absolutePath = joinRepoPath(repoPath, target.path);
   const fallbackRelativePath = target.path.includes("/")
     ? target.path.slice(0, target.path.lastIndexOf("/"))
@@ -197,12 +193,8 @@ export function WorkingTreePathContextMenu({
         <MenuItem
           icon={<Users />}
           label={`Ignore ${label} in .gitignore…`}
-          disabled={pending || !ignorable}
-          title={
-            ignorable
-              ? `Add a shared .gitignore rule for this ${label}`
-              : `Only untracked paths can be ignored; this ${label} is already tracked by Git`
-          }
+          disabled={pending}
+          title={`Add a shared rule and optionally stop tracking this ${label}`}
           onClick={() => {
             onIgnore(target, "repository");
             onClose();
@@ -211,12 +203,8 @@ export function WorkingTreePathContextMenu({
         <MenuItem
           icon={<EyeOff />}
           label={`Ignore ${label} in .git/info/exclude…`}
-          disabled={pending || !ignorable}
-          title={
-            ignorable
-              ? `Add a local-only .git/info/exclude rule for this ${label}`
-              : `Only untracked paths can be ignored; this ${label} is already tracked by Git`
-          }
+          disabled={pending}
+          title={`Add a local rule and optionally hide tracked edits for this ${label}`}
           onClick={() => {
             onIgnore(target, "local");
             onClose();
