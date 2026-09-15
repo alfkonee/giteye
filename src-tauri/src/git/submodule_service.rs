@@ -363,7 +363,10 @@ fn ahead_behind(repo_path: &Path, path: &str) -> Result<(u32, u32), AppError> {
 }
 
 fn submodule_has_changes(repo_path: &Path, path: &str) -> Result<bool, AppError> {
-    match GitCli::run(repo_path, &["-C", path, "status", "--porcelain"]) {
+    match GitCli::run(
+        repo_path,
+        &["--no-optional-locks", "-C", path, "status", "--porcelain"],
+    ) {
         Ok(output) => Ok(!output.trim().is_empty()),
         Err(AppError::GitError(_)) => Ok(false),
         Err(error) => Err(error),
@@ -371,7 +374,16 @@ fn submodule_has_changes(repo_path: &Path, path: &str) -> Result<bool, AppError>
 }
 
 fn submodule_status_counts(repo_path: &Path, path: &str) -> Result<(u32, u32), AppError> {
-    match GitCli::run(repo_path, &["-C", path, "status", "--porcelain=v1"]) {
+    match GitCli::run(
+        repo_path,
+        &[
+            "--no-optional-locks",
+            "-C",
+            path,
+            "status",
+            "--porcelain=v1",
+        ],
+    ) {
         Ok(output) => {
             let mut modified = 0;
             let mut staged = 0;
@@ -400,6 +412,7 @@ fn parent_status_for_path(repo_path: &Path, path: &str) -> Result<(bool, bool), 
     let output = GitCli::run(
         repo_path,
         &[
+            "--no-optional-locks",
             "status",
             "--porcelain",
             "--ignore-submodules=none",

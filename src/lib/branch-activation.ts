@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { appDialog } from "../components/common/AppDialogProvider";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitMutations } from "./git-data";
@@ -128,6 +128,8 @@ interface BranchSwitchTarget {
   branch: Branch;
   /** Ref to fast-forward the branch onto once the checkout lands. */
   fastForwardTo: string | null;
+  /** Local branch that will be created when checking out an untracked remote. */
+  createLocalName?: string;
 }
 
 export interface UseBranchActivationOptions {
@@ -139,7 +141,7 @@ export interface UseBranchActivationOptions {
 
 /**
  * Shared double-click behavior for every branch surface (sidebar tree, branch
- * list). Owns the checkout confirmation dialog state plus the follow-up
+ * list, workspace graph). Owns the checkout confirmation dialog state plus the follow-up
  * fast-forward so remote rows behave identically wherever they are rendered.
  */
 export function useBranchActivation({
@@ -151,9 +153,6 @@ export function useBranchActivation({
   const checkoutMutation = useMutation(
     gitMutations.checkoutBranch(queryClient, repoPath),
   );
-  const createMutation = useMutation(
-    gitMutations.createBranch(queryClient, repoPath),
-  );
   const fastForwardMutation = useMutation(
     gitMutations.fastForwardBranch(queryClient, repoPath),
   );
@@ -161,7 +160,13 @@ export function useBranchActivation({
     null,
   );
 
+  useEffect(() => {
+    setSwitchTarget(null);
+  }, [repoPath]);
+
   const activateBranch = async (branch: Branch) => {
+    if (checkoutMutation.isPending || fastForwardMutation.isPending) return;
+    checkoutMutation.reset();
     const plan = planBranchActivation(branch, branches);
 
     switch (plan.kind) {
@@ -181,18 +186,10 @@ export function useBranchActivation({
           );
           return;
         }
-        if (
-          !(await appDialog.confirm(
-            `No local branch tracks "${plan.remote.shortName}".\n\nCreate local branch "${plan.localName}" from it and check it out?`,
-            "Create tracking branch?",
-          ))
-        ) {
-          return;
-        }
-        createMutation.mutate({
-          name: plan.localName,
-          checkout: true,
-          startPoint: plan.remote.shortName,
+        setSwitchTarget({
+          branch: plan.remote,
+          fastForwardTo: null,
+          createLocalName: plan.localName,
         });
         return;
       }
@@ -243,9 +240,9 @@ export function useBranchActivation({
 
   const confirmSwitch = (strategy: CheckoutBranchStrategy) => {
     const target = switchTarget;
-    if (!target) return;
+    if (!target || checkoutMutation.isPending) return;
     checkoutMutation.mutate(
-      { branchName: target.branch.shortName, strategy },
+      { branchName: target.branch.name, strategy },
       {
         onSuccess: () => {
           setSwitchTarget(null);
@@ -263,17 +260,19 @@ export function useBranchActivation({
   return {
     activateBranch,
     switchBranch: switchTarget?.branch ?? null,
-    switchFollowUp: switchTarget?.fastForwardTo
-      ? `GitEye will fast-forward ${switchTarget.branch.shortName} to ${switchTarget.fastForwardTo} right after the switch.`
-      : null,
+    switchFollowUp: switchTarget?.createLocalName
+      ? `GitEye will create local branch "${switchTarget.createLocalName}" tracking "${switchTarget.branch.shortName}" and check it out using the selected option.`
+      : switchTarget?.fastForwardTo
+        ? `GitEye will fast-forward ${switchTarget.branch.shortName} to ${switchTarget.fastForwardTo} right after the switch.`
+        : null,
     switchPending: checkoutMutation.isPending,
+    switchError: checkoutMutation.error,
     confirmSwitch,
     cancelSwitch: () => setSwitchTarget(null),
     isPending:
       checkoutMutation.isPending ||
-      createMutation.isPending ||
       fastForwardMutation.isPending,
     error:
-      checkoutMutation.error ?? createMutation.error ?? fastForwardMutation.error,
+      checkoutMutation.error ?? fastForwardMutation.error,
   };
 }

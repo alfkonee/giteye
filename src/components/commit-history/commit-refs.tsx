@@ -109,16 +109,34 @@ export function RefPill({
   displayRef,
   onSelectedRow = false,
   className,
+  onActivate,
+  activationTitle,
 }: {
   displayRef: DisplayRef;
   onSelectedRow?: boolean;
   className?: string;
+  onActivate?: () => void;
+  activationTitle?: string;
 }) {
   const Icon = displayRef.isTag ? Tag : GitBranch;
 
   return (
     <span
-      title={describeRef(displayRef)}
+      title={activationTitle ? `${describeRef(displayRef)}\n${activationTitle}` : describeRef(displayRef)}
+      role={onActivate ? "button" : undefined}
+      tabIndex={onActivate ? 0 : undefined}
+      onClick={onActivate ? (event) => event.stopPropagation() : undefined}
+      onDoubleClick={onActivate ? (event) => {
+        event.stopPropagation();
+        onActivate();
+      } : undefined}
+      onKeyDown={onActivate ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          onActivate();
+        }
+      } : undefined}
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
         displayRef.isTag
@@ -130,6 +148,7 @@ export function RefPill({
             : displayRef.isRemote
               ? "border-[var(--color-text-muted)]/25 bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]"
               : "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
+        onActivate && "cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]",
         className,
       )}
     >

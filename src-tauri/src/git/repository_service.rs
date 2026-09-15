@@ -83,6 +83,7 @@ fn build_repository_snapshot(path: &Path) -> Result<RepositorySnapshot, AppError
     let output = GitCli::run(
         path,
         &[
+            "--no-optional-locks",
             "status",
             "--porcelain=v2",
             "--branch",
@@ -812,7 +813,10 @@ mod tests {
             ],
         );
         git(&parent, &["commit", "-am", "Add source submodule"]);
-        git(&parent, &["config", "submodule.modules/source.ignore", "all"]);
+        git(
+            &parent,
+            &["config", "submodule.modules/source.ignore", "all"],
+        );
 
         let clean = get_repository_snapshot(&parent).expect("clean snapshot");
         assert!(clean.repository_info.is_clean);

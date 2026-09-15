@@ -308,7 +308,7 @@ export function GitWorkspace() {
       <PanelGroup direction="vertical" className="min-h-0 flex-1">
         <Panel id="workspace-main" order={1} minSize={30}>
           <div className="h-full overflow-hidden">
-            <CommitHistory />
+            <CommitHistory onActivateBranch={branchActivation.activateBranch} />
           </div>
         </Panel>
 
@@ -373,6 +373,7 @@ export function GitWorkspace() {
         branch={branchActivation.switchBranch}
         isClean={repoInfo?.isClean ?? true}
         isPending={branchActivation.switchPending}
+        error={branchActivation.switchError}
         followUpNote={branchActivation.switchFollowUp}
         onCancel={branchActivation.cancelSwitch}
         onConfirm={branchActivation.confirmSwitch}

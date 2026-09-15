@@ -1,6 +1,8 @@
 use crate::errors::AppError;
 use crate::git::github_service;
-use crate::models::github::{PullRequestDiff, RepositoryGithubOverview};
+use crate::models::github::{
+    BranchPullRequestMatch, PullRequestDiff, PullRequestSummary, RepositoryGithubOverview,
+};
 use std::path::Path;
 
 #[tauri::command]
@@ -8,7 +10,33 @@ pub async fn get_repository_github_overview(
     repo_path: String,
 ) -> Result<RepositoryGithubOverview, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        Ok(github_service::get_repository_github_overview(Path::new(&repo_path)))
+        Ok(github_service::get_repository_github_overview(Path::new(
+            &repo_path,
+        )))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn get_branch_pull_requests(
+    repo_path: String,
+    branch_ref: String,
+) -> Result<Vec<BranchPullRequestMatch>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        github_service::get_branch_pull_requests(Path::new(&repo_path), &branch_ref)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn get_pull_request_summary(
+    repo_path: String,
+    number: u64,
+) -> Result<PullRequestSummary, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        github_service::get_pull_request_summary(Path::new(&repo_path), number)
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
@@ -21,7 +49,10 @@ pub fn cancel_repository_github_work(repo_path: String) -> Result<(), AppError> 
 }
 
 #[tauri::command]
-pub async fn get_pull_request_diff(repo_path: String, number: u64) -> Result<PullRequestDiff, AppError> {
+pub async fn get_pull_request_diff(
+    repo_path: String,
+    number: u64,
+) -> Result<PullRequestDiff, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         github_service::get_pull_request_diff(Path::new(&repo_path), number)
     })
@@ -55,7 +86,12 @@ pub async fn request_pull_request_review(
     teams: Vec<String>,
 ) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        github_service::request_pull_request_review(Path::new(&repo_path), number, &reviewers, &teams)
+        github_service::request_pull_request_review(
+            Path::new(&repo_path),
+            number,
+            &reviewers,
+            &teams,
+        )
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?

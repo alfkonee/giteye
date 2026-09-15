@@ -7,6 +7,8 @@ import { CommandPalette } from "../components/common/CommandPalette";
 import { RustCallTracePanel } from "../components/common/RustCallTracePanel";
 import { FrontendTraceCollector } from "../components/common/FrontendTraceCollector";
 import { InterruptedJobRecovery } from "../components/common/InterruptedJobRecovery";
+import { CliSetupOffer } from "../components/settings/CliSetup";
+import { RepositoryLaunchListener } from "../lib/repository-launch";
 import { AppSettingsSync } from "../lib/app-settings-sync";
 import { GitJobEventListener, GitStateWatcher } from "../lib/git-watch";
 import { gitQueries } from "../lib/git-data";
@@ -19,6 +21,21 @@ function BackgroundPullRequestLoader() {
     (state) => state.backgroundPullRequestLoading,
   );
   useQuery(gitQueries.githubOverview(activeRepoPath, enabled));
+  return null;
+}
+
+function BackgroundWorkspaceLoader() {
+  const activeRepoPath = useAppStore((state) => state.activeRepoPath);
+  // Metadata changes are watched. Working files in linked worktrees and
+  // submodules are not: refresh their local status at a bounded cadence.
+  useQuery({
+    ...gitQueries.worktrees(activeRepoPath),
+    refetchInterval: 30_000,
+  });
+  useQuery({
+    ...gitQueries.submodules(activeRepoPath),
+    refetchInterval: (query) => query.state.data?.length ? 30_000 : false,
+  });
   return null;
 }
 export function Providers({ children }: { children: ReactNode }) {
@@ -39,7 +56,10 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AppDialogProvider>
         <AppSettingsSync />
+        <RepositoryLaunchListener />
+        <CliSetupOffer />
         <BackgroundPullRequestLoader />
+        <BackgroundWorkspaceLoader />
         <GitStateWatcher />
         <GitJobEventListener />
         <InterruptedJobRecovery />

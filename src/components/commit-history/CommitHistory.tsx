@@ -12,11 +12,12 @@ import { COMMIT_ROW_HEIGHT, colorForLane, layoutCommitGraph } from "./commit-gra
 import { ReflogRecoveryPanel } from "./HistorySurgeryActions";
 import { WorkingTreeRow } from "./WorkingTreeRow";
 import { WORKING_TREE_COMMIT_HASH } from "../../lib/working-tree-node";
+import type { Branch } from "../../types/git";
 
 const INITIAL_COMMIT_LIMIT = 100;
 const COMMIT_LIMIT_INCREMENT = 100;
 
-export function CommitHistory() {
+export function CommitHistory({ onActivateBranch }: { onActivateBranch: (branch: Branch) => void }) {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const setSelectedCommitRange = useAppStore((s) => s.setSelectedCommitRange);
@@ -241,6 +242,7 @@ export function CommitHistory() {
                   commit={commit}
                   graph={graph}
                   branches={branches}
+                  onActivateBranch={onActivateBranch}
                   isSelected={selectedCommitRange.includes(commit.hash)}
                   onSelect={(selectedCommit, event) => selectCommit(selectedCommit.hash, event)}
                 />

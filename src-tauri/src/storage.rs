@@ -75,6 +75,7 @@ pub struct AppSettings {
     pub user_email: Option<String>,
     pub diff_mode: String,
     pub background_pull_request_loading: bool,
+    pub cli_setup_prompted: bool,
 }
 
 impl Default for AppSettings {
@@ -86,6 +87,7 @@ impl Default for AppSettings {
             user_email: None,
             diff_mode: "unified".to_string(),
             background_pull_request_loading: false,
+            cli_setup_prompted: false,
         }
     }
 }
@@ -116,12 +118,15 @@ fn interrupted_git_jobs_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, A
 }
 
 /// Loads jobs that had not reached a terminal state when GitEye last exited.
-pub fn load_interrupted_git_jobs(app_handle: &tauri::AppHandle) -> Result<Vec<GitJobRecord>, AppError> {
+pub fn load_interrupted_git_jobs(
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<GitJobRecord>, AppError> {
     let path = interrupted_git_jobs_path(app_handle)?;
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let data = fs::read_to_string(path).map_err(|error| AppError::StorageError(error.to_string()))?;
+    let data =
+        fs::read_to_string(path).map_err(|error| AppError::StorageError(error.to_string()))?;
     serde_json::from_str(&data).map_err(|error| AppError::SerializationError(error.to_string()))
 }
 
@@ -524,6 +529,7 @@ mod tests {
             user_email: Some(" user@example.com ".to_string()),
             diff_mode: "side-by-side".to_string(),
             background_pull_request_loading: true,
+            cli_setup_prompted: false,
         });
 
         assert_eq!(settings.theme, "dark");

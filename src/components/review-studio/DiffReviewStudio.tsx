@@ -411,14 +411,24 @@ export function DiffReviewStudio() {
     isLoading: githubOverviewLoading,
     refetch: refetchGithubOverview,
   } = useQuery(gitQueries.githubOverview(activeRepoPath));
-  const livePrs = useMemo(
-    () => githubOverview?.pullRequests ?? [],
-    [githubOverview?.pullRequests],
-  );
   const selectedPullRequestId = useAppStore((s) => s.selectedPullRequestId);
   const setSelectedPullRequestId = useAppStore(
     (s) => s.setSelectedPullRequestId,
   );
+  const selectedPrNumber = selectedPullRequestId ? Number(selectedPullRequestId) : null;
+  const selectedSummaryQuery = useQuery({
+    ...gitQueries.pullRequestSummary(activeRepoPath, selectedPrNumber),
+    enabled: Boolean(activeRepoPath) && selectedPrNumber !== null
+      && !githubOverview?.pullRequests.some((pr) => pr.number === selectedPrNumber),
+  });
+  const livePrs = useMemo(() => {
+    const overviewPrs = githubOverview?.pullRequests ?? [];
+    const selected = selectedSummaryQuery.data;
+    // Exact branch lookup can find an open PR outside the overview's bounded list.
+    return selected && !overviewPrs.some((pr) => pr.number === selected.number)
+      ? [selected, ...overviewPrs]
+      : overviewPrs;
+  }, [githubOverview?.pullRequests, selectedSummaryQuery.data]);
   const [prFilter, setPrFilter] = useState("");
   const [prListTab, setPrListTab] = useState<PullRequestListTab>("open");
   const [fileFilter, setFileFilter] = useState("");
@@ -432,9 +442,6 @@ export function DiffReviewStudio() {
   const [finalizeWithAdmin, setFinalizeWithAdmin] = useState(false);
   const [deleteHeadBranch, setDeleteHeadBranch] = useState(true);
 
-  const selectedPrNumber = selectedPullRequestId
-    ? Number(selectedPullRequestId)
-    : null;
   const openPrs = useMemo(
     () => livePrs.filter((pr) => pr.state.toLowerCase() === "open"),
     [livePrs],
@@ -444,7 +451,9 @@ export function DiffReviewStudio() {
     [livePrs],
   );
   const listedPrs = prListTab === "open" ? openPrs : closedPrs;
-  const currentPr =
+  const missingSelectedPr = selectedPrNumber !== null
+    && !livePrs.some((pr) => pr.number === selectedPrNumber);
+  const currentPr = missingSelectedPr ? null :
     listedPrs.find((pr) => pr.number === selectedPrNumber) ??
     listedPrs[0] ??
     null;
@@ -465,6 +474,7 @@ export function DiffReviewStudio() {
     };
   }, [activeRepoPath]);
   useEffect(() => {
+    if (missingSelectedPr) return;
     if (!currentPr) {
       if (selectedPullRequestId) setSelectedPullRequestId(null);
       return;
@@ -472,7 +482,7 @@ export function DiffReviewStudio() {
     if (selectedPullRequestId !== String(currentPr.number)) {
       setSelectedPullRequestId(String(currentPr.number));
     }
-  }, [currentPr, selectedPullRequestId, setSelectedPullRequestId]);
+  }, [currentPr, selectedPullRequestId, setSelectedPullRequestId, missingSelectedPr]);
 
   const {
     data: prDiff,
@@ -634,10 +644,12 @@ export function DiffReviewStudio() {
     );
   }, [changedFiles, fileFilter]);
   const firstChangedFilePath = changedFiles[0]?.path ?? null;
-  const diffErrorMessage = formatErrorMessage(prDiffError);
+  const diffErrorMessage = formatErrorMessage(prDiffError ?? selectedSummaryQuery.error);
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
   const prFetchWarning = prDiff?.fetchError ?? null;
-  const dataLoadingMessage = githubOverviewLoading
+  const dataLoadingMessage = missingSelectedPr && selectedSummaryQuery.isFetching
+    ? `Loading pull request #${selectedPrNumber}...`
+    : githubOverviewLoading
     ? "Loading GitHub pull request overview..."
     : githubOverviewFetching
       ? "Refreshing GitHub pull request overview..."

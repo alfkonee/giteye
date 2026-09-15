@@ -676,6 +676,7 @@ export function BranchList() {
         branch={branchActivation.switchBranch}
         isClean={isClean}
         isPending={branchActivation.switchPending}
+        error={branchActivation.switchError}
         followUpNote={branchActivation.switchFollowUp}
         onCancel={branchActivation.cancelSwitch}
         onConfirm={branchActivation.confirmSwitch}

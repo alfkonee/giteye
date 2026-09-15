@@ -504,6 +504,11 @@ export interface PullRequestSummary {
   mergeStateStatus: string | null;
 }
 
+export interface BranchPullRequestMatch extends PullRequestSummary {
+  baseRepository: string;
+  reviewInApp: boolean;
+}
+
 export interface PullRequestFileDiff {
   path: string;
   additions: number;

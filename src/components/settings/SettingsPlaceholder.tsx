@@ -9,6 +9,7 @@ import { resolveTheme, useSystemPrefersDark } from "../../lib/theme";
 import type { SshKey, Theme } from "../../types/git";
 import { AiModelCombobox } from "./AiModelCombobox";
 import { ToolchainSettings } from "../toolchain/ToolchainSetup";
+import { CliSetupControls } from "./CliSetup";
 import { useNoticeStore } from "../../stores/notice-store";
 import { Button, Select } from "../ui";
 
@@ -675,6 +676,8 @@ export function SettingsPlaceholder() {
                   </button>
                 </div>
               </section>
+
+              <CliSetupControls />
 
               <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
                 <SettingsHeader

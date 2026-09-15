@@ -69,6 +69,7 @@ All Tauri commands that run blocking work (git/gh subprocesses, HTTP, filesystem
 - **Workspace**: One pane combining staging (stage/unstage individual files, stage all, unstage all), the commit graph, and the merge/rebase/conflict drawer, so the commit → integrate → resolve loop needs no view switch
 - **Commit**: Commit with message (Ctrl+Enter), amend HEAD, sign off commits, bypass hooks when explicitly requested, and create empty marker commits
 - **Branches**: List branches, checkout, create, fast-forward from upstream, merge into current branch, delete (with confirmation); double-clicking a remote branch checks out a tracking local branch when none exists and fast-forwards the tracking branch when one does
+- **Checkout choices**: Double-click a branch badge in the workspace graph to confirm checkout. Move preserves working changes; Stash saves staged, unstaged, and untracked contents; Discard requires a second confirmation and preserves ignored files. Unsafe nested repository/submodule changes are refused rather than silently deleted.
 - **Commits**: History with virtualization, commit details, changed file list, and ref-aware merge/rebase actions on any commit carrying a branch or tag
 - **Remotes**: List remotes, fetch, pull, push from the toolbar or Remotes view; long-running network operations run as background jobs with streamed logs
 - **Stashes**: Create, apply, pop, and drop local stashes, including untracked files
@@ -80,6 +81,7 @@ All Tauri commands that run blocking work (git/gh subprocesses, HTTP, filesystem
 - **Rebase/conflicts**: Inspect active rebase state, edit remaining todo actions/order, autosquash fixup/squash commits, accept current/incoming side, mark files resolved, continue/skip/abort through background jobs where long-running
 - **Background Git jobs**: Clone, fetch, pull, push, merge/rebase, submodule update/sync/init, and worktree repair/prune run through a Tauri job runner with per-repo mutation serialization, cancellation, streamed stdout/stderr, and command-log history
 - **GitHub PR review**: Load live PRs, labels, review requests, selected-PR checks/reviews/timeline, filtered PR diffs/comments, inline diff line comments, stack landing order/action, label add/remove prompts, review request prompts, and approve/comment/request-changes actions through `gh`
+- **Branch PR navigation**: Branch menus find open PRs by exact upstream repository and branch, including fork heads. Existing PRs open in the review studio, or explicitly on GitHub when targeting a fork's parent; multiple matches offer a picker. The Create PR dialog checks for existing PRs before offering creation.
 - **GitHub CI status**: Inspect workflow check runs for the current branch and selected pull request, including pass/fail/pending buckets, workflow grouping, duration metadata, filtering, and direct check links
 
 ### UI
@@ -88,6 +90,7 @@ All Tauri commands that run blocking work (git/gh subprocesses, HTTP, filesystem
 - Top repository tabs for multi-repo workflows with branch, dirty, and running-job badges
 - Resizable 3-panel layout (sidebar | main content | detail pane)
 - Collapsible sidebar grouped around core local Git views, with collaboration/provider views separated from local workflows
+- Worktree and submodule sidebar lists load in the background for the active repository, independently of remote collaboration loading. Git metadata changes refresh them promptly; otherwise-unwatched local dirty status refreshes on a 30-second foreground cadence.
 - Toolbar showing repo name, branch, clean/dirty status, remote status shortcut, and diff mode toggle
 - Toolbar command search executes local navigation, refresh, remote sync, and diff-mode actions
 - Global command palette (Ctrl/⌘K) searches repository sessions, recent/favorite repositories, views, and core app commands from any screen
@@ -141,7 +144,7 @@ bun install
 bun run tauri
 ```
 
-The command starts an isolated Vite server and selects the next available port automatically, so multiple development instances can run at once.
+The command starts a Vite server and selects the next available port automatically. GitEye uses a single application instance; later launches activate that window and forward repository paths to it.
 
 ### Build Desktop App
 
@@ -177,6 +180,64 @@ cd src-tauri && cargo check && cargo fmt --check
    - Click the folder icon to browse with the native file dialog
 3. The repository loads and displays the Workspace view (changes, history, integrate drawer)
 4. Switch between Workspace, Branches, and the remaining views via the sidebar
+
+### Open from a terminal
+
+Run the **`giteye` executable** with one repository directory:
+
+```sh
+giteye .
+giteye /absolute/path/to/repository
+giteye "/path/with spaces/repository"
+giteye -- -repository
+giteye --help
+giteye --version
+```
+
+Relative paths use the calling terminal's current directory. Nested directories
+resolve to the repository root; linked worktrees open as their own workspace.
+If GitEye is already running, the request opens in that instance and brings its
+window forward. With no arguments, GitEye starts normally or activates the
+existing window. Invalid repositories show an error without replacing the
+current workspace; launching never initializes or clones a repository.
+`--help` and `--version` exit without starting the GUI.
+
+### Optional user-scoped CLI setup
+
+On first run, choose **Install CLI** in the non-modal terminal setup offer, or
+choose **Not now** to dismiss it permanently. Setup remains available under
+**Settings → General → Command-line launcher**, including removal and reinstall.
+Installation is opt-in and needs no administrator privileges.
+
+You can also run setup directly using your app's executable:
+
+```sh
+/path/to/giteye --install-cli
+/path/to/giteye --uninstall-cli
+/path/to/giteye --install-cli --install-dir "$HOME/bin"
+```
+
+Use the same `--install-dir` when removing a custom installation. Custom
+directories must remain inside your home directory.
+
+- **Linux/macOS:** installs `~/.local/bin/giteye`. For an AppImage, invoke the
+  original `.AppImage` file with `--install-cli`; the launcher targets that
+  persistent file, never its temporary mount. On macOS, the app executable is
+  `GitEye.app/Contents/MacOS/giteye`; move the app to its permanent location first.
+- **Windows:** run `giteye.exe --install-cli` (or use Settings). Installs
+  `%LOCALAPPDATA%\\GitEye\\bin\\giteye.cmd`, usable as `giteye` from a terminal.
+  In PowerShell, invoke a quoted executable path with `&`.
+- The launcher preserves arguments and the calling directory. It does not
+  replace Git or add an alias named `git`.
+- GitEye never silently changes PATH or shell profiles. If the directory is not
+  on PATH, setup displays exact shell instructions (sh/bash/zsh or fish), or
+  Windows **User variables → Path** instructions. Open a new terminal afterward.
+- Existing unrelated commands and symlinks are never overwritten or removed.
+  Uninstall removes only GitEye's marked launcher, leaving the app, neighboring
+  files, directories, PATH entries, and shell profiles untouched.
+
+Keep the app in the location used during setup. If you move it, use **Reinstall
+CLI** in Settings or rerun `--install-cli` from its new location.
 
 
 ---

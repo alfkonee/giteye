@@ -48,6 +48,8 @@ import type {
   SshStatus,
   RepositoryGithubOverview,
   PullRequestDiff,
+  PullRequestSummary,
+  BranchPullRequestMatch,
   CommitSearchRequest,
   CommitSearchResult,
   FileHistoryRequest,
@@ -74,7 +76,7 @@ import type {
   LocalBranchPruneResult,
 } from "../types/git";
 
-export type CheckoutBranchStrategy = "move" | "stash";
+export type CheckoutBranchStrategy = "move" | "stash" | "discard";
 
 export interface PushBranchRequest {
   remote: string;
@@ -1015,6 +1017,12 @@ export const gitApi = {
     invoke<RepositoryGithubOverview>("get_repository_github_overview", {
       repoPath,
     }),
+
+  getBranchPullRequests: (repoPath: string, branchRef: string) =>
+    invoke<BranchPullRequestMatch[]>("get_branch_pull_requests", { repoPath, branchRef }),
+
+  getPullRequestSummary: (repoPath: string, number: number) =>
+    invoke<PullRequestSummary>("get_pull_request_summary", { repoPath, number }),
 
   getPullRequestDiff: (repoPath: string, number: number) =>
     invoke<PullRequestDiff>("get_pull_request_diff", { repoPath, number }),
