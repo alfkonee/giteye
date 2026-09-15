@@ -770,6 +770,8 @@ mod tests {
         git(path, &["init", "-b", "main"]);
         git(path, &["config", "user.name", "GitEye Test"]);
         git(path, &["config", "user.email", "test@giteye.local"]);
+        git(path, &["config", "core.autocrlf", "false"]);
+        git(path, &["config", "core.eol", "lf"]);
         fs::write(path.join("README.md"), "# source\n").expect("write source file");
         git(path, &["add", "README.md"]);
         git(path, &["commit", "-m", "Initial commit"]);
