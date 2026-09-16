@@ -5,13 +5,22 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatAmendPreview, formatRebasePreview } from "../../lib/git-preview";
-import type { Branch, CommitSummary, ReflogEntry, ResetMode, ResetPreview, StartRebaseRequest } from "../../types/git";
-import { localNameForRemoteRef, planBranchActivation } from "../../lib/branch-activation";
+import type {
+  Branch,
+  CommitSummary,
+  ReflogEntry,
+  ResetMode,
+  ResetPreview,
+  StartRebaseRequest,
+} from "../../types/git";
+import {
+  localNameForRemoteRef,
+  planBranchActivation,
+} from "../../lib/branch-activation";
 import type { DisplayRef } from "./commit-refs";
 import { MoreHorizontal } from "lucide-react";
 import { appDialog } from "../common/AppDialogProvider";
 import { Button } from "../ui";
-
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
@@ -25,9 +34,20 @@ type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
  */
 type RemoteRefEntry =
   | { kind: "checkout"; refLabel: string; localName: string }
-  | { kind: "fast-forward"; refLabel: string; localName: string; behind: number }
+  | {
+      kind: "fast-forward";
+      refLabel: string;
+      localName: string;
+      behind: number;
+    }
   | { kind: "synced"; refLabel: string; localName: string }
-  | { kind: "diverged"; refLabel: string; localName: string; ahead: number; behind: number };
+  | {
+      kind: "diverged";
+      refLabel: string;
+      localName: string;
+      ahead: number;
+      behind: number;
+    };
 
 interface CommitActionStripProps {
   target: CommitActionTarget;
@@ -45,8 +65,14 @@ const COMMIT_MENU_HEIGHT = 460;
 const COMMIT_MENU_EDGE_GAP = 8;
 
 function clampMenuPosition(x: number, y: number) {
-  const maxLeft = Math.max(COMMIT_MENU_EDGE_GAP, window.innerWidth - COMMIT_MENU_WIDTH - COMMIT_MENU_EDGE_GAP);
-  const maxTop = Math.max(COMMIT_MENU_EDGE_GAP, window.innerHeight - COMMIT_MENU_HEIGHT - COMMIT_MENU_EDGE_GAP);
+  const maxLeft = Math.max(
+    COMMIT_MENU_EDGE_GAP,
+    window.innerWidth - COMMIT_MENU_WIDTH - COMMIT_MENU_EDGE_GAP,
+  );
+  const maxTop = Math.max(
+    COMMIT_MENU_EDGE_GAP,
+    window.innerHeight - COMMIT_MENU_HEIGHT - COMMIT_MENU_EDGE_GAP,
+  );
   return {
     left: Math.min(Math.max(x, COMMIT_MENU_EDGE_GAP), maxLeft),
     top: Math.min(Math.max(y, COMMIT_MENU_EDGE_GAP), maxTop),
@@ -88,17 +114,24 @@ function formatResetPreview(preview: ResetPreview | string) {
   const target = preview.targetCommit;
   if (preview.summary) lines.push(preview.summary);
   if (target) {
-    lines.push(`Target: ${target.shortHash || target.hash.slice(0, 8)} ${target.message}`);
+    lines.push(
+      `Target: ${target.shortHash || target.hash.slice(0, 8)} ${target.message}`,
+    );
   } else if (preview.targetHash || preview.targetSubject) {
-    lines.push(`Target: ${preview.targetHash?.slice(0, 8) ?? "commit"} ${preview.targetSubject ?? ""}`.trim());
+    lines.push(
+      `Target: ${preview.targetHash?.slice(0, 8) ?? "commit"} ${preview.targetSubject ?? ""}`.trim(),
+    );
   }
-  if (preview.currentHead) lines.push(`Current HEAD: ${preview.currentHead.slice(0, 8)}`);
+  if (preview.currentHead)
+    lines.push(`Current HEAD: ${preview.currentHead.slice(0, 8)}`);
 
   const removed = preview.commitsToRemove ?? [];
   if (removed.length > 0) {
     lines.push("", `Commits no longer on this branch (${removed.length}):`);
     for (const commit of removed.slice(0, 8)) {
-      lines.push(`• ${commit.shortHash || commit.hash.slice(0, 8)} ${commit.message}`);
+      lines.push(
+        `• ${commit.shortHash || commit.hash.slice(0, 8)} ${commit.message}`,
+      );
     }
     if (removed.length > 8) lines.push(`• …and ${removed.length - 8} more`);
   }
@@ -106,8 +139,12 @@ function formatResetPreview(preview: ResetPreview | string) {
   const changedFiles = preview.changedFiles ?? [];
   const legacyFiles = preview.filesChanged ?? [];
   if (changedFiles.length > 0 || legacyFiles.length > 0) {
-    lines.push("", `Files changed by the reset target (${changedFiles.length || legacyFiles.length}):`);
-    for (const file of changedFiles.slice(0, 10)) lines.push(`• ${file.status} ${file.path}`);
+    lines.push(
+      "",
+      `Files changed by the reset target (${changedFiles.length || legacyFiles.length}):`,
+    );
+    for (const file of changedFiles.slice(0, 10))
+      lines.push(`• ${file.status} ${file.path}`);
     for (const file of legacyFiles.slice(0, 10)) lines.push(`• ${file}`);
     const overflow = Math.max(changedFiles.length, legacyFiles.length) - 10;
     if (overflow > 0) lines.push(`• …and ${overflow} more`);
@@ -126,11 +163,13 @@ function defaultBranchName(prefix: string, hash: string) {
 }
 
 async function promptBranchName(defaultName: string, sourceLabel: string) {
-  const name = (await appDialog.prompt(
-    `Create a new branch from ${sourceLabel}.`,
-    defaultName,
-    "New branch name",
-  ))?.trim();
+  const name = (
+    await appDialog.prompt(
+      `Create a new branch from ${sourceLabel}.`,
+      defaultName,
+      "New branch name",
+    )
+  )?.trim();
   return name || null;
 }
 
@@ -159,25 +198,51 @@ function integrableRefs(refs: DisplayRef[] | undefined): DisplayRef[] {
 function useHistorySurgeryActions() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
-  const { data: repoInfo } = useQuery(gitQueries.repositoryInfo(activeRepoPath));
-  const createBranchMutation = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
-  const cherryPickMutation = useMutation(gitMutations.cherryPickCommit(queryClient, activeRepoPath));
-  const revertMutation = useMutation(gitMutations.revertCommit(queryClient, activeRepoPath));
-  const previewResetMutation = useMutation(gitMutations.previewResetToCommit(queryClient, activeRepoPath));
-  const resetMutation = useMutation(gitMutations.resetToCommit(queryClient, activeRepoPath));
-  const previewAmendMutation = useMutation(gitMutations.previewAmend(queryClient, activeRepoPath));
-  const amendMutation = useMutation(gitMutations.amendCommit(queryClient, activeRepoPath));
-  const checkoutReflogMutation = useMutation(gitMutations.checkoutReflogEntry(queryClient, activeRepoPath));
-  const branchFromReflogMutation = useMutation(gitMutations.createBranchFromReflogEntry(queryClient, activeRepoPath));
-  const mergeRefMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
+  const { data: repoInfo } = useQuery(
+    gitQueries.repositoryInfo(activeRepoPath),
+  );
+  const createBranchMutation = useMutation(
+    gitMutations.createBranch(queryClient, activeRepoPath),
+  );
+  const cherryPickMutation = useMutation(
+    gitMutations.cherryPickCommit(activeRepoPath),
+  );
+  const revertMutation = useMutation(gitMutations.revertCommit(activeRepoPath));
+  const previewResetMutation = useMutation(
+    gitMutations.previewResetToCommit(queryClient, activeRepoPath),
+  );
+  const resetMutation = useMutation(
+    gitMutations.resetToCommit(queryClient, activeRepoPath),
+  );
+  const previewAmendMutation = useMutation(
+    gitMutations.previewAmend(queryClient, activeRepoPath),
+  );
+  const amendMutation = useMutation(
+    gitMutations.amendCommit(queryClient, activeRepoPath),
+  );
+  const checkoutReflogMutation = useMutation(
+    gitMutations.checkoutReflogEntry(queryClient, activeRepoPath),
+  );
+  const branchFromReflogMutation = useMutation(
+    gitMutations.createBranchFromReflogEntry(queryClient, activeRepoPath),
+  );
+  const mergeRefMutation = useMutation(
+    gitMutations.mergeBranch(queryClient, activeRepoPath),
+  );
   const fastForwardMutation = useMutation(
     gitMutations.fastForwardBranch(queryClient, activeRepoPath),
   );
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
-  const previewRebaseMutation = useMutation(gitMutations.previewRebase(activeRepoPath));
-  const rebaseUpstreamMutation = useMutation(gitMutations.rebaseUpstream(queryClient, activeRepoPath));
+  const previewRebaseMutation = useMutation(
+    gitMutations.previewRebase(activeRepoPath),
+  );
+  const rebaseUpstreamMutation = useMutation(
+    gitMutations.rebaseUpstream(queryClient, activeRepoPath),
+  );
   const setActiveView = useAppStore((s) => s.setActiveView);
-  const setPendingAdvancedBranchName = useAppStore((s) => s.setPendingAdvancedBranchName);
+  const setPendingAdvancedBranchName = useAppStore(
+    (s) => s.setPendingAdvancedBranchName,
+  );
 
   const isBusy =
     createBranchMutation.isPending ||
@@ -236,13 +301,20 @@ function useHistorySurgeryActions() {
 
   const createBranchFromCommit = async (target: CommitActionTarget) => {
     if (!activeRepoPath) return;
-    const branchName = await promptBranchName(defaultBranchName("branch", target.hash), shortHash(target));
+    const branchName = await promptBranchName(
+      defaultBranchName("branch", target.hash),
+      shortHash(target),
+    );
     if (!branchName) return;
     const checkout = await appDialog.confirm(
       `Check out "${branchName}" after creating it from ${shortHash(target)}?`,
       "Check out new branch?",
     );
-    createBranchMutation.mutate({ name: branchName, checkout, startPoint: target.hash });
+    createBranchMutation.mutate({
+      name: branchName,
+      checkout,
+      startPoint: target.hash,
+    });
   };
 
   const resetToCommit = async (target: CommitActionTarget, mode: ResetMode) => {
@@ -283,20 +355,30 @@ function useHistorySurgeryActions() {
   };
 
   const promptReset = async (target: CommitActionTarget) => {
-    const mode = (await appDialog.prompt(
-      "Choose reset mode: soft, mixed, or hard.",
-      "mixed",
-      "Reset mode",
-    ))?.trim().toLowerCase();
+    const mode = (
+      await appDialog.prompt(
+        "Choose reset mode: soft, mixed, or hard.",
+        "mixed",
+        "Reset mode",
+      )
+    )
+      ?.trim()
+      .toLowerCase();
     if (!mode) return;
     if (!isResetMode(mode)) {
-      await appDialog.alert("Reset mode must be soft, mixed, or hard.", "Invalid reset mode");
+      await appDialog.alert(
+        "Reset mode must be soft, mixed, or hard.",
+        "Invalid reset mode",
+      );
       return;
     }
     await resetToCommit(target, mode);
   };
 
-  const amendHead = async (target: CommitActionTarget, isHeadCommit: boolean) => {
+  const amendHead = async (
+    target: CommitActionTarget,
+    isHeadCommit: boolean,
+  ) => {
     if (!activeRepoPath) return;
     if (!isHeadCommit) {
       await appDialog.alert(
@@ -314,7 +396,9 @@ function useHistorySurgeryActions() {
     const request = { message: message.trim() || null };
     let previewText: string;
     try {
-      previewText = formatAmendPreview(await previewAmendMutation.mutateAsync(request));
+      previewText = formatAmendPreview(
+        await previewAmendMutation.mutateAsync(request),
+      );
     } catch (error) {
       await appDialog.alert(
         `Unable to preview amend for HEAD (${shortHash(target)}): ${errorMessage(error)}`,
@@ -350,13 +434,20 @@ function useHistorySurgeryActions() {
   const createBranchFromReflog = async (entry: ReflogEntry) => {
     if (!activeRepoPath) return;
     const label = `${entry.selector} (${entry.shortHash || entry.hash.slice(0, 8)})`;
-    const branchName = await promptBranchName(defaultBranchName("recover", entry.hash), label);
+    const branchName = await promptBranchName(
+      defaultBranchName("recover", entry.hash),
+      label,
+    );
     if (!branchName) return;
     const checkout = await appDialog.confirm(
       `Check out "${branchName}" after creating it from ${entry.selector}?`,
       "Check out recovery branch?",
     );
-    branchFromReflogMutation.mutate({ selector: entry.selector, branchName, checkout });
+    branchFromReflogMutation.mutate({
+      selector: entry.selector,
+      branchName,
+      checkout,
+    });
   };
 
   const currentBranchLabel = repoInfo?.currentBranch ?? "the current branch";
@@ -385,7 +476,9 @@ function useHistorySurgeryActions() {
 
     let previewText: string;
     try {
-      previewText = formatRebasePreview(await previewRebaseMutation.mutateAsync(request));
+      previewText = formatRebasePreview(
+        await previewRebaseMutation.mutateAsync(request),
+      );
     } catch (error) {
       await appDialog.alert(
         `Unable to preview rebase of ${currentBranchLabel} onto ${ref}: ${errorMessage(error)}`,
@@ -430,7 +523,11 @@ function useHistorySurgeryActions() {
     ) {
       return;
     }
-    createBranchMutation.mutate({ name: localName, checkout: true, startPoint: refLabel });
+    createBranchMutation.mutate({
+      name: localName,
+      checkout: true,
+      startPoint: refLabel,
+    });
   };
 
   const fastForwardLocalToRef = (localName: string, upstream: string) => {
@@ -438,7 +535,8 @@ function useHistorySurgeryActions() {
     fastForwardMutation.mutate({ branchName: localName, upstream });
   };
 
-  const isHead = (target: CommitActionTarget) => repoInfo?.headCommit === target.hash;
+  const isHead = (target: CommitActionTarget) =>
+    repoInfo?.headCommit === target.hash;
 
   return {
     isBusy,
@@ -462,9 +560,16 @@ function useHistorySurgeryActions() {
   };
 }
 
-
-export function CommitActionStrip({ target, isHeadCommit, compact = false, refs }: CommitActionStripProps) {
-  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+export function CommitActionStrip({
+  target,
+  isHeadCommit,
+  compact = false,
+  refs,
+}: CommitActionStripProps) {
+  const [menuPosition, setMenuPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -487,7 +592,11 @@ export function CommitActionStrip({ target, isHeadCommit, compact = false, refs 
         )}
       >
         <MoreHorizontal className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
-        {!compact ? <span>Actions</span> : <span className="sr-only">Commit actions</span>}
+        {!compact ? (
+          <span>Actions</span>
+        ) : (
+          <span className="sr-only">Commit actions</span>
+        )}
       </button>
       {menuPosition ? (
         <CommitActionContextMenu
@@ -520,7 +629,11 @@ function remoteRefEntries(
     const plan = planBranchActivation(remote, branches);
     switch (plan.kind) {
       case "create-tracking":
-        entries.push({ kind: "checkout", refLabel: ref.label, localName: plan.localName });
+        entries.push({
+          kind: "checkout",
+          refLabel: ref.label,
+          localName: plan.localName,
+        });
         break;
       case "fast-forward":
         entries.push({
@@ -531,7 +644,11 @@ function remoteRefEntries(
         });
         break;
       case "already-synced":
-        entries.push({ kind: "synced", refLabel: ref.label, localName: plan.local.shortName });
+        entries.push({
+          kind: "synced",
+          refLabel: ref.label,
+          localName: plan.local.shortName,
+        });
         break;
       case "diverged":
         entries.push({
@@ -580,7 +697,6 @@ export function CommitActionContextMenu({
 
   if (typeof document === "undefined" || !document.body) return null;
 
-
   return createPortal(
     <div
       className="fixed inset-0 z-[110]"
@@ -600,8 +716,12 @@ export function CommitActionContextMenu({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="giteye-context-header flex items-baseline gap-2 border-b border-[var(--color-border-muted)]">
-          <span className="font-mono text-[11px] font-semibold text-[var(--color-accent)]">{shortHash(target)}</span>
-          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-text-muted)]">{target.message}</span>
+          <span className="font-mono text-[11px] font-semibold text-[var(--color-accent)]">
+            {shortHash(target)}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-text-muted)]">
+            {target.message}
+          </span>
         </div>
         <CommitMenuItem
           label="Cherry-pick"
@@ -654,7 +774,9 @@ export function CommitActionContextMenu({
               detail="open integrate drawer"
               tone="primary"
               disabled={actions.isBusy}
-              onSelect={() => actions.openAdvancedIntegrate(integrationRefs[0].label)}
+              onSelect={() =>
+                actions.openAdvancedIntegrate(integrationRefs[0].label)
+              }
               onClose={onClose}
             />
           </>
@@ -677,7 +799,9 @@ export function CommitActionContextMenu({
                         : "cannot derive a local branch name"
                     }
                     disabled={actions.isBusy || !entry.localName}
-                    onSelect={() => void actions.checkoutRemoteRef(entry.refLabel)}
+                    onSelect={() =>
+                      void actions.checkoutRemoteRef(entry.refLabel)
+                    }
                     onClose={onClose}
                   />
                 );
@@ -695,7 +819,10 @@ export function CommitActionContextMenu({
                     }
                     disabled={actions.isBusy}
                     onSelect={() =>
-                      actions.fastForwardLocalToRef(entry.localName, entry.refLabel)
+                      actions.fastForwardLocalToRef(
+                        entry.localName,
+                        entry.refLabel,
+                      )
                     }
                     onClose={onClose}
                   />
@@ -749,7 +876,9 @@ export function CommitActionContextMenu({
         <div className="giteye-context-separator" />
         <CommitMenuItem
           label="Amend HEAD"
-          detail={head ? "rewrite with staged changes" : "only HEAD can be amended"}
+          detail={
+            head ? "rewrite with staged changes" : "only HEAD can be amended"
+          }
           tone="primary"
           disabled={actions.isBusy || !head}
           onSelect={() => actions.amendHead(target, head)}
@@ -829,10 +958,19 @@ export function ReflogRecoveryPanel({ open }: ReflogRecoveryPanelProps) {
     <div className="border-b border-[var(--color-border-muted)] bg-[var(--color-bg-primary)] px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-[12px] font-semibold text-[var(--color-text-primary)]">Reflog recovery</h3>
-          <p className="text-[11px] text-[var(--color-text-muted)]">Create a branch from a previous HEAD or check it out after confirming.</p>
+          <h3 className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+            Reflog recovery
+          </h3>
+          <p className="text-[11px] text-[var(--color-text-muted)]">
+            Create a branch from a previous HEAD or check it out after
+            confirming.
+          </p>
         </div>
-        {reflogQuery.isFetching ? <span className="text-[11px] text-[var(--color-text-muted)]">Loading…</span> : null}
+        {reflogQuery.isFetching ? (
+          <span className="text-[11px] text-[var(--color-text-muted)]">
+            Loading…
+          </span>
+        ) : null}
       </div>
       {reflogQuery.error ? (
         <p className="rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-2 py-1.5 text-[11px] text-[var(--color-danger)]">
@@ -845,12 +983,21 @@ export function ReflogRecoveryPanel({ open }: ReflogRecoveryPanelProps) {
       ) : (
         <div className="max-h-56 overflow-auto rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)]/65">
           {entries.map((entry) => (
-            <div key={`${entry.selector}-${entry.hash}`} className="grid grid-cols-[76px_minmax(0,1fr)_auto] items-center gap-2 border-b border-[var(--color-border-muted)] px-2 py-1.5 text-[11px] last:border-b-0">
-              <span className="font-mono text-[var(--color-accent)]">{entry.selector}</span>
+            <div
+              key={`${entry.selector}-${entry.hash}`}
+              className="grid grid-cols-[76px_minmax(0,1fr)_auto] items-center gap-2 border-b border-[var(--color-border-muted)] px-2 py-1.5 text-[11px] last:border-b-0"
+            >
+              <span className="font-mono text-[var(--color-accent)]">
+                {entry.selector}
+              </span>
               <div className="min-w-0">
-                <div className="truncate text-[var(--color-text-primary)]">{entry.message}</div>
+                <div className="truncate text-[var(--color-text-primary)]">
+                  {entry.message}
+                </div>
                 <div className="truncate text-[10px] text-[var(--color-text-muted)]">
-                  {(entry.shortHash || entry.hash.slice(0, 8))} · {entry.authorName ?? "unknown"} · {formatReflogTime(entry.timestamp)}
+                  {entry.shortHash || entry.hash.slice(0, 8)} ·{" "}
+                  {entry.authorName ?? "unknown"} ·{" "}
+                  {formatReflogTime(entry.timestamp)}
                 </div>
               </div>
               <div className="flex gap-1">

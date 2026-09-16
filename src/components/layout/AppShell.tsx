@@ -5,31 +5,48 @@ import { AppChrome } from "./AppChrome";
 import { RepositoryTabs } from "./RepositoryTabs";
 import { useAppChromeSlots } from "./AppSidebar";
 import { useAppStore } from "../../stores/app-store";
+import { useConflictStore } from "../../stores/conflict-store";
 import { useJobStore, isTerminalStatus } from "../../stores/job-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
 import { Circle, GitBranch, TerminalSquare } from "lucide-react";
-import type { RepositoryParent, ViewType } from "../../types/git";
+import type {
+  OperationSnapshot,
+  RepositoryParent,
+  ViewType,
+} from "../../types/git";
 import { getViewDefinition } from "../../lib/view-registry";
 import { cn } from "../../lib/cn";
+import { operationName, operationStatus } from "../commit-history/commit-graph";
 
 export function AppShell() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const activeView = useAppStore((s) => s.activeView);
-  const { data: snapshot, error } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
-  const { data: rebaseState } = useQuery(
-    gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
+  const { data: snapshot, error } = useQuery(
+    gitQueries.repositorySnapshot(activeRepoPath),
+  );
+  const { data: operation } = useQuery(
+    gitQueries.operationSummary(activeRepoPath),
   );
   const chrome = useAppChromeSlots();
 
   const repoInfo = snapshot?.repositoryInfo;
-  const fallbackRepoName = activeRepoPath ? basename(activeRepoPath) : undefined;
+  const fallbackRepoName = activeRepoPath
+    ? basename(activeRepoPath)
+    : undefined;
   const repoName = repoInfo?.name ?? fallbackRepoName ?? "Repository";
-  const chromeTitle = repoInfo?.currentBranch ? `GitEye · ${repoName} · ${repoInfo.currentBranch}` : `GitEye · ${repoName}`;
+  const chromeTitle = repoInfo?.currentBranch
+    ? `GitEye · ${repoName} · ${repoInfo.currentBranch}`
+    : `GitEye · ${repoName}`;
 
   return (
-    <AppChrome title={chromeTitle} subtitle={viewLabel(activeView)} leading={chrome.leading} trailing={chrome.trailing}>
+    <AppChrome
+      title={chromeTitle}
+      subtitle={viewLabel(activeView)}
+      leading={chrome.leading}
+      trailing={chrome.trailing}
+    >
       <div className="flex h-full min-h-0 w-full flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
         <RepositoryTabs />
         <Toolbar
@@ -55,7 +72,12 @@ export function AppShell() {
           isClean={repoInfo?.isClean}
           submoduleParent={repoInfo?.submoduleParent ?? null}
           activeView={activeView}
-          isRebasing={Boolean(rebaseState?.inProgress)}
+          operation={operation}
+          onOpenOperation={() => {
+            if (!activeRepoPath) return;
+            useAppStore.getState().setActiveView("workspace");
+            useConflictStore.getState().open(activeRepoPath);
+          }}
         />
       </div>
     </AppChrome>
@@ -67,7 +89,8 @@ function StatusBar({
   branchName,
   isClean,
   activeView,
-  isRebasing,
+  operation,
+  onOpenOperation,
   submoduleParent,
 }: {
   repoName?: string;
@@ -75,13 +98,20 @@ function StatusBar({
   isClean?: boolean;
   activeView: ViewType;
   submoduleParent?: RepositoryParent | null;
-  isRebasing: boolean;
+  operation?: OperationSnapshot;
+  onOpenOperation: () => void;
 }) {
   return (
     <div className="giteye-statusbar flex shrink-0 items-center gap-1.5 overflow-hidden border-t border-[var(--color-border-muted)] bg-[var(--color-bg-secondary)] px-2 text-xs text-[var(--color-text-muted)]">
-      <span className="min-w-0 max-w-[220px] truncate px-1">{repoName ?? "No repository"}</span>
+      <span className="min-w-0 max-w-[220px] truncate px-1">
+        {repoName ?? "No repository"}
+      </span>
       {branchName && (
-        <span className="giteye-chip max-w-[240px] px-1.5 text-[10.5px]" data-tone="accent" title={branchName}>
+        <span
+          className="giteye-chip max-w-[240px] px-1.5 text-[10.5px]"
+          data-tone="accent"
+          title={branchName}
+        >
           <GitBranch className="h-3 w-3 shrink-0" />
           <span className="truncate">{branchName}</span>
         </span>
@@ -98,19 +128,33 @@ function StatusBar({
         </span>
       ) : null}
       {isClean !== undefined && (
-        <span className="giteye-chip px-1.5 text-[10.5px]" data-tone={isClean ? "success" : "warning"}>
+        <span
+          className="giteye-chip px-1.5 text-[10.5px]"
+          data-tone={isClean ? "success" : "warning"}
+        >
           <Circle className="h-2 w-2 fill-current" />
           {isClean ? "Clean" : "Changes"}
         </span>
       )}
-      {isRebasing && (
-        <span className="giteye-chip px-1.5 text-[10.5px]" data-tone="warning">
-          <Circle className="h-2 w-2 fill-current" />
-          Rebase active
-        </span>
-      )}
+      {operation?.operation && operation.phase !== "idle" ? (
+        <button
+          type="button"
+          onClick={onOpenOperation}
+          aria-haspopup="dialog"
+          className="giteye-chip shrink-0 px-1.5 text-[10.5px] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+          data-tone={operation.phase === "conflicted" ? "warning" : "accent"}
+          title={`${operationName(operation.operation)} active · ${operationStatus(operation)} — open conflict resolver`}
+          aria-label={`${operationName(operation.operation)} active · ${operationStatus(operation)} — open conflict resolver`}
+        >
+          <Circle className="h-2 w-2 fill-current" aria-hidden="true" />
+          {operationName(operation.operation)} ·{" "}
+          {operation.phase === "conflicted" ? "conflicts" : "ready"}
+        </button>
+      ) : null}
       <CommandLogStatusButton />
-      <span className="giteye-status-optional ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">{getViewDefinition(activeView).label}</span>
+      <span className="giteye-status-optional ml-auto truncate px-1 capitalize text-[var(--color-text-subtle)]">
+        {getViewDefinition(activeView).label}
+      </span>
     </div>
   );
 }
@@ -123,7 +167,9 @@ function CommandLogStatusButton() {
   const jobsById = useJobStore((state) => state.jobsById);
   const open = useJobStore((state) => state.commandLogOpen);
   const toggleCommandLog = useJobStore((state) => state.toggleCommandLog);
-  const runningCount = Object.values(jobsById).filter((job) => !isTerminalStatus(job.status)).length;
+  const runningCount = Object.values(jobsById).filter(
+    (job) => !isTerminalStatus(job.status),
+  ).length;
 
   return (
     <button
@@ -138,7 +184,9 @@ function CommandLogStatusButton() {
       data-tone={runningCount > 0 ? "accent" : undefined}
     >
       <TerminalSquare className="h-3 w-3 shrink-0" />
-      <span>{runningCount > 0 ? `${runningCount} running` : "Command log"}</span>
+      <span>
+        {runningCount > 0 ? `${runningCount} running` : "Command log"}
+      </span>
       <kbd className="giteye-kbd ml-0.5">`</kbd>
     </button>
   );

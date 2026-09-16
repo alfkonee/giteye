@@ -1,24 +1,60 @@
 use crate::errors::AppError;
 use crate::git::history_service;
+use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
+use crate::models::job::GitJobSummary;
 use crate::models::{AmendPreview, ReflogEntry, ResetMode, ResetPreview};
 use std::path::Path;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub async fn cherry_pick_commit(repo_path: String, commit_hash: String) -> Result<(), AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        history_service::cherry_pick_commit(Path::new(&repo_path), &commit_hash)
-    })
-    .await
-    .map_err(|error| AppError::IoError(error.to_string()))?
+pub fn cherry_pick_commit(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+    commit_hash: String,
+) -> Result<GitJobSummary, AppError> {
+    start_history_operation(app, jobs, repo_path, commit_hash, false)
 }
 
 #[tauri::command]
-pub async fn revert_commit(repo_path: String, commit_hash: String) -> Result<(), AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        history_service::revert_commit(Path::new(&repo_path), &commit_hash)
-    })
-    .await
-    .map_err(|error| AppError::IoError(error.to_string()))?
+pub fn revert_commit(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+    commit_hash: String,
+) -> Result<GitJobSummary, AppError> {
+    start_history_operation(app, jobs, repo_path, commit_hash, true)
+}
+
+fn start_history_operation(
+    app: AppHandle,
+    jobs: State<'_, GitJobRunnerState>,
+    repo_path: String,
+    commit_hash: String,
+    revert: bool,
+) -> Result<GitJobSummary, AppError> {
+    let args =
+        history_service::history_operation_args(Path::new(&repo_path), &commit_hash, revert)?;
+    let preflight_repo = repo_path.clone();
+    let request = GitJobRequest::new(
+        repo_path,
+        if revert {
+            "revert.start"
+        } else {
+            "cherryPick.start"
+        },
+        if revert {
+            "Revert commit"
+        } else {
+            "Cherry-pick commit"
+        },
+        args,
+    )
+    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"])
+    .before_start(Box::new(move || {
+        history_service::preflight_history_operation(Path::new(&preflight_repo))
+    }));
+    jobs.start_job(app, request)
 }
 
 #[tauri::command]
@@ -53,7 +89,10 @@ pub async fn reset_to_commit(
 }
 
 #[tauri::command]
-pub async fn preview_amend(repo_path: String, message: Option<String>) -> Result<AmendPreview, AppError> {
+pub async fn preview_amend(
+    repo_path: String,
+    message: Option<String>,
+) -> Result<AmendPreview, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         history_service::preview_amend(Path::new(&repo_path), message.as_deref())
     })

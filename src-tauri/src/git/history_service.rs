@@ -12,18 +12,32 @@ pub struct AmendOptions {
     pub allow_empty: bool,
 }
 
-pub fn cherry_pick_commit(repo_path: &Path, commit_hash: &str) -> Result<(), AppError> {
+pub fn history_operation_args(
+    repo_path: &Path,
+    commit_hash: &str,
+    revert: bool,
+) -> Result<Vec<String>, AppError> {
     let commit_hash = required_git_arg(commit_hash, "commit hash")?;
-    ensure_clean_worktree(repo_path, "cherry-picking")?;
-    GitCli::run(repo_path, &["cherry-pick", commit_hash])?;
-    Ok(())
+    let commit = resolve_commit(repo_path, commit_hash)?;
+    Ok(vec![
+        "-c".into(),
+        "core.editor=true".into(),
+        if revert { "revert" } else { "cherry-pick" }.into(),
+        "--no-edit".into(),
+        commit,
+    ])
 }
 
-pub fn revert_commit(repo_path: &Path, commit_hash: &str) -> Result<(), AppError> {
-    let commit_hash = required_git_arg(commit_hash, "commit hash")?;
-    ensure_clean_worktree(repo_path, "reverting")?;
-    GitCli::run(repo_path, &["revert", "--no-edit", commit_hash])?;
-    Ok(())
+pub fn preflight_history_operation(repo_path: &Path) -> Result<(), AppError> {
+    if crate::git::rebase_service::get_operation_summary(repo_path)?
+        .operation
+        .is_some()
+    {
+        return Err(AppError::GitError(
+            "Finish or abort the current Git operation first.".into(),
+        ));
+    }
+    ensure_clean_worktree(repo_path, "starting a history operation")
 }
 
 pub fn preview_reset_to_commit(
@@ -511,7 +525,14 @@ mod tests {
         let feature_commit = commit_file(&temp.path, "feature.txt", "feature\n", "Feature");
         git(&temp.path, &["switch", "main"]);
 
-        cherry_pick_commit(&temp.path, &feature_commit).expect("cherry-pick");
+        preflight_history_operation(&temp.path).expect("preflight");
+        let args = history_operation_args(&temp.path, &feature_commit, false)
+            .expect("cherry-pick arguments");
+        GitCli::run(
+            &temp.path,
+            &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .expect("cherry-pick");
 
         assert_eq!(
             fs::read_to_string(temp.path.join("feature.txt")).expect("read feature"),
@@ -530,7 +551,14 @@ mod tests {
         commit_file(&temp.path, "README.md", "base\n", "Base");
         let feature_commit = commit_file(&temp.path, "feature.txt", "feature\n", "Feature");
 
-        revert_commit(&temp.path, &feature_commit).expect("revert");
+        preflight_history_operation(&temp.path).expect("preflight");
+        let args =
+            history_operation_args(&temp.path, &feature_commit, true).expect("revert arguments");
+        GitCli::run(
+            &temp.path,
+            &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+        .expect("revert");
 
         assert!(!temp.path.join("feature.txt").exists());
         assert_eq!(

@@ -1,21 +1,14 @@
 use crate::errors::AppError;
 use crate::git::cli::{has_worktree_changes, required_git_arg};
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
-use crate::git::rebase_service;
+use crate::git::{conflict_service, rebase_service};
 use crate::models::job::GitJobSummary;
 use crate::models::rebase::{
-    ConflictContent, GitOperationSummary, RebasePreviewItem, RebaseState, RebaseTodoItem,
-    RerereStatus,
+    ConflictContent, ConflictResolutionRequest, OperationSnapshot, RebasePreviewItem,
+    RebaseTodoItem, RerereStatus,
 };
 use std::path::Path;
 use tauri::{AppHandle, State};
-
-#[tauri::command]
-pub async fn get_rebase_state(repo_path: String) -> Result<RebaseState, AppError> {
-    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rebase_state(Path::new(&repo_path)))
-        .await
-        .map_err(|error| AppError::IoError(error.to_string()))?
-}
 
 #[tauri::command]
 pub async fn get_conflict_content(
@@ -23,86 +16,75 @@ pub async fn get_conflict_content(
     file_path: String,
 ) -> Result<ConflictContent, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        rebase_service::get_conflict_content(Path::new(&repo_path), &file_path)
+        conflict_service::get_conflict_content(Path::new(&repo_path), &file_path)
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub fn continue_rebase(
+pub async fn save_conflict_result(
     app: AppHandle,
-    jobs: State<'_, GitJobRunnerState>,
     repo_path: String,
-) -> Result<GitJobSummary, AppError> {
-    let request = GitJobRequest::new(
-        repo_path,
-        "rebase.continue",
-        "Continue rebase",
-        vec!["rebase".to_string(), "--continue".to_string()],
-    )
-    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"]);
-    jobs.start_job(app, request)
-}
-
-#[tauri::command]
-pub fn abort_rebase(
-    app: AppHandle,
-    jobs: State<'_, GitJobRunnerState>,
-    repo_path: String,
-) -> Result<GitJobSummary, AppError> {
-    let request = GitJobRequest::new(
-        repo_path,
-        "rebase.abort",
-        "Abort rebase",
-        vec!["rebase".to_string(), "--abort".to_string()],
-    )
-    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"]);
-    jobs.start_job(app, request)
-}
-
-#[tauri::command]
-pub fn skip_rebase(
-    app: AppHandle,
-    jobs: State<'_, GitJobRunnerState>,
-    repo_path: String,
-) -> Result<GitJobSummary, AppError> {
-    let request = GitJobRequest::new(
-        repo_path,
-        "rebase.skip",
-        "Skip rebase commit",
-        vec!["rebase".to_string(), "--skip".to_string()],
-    )
-    .with_invalidation_reasons(vec!["rebase", "refs", "worktree"]);
-    jobs.start_job(app, request)
-}
-
-#[tauri::command]
-pub async fn mark_file_resolved(repo_path: String, file_path: String) -> Result<(), AppError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        rebase_service::mark_file_resolved(Path::new(&repo_path), &file_path)
-    })
-    .await
-    .map_err(|error| AppError::IoError(error.to_string()))?
-}
-
-#[tauri::command]
-pub async fn checkout_conflict_side(
-    repo_path: String,
-    file_path: String,
-    side: String,
+    request: ConflictResolutionRequest,
 ) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        rebase_service::checkout_conflict_side(Path::new(&repo_path), &file_path, &side)
+        use tauri::Manager;
+        app.state::<GitJobRunnerState>()
+            .with_repo_mutation_lock(&repo_path, || {
+                conflict_service::save_conflict_result(Path::new(&repo_path), &request)?;
+                crate::git::repository_service::note_repository_change(
+                    Path::new(&repo_path),
+                    crate::git::state_graph::RepoStateReason::Worktree,
+                );
+                Ok(())
+            })
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub async fn update_rebase_todo(repo_path: String, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
+pub async fn mark_conflict_resolved(
+    app: AppHandle,
+    repo_path: String,
+    request: ConflictResolutionRequest,
+) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        rebase_service::update_rebase_todo(Path::new(&repo_path), items)
+        use tauri::Manager;
+        app.state::<GitJobRunnerState>()
+            .with_repo_mutation_lock(&repo_path, || {
+                conflict_service::mark_conflict_resolved(Path::new(&repo_path), &request)?;
+                crate::git::repository_service::note_repository_change(
+                    Path::new(&repo_path),
+                    crate::git::state_graph::RepoStateReason::Worktree,
+                );
+                Ok(())
+            })
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
+pub async fn update_rebase_todo(
+    app: AppHandle,
+    repo_path: String,
+    items: Vec<RebaseTodoItem>,
+) -> Result<(), AppError> {
+    let expected = rebase_service::get_operation_summary(Path::new(&repo_path))?.id;
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        app.state::<GitJobRunnerState>()
+            .with_repo_mutation_lock(&repo_path, || {
+                let current = rebase_service::get_operation_summary(Path::new(&repo_path))?;
+                if current.id != expected || !current.rebase.in_progress {
+                    return Err(AppError::GitError(
+                        "The rebase changed. Reload the todo list.".into(),
+                    ));
+                }
+                rebase_service::update_rebase_todo(Path::new(&repo_path), items)
+            })
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
@@ -171,20 +153,27 @@ pub fn rebase_upstream(
 
 #[tauri::command]
 pub async fn get_rerere_config(repo_path: String) -> Result<bool, AppError> {
-    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rerere_config(Path::new(&repo_path)))
-        .await
-        .map_err(|error| AppError::IoError(error.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::get_rerere_config(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
 pub async fn get_rerere_status(repo_path: String) -> Result<RerereStatus, AppError> {
-    tauri::async_runtime::spawn_blocking(move || rebase_service::get_rerere_status(Path::new(&repo_path)))
-        .await
-        .map_err(|error| AppError::IoError(error.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || {
+        rebase_service::get_rerere_status(Path::new(&repo_path))
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
 }
 
 #[tauri::command]
-pub async fn set_rerere_enabled(repo_path: String, enabled: bool) -> Result<RerereStatus, AppError> {
+pub async fn set_rerere_enabled(
+    repo_path: String,
+    enabled: bool,
+) -> Result<RerereStatus, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         rebase_service::set_rerere_enabled(Path::new(&repo_path), enabled)
     })
@@ -193,7 +182,7 @@ pub async fn set_rerere_enabled(repo_path: String, enabled: bool) -> Result<Rere
 }
 
 #[tauri::command]
-pub async fn get_operation_summary(repo_path: String) -> Result<GitOperationSummary, AppError> {
+pub async fn get_operation_summary(repo_path: String) -> Result<OperationSnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         rebase_service::get_operation_summary(Path::new(&repo_path))
     })

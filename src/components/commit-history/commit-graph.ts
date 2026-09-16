@@ -1,4 +1,4 @@
-import type { CommitSummary } from "../../types/git";
+import type { CommitSummary, OperationSnapshot } from "../../types/git";
 
 /** Row geometry shared by the commit list, its graph SVG, and the virtualizer. */
 export const COMMIT_ROW_HEIGHT = 28;
@@ -195,4 +195,102 @@ export function laneX(lane: number) {
 
 export function colorForLane(lane: number) {
   return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+export function operationName(
+  operation: OperationSnapshot["operation"],
+): string {
+  switch (operation) {
+    case "merge":
+      return "Merge";
+    case "rebase":
+      return "Rebase";
+    case "cherryPick":
+      return "Cherry-pick";
+    case "revert":
+      return "Revert";
+    case "conflict":
+      return "Conflict resolution";
+    default:
+      return "Git operation";
+  }
+}
+
+export function operationStatus(snapshot: OperationSnapshot): string {
+  if (snapshot.phase === "conflicted") {
+    const count = snapshot.conflicts.length;
+    return `${count} unresolved file${count === 1 ? "" : "s"}`;
+  }
+  return snapshot.allowedActions.includes("continue")
+    ? "Ready to continue"
+    : "Ready for review";
+}
+
+export interface OperationRoleBadge {
+  role: "source" | "target" | "current";
+  label: string;
+  description: string;
+}
+
+/** Annotations only: pending operations never alter the committed DAG. */
+export function operationCommitRoles(
+  snapshot: OperationSnapshot | undefined,
+): Map<string, OperationRoleBadge[]> {
+  const badges = new Map<string, OperationRoleBadge[]>();
+  if (!snapshot || snapshot.phase === "idle" || !snapshot.operation)
+    return badges;
+
+  for (const role of ["source", "target", "current"] as const) {
+    const commit = snapshot[role];
+    if (!commit) continue;
+    const label =
+      role === "current" && snapshot.operation === "rebase"
+        ? "Replaying"
+        : role === "current" && snapshot.operation === "cherryPick"
+          ? "Picking"
+          : role === "current" && snapshot.operation === "revert"
+            ? "Reverting"
+            : role[0].toUpperCase() + role.slice(1);
+    const badge = {
+      role,
+      label,
+      description: `${operationName(snapshot.operation)} ${role}: ${commit.label} · ${commit.hash} · ${commit.subject}`,
+    };
+    const existing = badges.get(commit.hash);
+    if (existing) existing.push(badge);
+    else badges.set(commit.hash, [badge]);
+  }
+  return badges;
+}
+
+/**
+ * A contained operation diagram, not edges into virtualized history. Source
+ * and target can share a real lane at different rows, so separate them here
+ * without modifying the actual graph's lane assignment.
+ */
+export function operationGraphLanes(
+  snapshot: OperationSnapshot,
+  graphRows: ReadonlyMap<string, CommitGraphRow>,
+) {
+  const target = snapshot.target
+    ? graphRows.get(snapshot.target.hash)
+    : undefined;
+  const sourceCommit =
+    snapshot.operation === "rebase"
+      ? (snapshot.current ?? snapshot.source)
+      : snapshot.source;
+  const source = sourceCommit ? graphRows.get(sourceCommit.hash) : undefined;
+  const targetLane = target?.commitLane ?? 0;
+  const sourceLane =
+    source && source.commitLane !== targetLane
+      ? source.commitLane
+      : targetLane === MAX_VISIBLE_LANES - 1
+        ? targetLane - 1
+        : targetLane + 1;
+  return {
+    targetLane,
+    sourceLane,
+    targetColor: target?.color ?? colorForLane(targetLane),
+    sourceColor: source?.color ?? colorForLane(sourceLane),
+  };
 }
