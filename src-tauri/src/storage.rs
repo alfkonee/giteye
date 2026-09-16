@@ -71,6 +71,7 @@ impl Default for FavoriteRepo {
 pub struct AppSettings {
     pub theme: String,
     pub git_executable_path: Option<String>,
+    pub external_editor_path: Option<String>,
     pub user_name: Option<String>,
     pub user_email: Option<String>,
     pub diff_mode: String,
@@ -83,6 +84,7 @@ impl Default for AppSettings {
         Self {
             theme: "dark".to_string(),
             git_executable_path: None,
+            external_editor_path: None,
             user_name: None,
             user_email: None,
             diff_mode: "unified".to_string(),
@@ -177,6 +179,7 @@ fn normalize_app_settings(mut settings: AppSettings) -> AppSettings {
         settings.diff_mode = default.diff_mode;
     }
     settings.git_executable_path = clean_optional_string(settings.git_executable_path);
+    settings.external_editor_path = clean_optional_string(settings.external_editor_path);
     settings.user_name = clean_optional_string(settings.user_name);
     settings.user_email = clean_optional_string(settings.user_email);
     settings
@@ -393,6 +396,18 @@ pub fn update_git_executable_path(
     })
 }
 
+pub fn update_external_editor_path(
+    app_handle: &tauri::AppHandle,
+    executable_path: Option<String>,
+) -> Result<AppSettings, AppError> {
+    let path = app_settings_path(app_handle)?;
+    with_app_settings_lock(&path, || {
+        let mut settings = load_app_settings_unlocked(&path)?;
+        settings.external_editor_path = executable_path;
+        save_app_settings_unlocked(&path, settings)
+    })
+}
+
 pub fn remember_cli_setup(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
     remember_cli_setup_at(&app_settings_path(app_handle)?)
 }
@@ -419,6 +434,7 @@ fn save_app_settings_at(path: &Path, mut settings: AppSettings) -> Result<AppSet
     with_app_settings_lock(path, || {
         let current = load_app_settings_unlocked(path)?;
         settings.git_executable_path = current.git_executable_path;
+        settings.external_editor_path = current.external_editor_path;
         settings.cli_setup_prompted = current.cli_setup_prompted;
         save_app_settings_unlocked(path, settings)
     })
@@ -562,6 +578,7 @@ mod tests {
         let settings = normalize_app_settings(AppSettings {
             theme: "solarized".to_string(),
             git_executable_path: Some("  /usr/bin/git  ".to_string()),
+            external_editor_path: None,
             user_name: Some("  ".to_string()),
             user_email: Some(" user@example.com ".to_string()),
             diff_mode: "side-by-side".to_string(),
@@ -629,5 +646,22 @@ mod tests {
         assert_eq!(persisted.diff_mode, "split");
         assert!(persisted.background_pull_request_loading);
         assert!(persisted.cli_setup_prompted);
+    }
+
+    #[test]
+    fn delayed_preferences_preserve_external_editor_selection() {
+        let dir = TestDir::new("editor-before-delayed-save");
+        let path = dir.path.join("app_settings.json");
+        let mut delayed = load_app_settings_unlocked(&path).unwrap();
+        delayed.theme = "light".to_string();
+        let mut selected = delayed.clone();
+        selected.external_editor_path = Some("/opt/editor with spaces".to_string());
+        save_app_settings_unlocked(&path, selected).unwrap();
+        let saved = save_app_settings_at(&path, delayed).unwrap();
+        assert_eq!(
+            saved.external_editor_path.as_deref(),
+            Some("/opt/editor with spaces")
+        );
+        assert_eq!(saved.theme, "light");
     }
 }

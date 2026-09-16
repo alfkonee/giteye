@@ -2,16 +2,25 @@ import { useState, type CSSProperties, type MouseEvent } from "react";
 import type { Branch, CommitSummary } from "../../types/git";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
-import type { CommitGraphRow } from "./commit-graph";
+import type { CommitGraphRow, OperationRoleBadge } from "./commit-graph";
 import { COMMIT_ROW_HEIGHT, laneX } from "./commit-graph";
-import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
-import { buildDisplayRefs, describeRef, RefPill, type DisplayRef } from "./commit-refs";
+import {
+  CommitActionContextMenu,
+  CommitActionStrip,
+} from "./HistorySurgeryActions";
+import {
+  buildDisplayRefs,
+  describeRef,
+  RefPill,
+  type DisplayRef,
+} from "./commit-refs";
 import { describeBranchActivation } from "../../lib/branch-activation";
 
 interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
   branches: Branch[] | undefined;
+  operationRoles?: OperationRoleBadge[];
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
   onActivateBranch: (branch: Branch) => void;
@@ -26,13 +35,17 @@ export function CommitListItem({
   commit,
   graph,
   branches,
+  operationRoles,
   isSelected,
   onSelect,
   onActivateBranch,
 }: CommitListItemProps) {
   const displayRefs = buildDisplayRefs(commit.refs, branches);
   const isHead = displayRefs.some((ref) => ref.isHead);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -70,6 +83,17 @@ export function CommitListItem({
       </span>
 
       <span className="flex min-w-0 items-center gap-2">
+        {operationRoles?.map((badge) => (
+          <span
+            key={badge.role}
+            className="giteye-chip shrink-0 text-[9px]"
+            data-tone={badge.role === "target" ? "accent" : "warning"}
+            title={badge.description}
+            aria-label={badge.description}
+          >
+            {badge.label}
+          </span>
+        ))}
         <span
           className={cn(
             "truncate text-[11.5px] text-[var(--color-text-primary)]",
@@ -81,17 +105,28 @@ export function CommitListItem({
         {displayRefs.length > 0 && (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
             {displayRefs.slice(0, 2).map((ref) => {
-              const branch = !ref.isTag && ref.label !== "HEAD"
-                ? branches?.find((candidate) => candidate.shortName === ref.label && candidate.isRemote === ref.isRemote)
-                : undefined;
+              const branch =
+                !ref.isTag && ref.label !== "HEAD"
+                  ? branches?.find(
+                      (candidate) =>
+                        candidate.shortName === ref.label &&
+                        candidate.isRemote === ref.isRemote,
+                    )
+                  : undefined;
               return (
                 <RefPill
                   key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
                   displayRef={ref}
                   onSelectedRow={isSelected}
                   className="max-w-[110px]"
-                  onActivate={branch ? () => onActivateBranch(branch) : undefined}
-                  activationTitle={branch ? describeBranchActivation(branch, branches ?? []) : undefined}
+                  onActivate={
+                    branch ? () => onActivateBranch(branch) : undefined
+                  }
+                  activationTitle={
+                    branch
+                      ? describeBranchActivation(branch, branches ?? [])
+                      : undefined
+                  }
                 />
               );
             })}
@@ -119,7 +154,12 @@ export function CommitListItem({
         {formatRelativeTime(commit.timestamp)}
       </span>
 
-      <CommitActionStrip target={commit} isHeadCommit={isHead} refs={displayRefs} compact />
+      <CommitActionStrip
+        target={commit}
+        isHeadCommit={isHead}
+        refs={displayRefs}
+        compact
+      />
       {contextMenu ? (
         <CommitActionContextMenu
           target={commit}

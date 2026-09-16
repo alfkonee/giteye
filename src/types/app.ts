@@ -3,6 +3,7 @@ import type { RepositoryInfo, Theme } from "./git";
 export interface AppSettings {
   theme: Theme;
   gitExecutablePath: string | null;
+  externalEditorPath: string | null;
   userName: string | null;
   userEmail: string | null;
   diffMode: "unified" | "split";
@@ -13,6 +14,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   gitExecutablePath: null,
+  externalEditorPath: null,
   userName: null,
   userEmail: null,
   diffMode: "unified",

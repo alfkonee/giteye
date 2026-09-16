@@ -300,7 +300,7 @@ fn git_metadata_reason(relative: &Path) -> Option<RepoStateReason> {
         "FETCH_HEAD" | "config" => Some(RepoStateReason::Remote),
         "rebase-apply" | "rebase-merge" | "sequencer" => Some(RepoStateReason::Rebase),
         "HEAD" | "ORIG_HEAD" | "MERGE_HEAD" | "REBASE_HEAD" | "CHERRY_PICK_HEAD"
-        | "packed-refs" | "refs" => Some(RepoStateReason::Refs),
+        | "REVERT_HEAD" | "packed-refs" | "refs" => Some(RepoStateReason::Refs),
         _ => None,
     }
 }

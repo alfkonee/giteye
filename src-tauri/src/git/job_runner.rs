@@ -134,7 +134,6 @@ impl GitJobRunnerState {
         }
         emit_job_event(&app, &record, None);
         persist_recovery_snapshot(&app, &self.jobs);
-        
 
         let jobs = Arc::clone(&self.jobs);
         let cancellations = Arc::clone(&self.cancellations);
@@ -221,6 +220,8 @@ impl GitJobRunnerState {
                 );
             });
 
+            let before_operation = operation_command(&request.args)
+                .and_then(|_| rebase_service::get_operation_summary(&request.working_dir).ok());
             let result = GitCli::run_streaming(
                 &request.working_dir,
                 &request.args,
@@ -228,6 +229,15 @@ impl GitJobRunnerState {
                 stream,
             );
             let canceled = cancel_flag.load(Ordering::SeqCst);
+            let attention_required = !canceled
+                && result.as_ref().is_ok_and(|output| output.status_code != 0)
+                && operation_command(&request.args).is_some_and(|command| {
+                    rebase_service::get_operation_summary(&request.working_dir)
+                        .ok()
+                        .is_some_and(|after| {
+                            conflict_stop(command, before_operation.as_ref(), &after)
+                        })
+                });
 
             update_job(&jobs, &app, &job_id_for_thread, None, |job| {
                 job.finished_at = Some(Utc::now());
@@ -242,14 +252,22 @@ impl GitJobRunnerState {
                         job.exit_code = Some(output.status_code);
                     }
                     Ok(output) => {
-                        job.status = GitJobStatus::Failed;
+                        job.status = if attention_required {
+                            GitJobStatus::AttentionRequired
+                        } else {
+                            GitJobStatus::Failed
+                        };
                         job.exit_code = Some(output.status_code);
                         let message = first_non_empty(&output.stderr)
                             .or_else(|| first_non_empty(&output.stdout))
                             .unwrap_or_else(|| {
                                 format!("git exited with status {}", output.status_code)
                             });
-                        job.error = Some(redact_git_output(&message));
+                        job.error = Some(if attention_required {
+                            "Git paused for conflicts. Resolve the conflicted files, then continue the operation.".into()
+                        } else {
+                            redact_git_output(&message)
+                        });
                     }
                     Err(error) if canceled => {
                         job.status = GitJobStatus::Canceled;
@@ -409,7 +427,11 @@ impl GitJobRunnerState {
     }
 
     /// Clears interrupted recovery records for a repository after its operation resolved.
-    pub fn dismiss_interrupted_for_repo(&self, app: &AppHandle, repo_path: &str) -> Result<(), AppError> {
+    pub fn dismiss_interrupted_for_repo(
+        &self,
+        app: &AppHandle,
+        repo_path: &str,
+    ) -> Result<(), AppError> {
         let mut jobs = self.jobs.lock().map_err(lock_error)?;
         jobs.retain(|_, job| {
             !(job.repo_path == repo_path && matches!(job.status, GitJobStatus::Interrupted))
@@ -523,7 +545,6 @@ fn update_job<F>(
     if persist_recovery {
         persist_recovery_snapshot(app, jobs);
     }
-
 }
 
 fn emit_job_event(app: &AppHandle, job: &GitJobRecord, stream: Option<GitJobLogLine>) {
@@ -585,7 +606,10 @@ fn trim_retained_jobs_for_repo(
 fn is_terminal_status(status: &GitJobStatus) -> bool {
     matches!(
         status,
-        GitJobStatus::Succeeded | GitJobStatus::Failed | GitJobStatus::Canceled
+        GitJobStatus::Succeeded
+            | GitJobStatus::AttentionRequired
+            | GitJobStatus::Failed
+            | GitJobStatus::Canceled
     )
 }
 
@@ -608,6 +632,44 @@ fn repo_state_reason(reason: &str) -> Option<RepoStateReason> {
         "rebase" => Some(RepoStateReason::Rebase),
         _ => None,
     }
+}
+
+fn operation_command(args: &[String]) -> Option<&str> {
+    let mut index = 0;
+    while args.get(index).is_some_and(|arg| arg == "-c") {
+        index += 2;
+    }
+    let command = args.get(index)?.as_str();
+    if !matches!(command, "merge" | "rebase" | "cherry-pick" | "revert")
+        || args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
+    {
+        return None;
+    }
+    Some(command)
+}
+
+fn conflict_stop(
+    command: &str,
+    before: Option<&crate::models::rebase::OperationSnapshot>,
+    after: &crate::models::rebase::OperationSnapshot,
+) -> bool {
+    let matches_operation = match command {
+        "merge" => matches!(after.operation.as_deref(), Some("merge" | "conflict")),
+        "rebase" => after.operation.as_deref() == Some("rebase"),
+        "cherry-pick" => after.operation.as_deref() == Some("cherryPick"),
+        "revert" => after.operation.as_deref() == Some("revert"),
+        _ => false,
+    };
+    matches_operation
+        && !after.conflicts.is_empty()
+        && before.is_some_and(|before| {
+            before.conflicts.is_empty()
+                || before.id != after.id
+                || before.current.as_ref().map(|c| &c.hash)
+                    != after.current.as_ref().map(|c| &c.hash)
+        })
 }
 
 fn first_non_empty(value: &str) -> Option<String> {
@@ -794,7 +856,10 @@ mod tests {
         assert!(matches!(queued.status, GitJobStatus::Interrupted));
         assert!(matches!(running.status, GitJobStatus::Interrupted));
         assert_eq!(queued.finished_at, Some(now));
-        assert!(queued.error.as_deref().is_some_and(|message| message.contains("Inspect")));
+        assert!(queued
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("Inspect")));
         assert!(matches!(succeeded.status, GitJobStatus::Succeeded));
         assert_eq!(succeeded.finished_at, None);
     }
@@ -860,6 +925,46 @@ mod tests {
             redacted,
             "fatal: Authentication failed for 'https://example.com/org/repo.git/'"
         );
+    }
+
+    #[test]
+    fn conflict_stop_requires_matching_new_conflict_state() {
+        let mut idle: crate::models::rebase::OperationSnapshot = serde_json::from_value(serde_json::json!({
+            "id": null, "operation": null, "phase": "idle", "source": null, "target": null, "current": null,
+            "rebase": { "inProgress": false, "rebaseDir": null, "headName": null, "onto": null, "origHead": null,
+                "currentStep": null, "totalSteps": null, "todo": [], "done": [], "conflicts": [] },
+            "conflicts": [], "allowedActions": [], "currentLabel": "Current", "incomingLabel": "Incoming"
+        })).unwrap();
+        for (command, operation) in [
+            ("merge", "merge"),
+            ("rebase", "rebase"),
+            ("cherry-pick", "cherryPick"),
+            ("revert", "revert"),
+            ("merge", "conflict"),
+        ] {
+            let mut stopped = idle.clone();
+            stopped.id = Some("operation".into());
+            stopped.operation = Some(operation.into());
+            stopped
+                .conflicts
+                .push(crate::models::rebase::OperationConflict {
+                    path: "file".into(),
+                    status: "UU".into(),
+                    conflict_type: "bothModified".into(),
+                });
+            assert!(conflict_stop(command, Some(&idle), &stopped));
+            assert!(!conflict_stop(command, Some(&stopped), &stopped));
+            assert!(!conflict_stop("fetch", Some(&idle), &stopped));
+            if command != "revert" {
+                assert!(!conflict_stop("revert", Some(&idle), &stopped));
+            }
+            stopped.conflicts.clear();
+            assert!(!conflict_stop(command, Some(&idle), &stopped));
+        }
+        idle.operation = Some("rebase".into());
+        assert!(!conflict_stop("rebase", None, &idle));
+        assert!(operation_command(&["rebase".into(), "--abort".into()]).is_none());
+        assert!(is_terminal_status(&GitJobStatus::AttentionRequired));
     }
 
     fn test_job(

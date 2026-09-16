@@ -397,12 +397,85 @@ export interface ConflictFile {
   path: string;
 }
 
+export interface ConflictStage {
+  present: boolean;
+  oid: string | null;
+  mode: string | null;
+  content: string | null;
+  label: string;
+}
+
+export interface ConflictRegion {
+  id: string;
+  start: number;
+  end: number;
+  current: string;
+  incoming: string;
+  base: string | null;
+}
+
 export interface ConflictContent {
   filePath: string;
-  base: string;
-  ours: string;
-  theirs: string;
-  result: string;
+  absolutePath: string;
+  operationId: string;
+  revision: string;
+  kind:
+    "text" | "binary" | "symlink" | "submodule" | "oversized" | "unsupported";
+  base: ConflictStage;
+  ours: ConflictStage;
+  theirs: ConflictStage;
+  result: string | null;
+  resultExists: boolean;
+  regions: ConflictRegion[];
+  submodule: {
+    head: string | null;
+    dirty: boolean;
+    initialized: boolean;
+    relationship: string;
+  } | null;
+  warning: string | null;
+}
+
+export type ConflictResolution =
+  | { kind: "text"; content: string }
+  | { kind: "side"; side: "ours" | "theirs" }
+  | { kind: "delete" }
+  | { kind: "keep" }
+  | { kind: "submoduleHead" };
+
+export interface ConflictResolutionRequest {
+  operationId: string;
+  filePath: string;
+  expectedRevision: string;
+  resolution: ConflictResolution;
+}
+
+export interface AiConflictRequest {
+  operationId: string;
+  filePath: string;
+  expectedRevision: string;
+  previewRevision?: string;
+}
+
+export interface AiConflictContext {
+  provider: string;
+  model: string;
+  contentRevision: string;
+  operationId: string;
+  context: string;
+  truncated: boolean;
+  previewRevision: string;
+}
+
+export interface AiConflictProposal {
+  resolvedContent: string;
+  summary: string;
+  rationale: string[];
+  warnings: string[];
+  operationId: string;
+  contentRevision: string;
+  provider: string;
+  model: string;
 }
 
 export interface RebaseState {
@@ -458,17 +531,26 @@ export interface OperationConflict {
   conflictType: string;
 }
 
-export interface GitOperationSummary {
-  operation: string | null;
-  inRebase: boolean;
-  inMerge: boolean;
-  inCherryPick: boolean;
-  inRevert: boolean;
+export type OperationAction = "continue" | "abort" | "skip";
+
+export interface OperationCommit {
+  hash: string;
+  subject: string;
+  label: string;
+}
+
+export interface OperationSnapshot {
+  id: string | null;
+  operation: "merge" | "rebase" | "cherryPick" | "revert" | "conflict" | null;
+  phase: "idle" | "conflicted" | "ready";
+  source: OperationCommit | null;
+  target: OperationCommit | null;
+  current: OperationCommit | null;
   rebase: RebaseState;
-  mergeHead: string | null;
-  cherryPickHead: string | null;
-  revertHead: string | null;
   conflicts: OperationConflict[];
+  allowedActions: OperationAction[];
+  currentLabel: string;
+  incomingLabel: string;
 }
 
 export interface GitHubAccount {
@@ -789,6 +871,7 @@ export type GitJobStatus =
   | "queued"
   | "running"
   | "interrupted"
+  | "attentionRequired"
   | "succeeded"
   | "failed"
   | "canceled"

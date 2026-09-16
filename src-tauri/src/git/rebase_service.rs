@@ -1,18 +1,19 @@
 use crate::errors::AppError;
 use crate::git::cli::{required_git_arg, GitCli};
 use crate::models::rebase::{
-    ConflictContent, ConflictFile, GitOperationSummary, OperationConflict, RebasePreviewItem,
-    RebaseState, RebaseTodoItem, RerereStatus,
+    ConflictFile, OperationAction, OperationCommit, OperationConflict, OperationSnapshot,
+    RebasePreviewItem, RebaseState, RebaseTodoItem, RerereStatus,
 };
+use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 struct RebasePaths {
     dir: PathBuf,
     display_dir: String,
 }
 
-pub fn get_rebase_state(repo_path: &Path) -> Result<RebaseState, AppError> {
+fn get_rebase_state(repo_path: &Path) -> Result<RebaseState, AppError> {
     let rebase_paths = find_rebase_dir(repo_path)?;
 
     let Some(rebase_paths) = rebase_paths else {
@@ -42,48 +43,6 @@ pub fn get_rebase_state(repo_path: &Path) -> Result<RebaseState, AppError> {
         done: parse_todo_file(&rebase_paths.dir.join("done"), true)?,
         conflicts: get_conflicted_files(repo_path)?,
     })
-}
-
-pub fn get_conflict_content(
-    repo_path: &Path,
-    file_path: &str,
-) -> Result<ConflictContent, AppError> {
-    validate_repo_relative_path(file_path)?;
-
-    Ok(ConflictContent {
-        file_path: file_path.to_string(),
-        base: read_index_stage(repo_path, 1, file_path)?,
-        ours: read_index_stage(repo_path, 2, file_path)?,
-        theirs: read_index_stage(repo_path, 3, file_path)?,
-        result: read_worktree_file(repo_path, file_path)?,
-    })
-}
-
-pub fn mark_file_resolved(repo_path: &Path, file_path: &str) -> Result<(), AppError> {
-    validate_repo_relative_path(file_path)?;
-    GitCli::run(repo_path, &["add", "--", file_path])?;
-    Ok(())
-}
-
-pub fn checkout_conflict_side(
-    repo_path: &Path,
-    file_path: &str,
-    side: &str,
-) -> Result<(), AppError> {
-    validate_repo_relative_path(file_path)?;
-    let checkout_flag = match side {
-        "ours" => "--ours",
-        "theirs" => "--theirs",
-        _ => {
-            return Err(AppError::GitError(format!(
-                "Unsupported conflict side: {side}"
-            )));
-        }
-    };
-
-    GitCli::run(repo_path, &["checkout", checkout_flag, "--", file_path])?;
-    GitCli::run(repo_path, &["add", "--", file_path])?;
-    Ok(())
 }
 
 pub fn update_rebase_todo(repo_path: &Path, items: Vec<RebaseTodoItem>) -> Result<(), AppError> {
@@ -169,43 +128,199 @@ pub fn set_rerere_enabled(repo_path: &Path, enabled: bool) -> Result<RerereStatu
     get_rerere_status(repo_path)
 }
 
-pub fn get_operation_summary(repo_path: &Path) -> Result<GitOperationSummary, AppError> {
+pub fn get_operation_summary(repo_path: &Path) -> Result<OperationSnapshot, AppError> {
     let rebase = get_rebase_state(repo_path)?;
     let merge_head = read_git_state_file(repo_path, "MERGE_HEAD")?;
     let cherry_pick_head = read_git_state_file(repo_path, "CHERRY_PICK_HEAD")?;
     let revert_head = read_git_state_file(repo_path, "REVERT_HEAD")?;
     let conflicts = get_operation_conflicts(repo_path)?;
-
-    let in_rebase = rebase.in_progress;
-    let in_merge = merge_head.is_some();
-    let in_cherry_pick = cherry_pick_head.is_some();
-    let in_revert = revert_head.is_some();
-    let operation = if in_rebase {
-        Some("rebase".to_string())
-    } else if in_merge {
-        Some("merge".to_string())
-    } else if in_cherry_pick {
-        Some("cherryPick".to_string())
-    } else if in_revert {
-        Some("revert".to_string())
+    let sequencer = read_git_state_file(repo_path, "sequencer/todo")?;
+    let operation = if rebase.in_progress {
+        Some("rebase")
+    } else if merge_head.is_some() {
+        Some("merge")
+    } else if cherry_pick_head.is_some() {
+        Some("cherryPick")
+    } else if revert_head.is_some() {
+        Some("revert")
+    } else if sequencer
+        .as_deref()
+        .is_some_and(|todo| todo.starts_with("pick "))
+    {
+        Some("cherryPick")
+    } else if sequencer
+        .as_deref()
+        .is_some_and(|todo| todo.starts_with("revert "))
+    {
+        Some("revert")
     } else if !conflicts.is_empty() {
-        Some("conflict".to_string())
+        Some("conflict")
     } else {
         None
     };
-
-    Ok(GitOperationSummary {
+    let (current_label, incoming_label) = match operation {
+        Some("rebase") => (
+            "Updated target (current)",
+            "Commit being replayed (incoming)",
+        ),
+        Some("revert") => ("Current HEAD", "Parent of reverted commit (incoming)"),
+        Some("cherryPick") => ("Current HEAD", "Picked commit (incoming)"),
+        _ => ("Current branch", "Incoming branch"),
+    };
+    let head = commit_descriptor(repo_path, Some("HEAD"), "Current branch");
+    let (source, target, current, marker) = match operation {
+        Some("rebase") => (
+            commit_descriptor(
+                repo_path,
+                rebase.orig_head.as_deref(),
+                rebase.head_name.as_deref().unwrap_or("Original branch"),
+            ),
+            commit_descriptor(repo_path, rebase.onto.as_deref(), "Rebase target"),
+            commit_descriptor(repo_path, Some("REBASE_HEAD"), "Replaying commit"),
+            format!(
+                "{}/orig-head",
+                rebase.rebase_dir.as_deref().unwrap_or("rebase-merge")
+            ),
+        ),
+        Some("merge") => (
+            commit_descriptor(
+                repo_path,
+                merge_head.as_deref().and_then(|s| s.lines().next()),
+                "Incoming branch",
+            ),
+            head,
+            None,
+            "MERGE_HEAD".into(),
+        ),
+        Some("cherryPick") | Some("revert") => {
+            let is_revert = operation == Some("revert");
+            let source = commit_descriptor(
+                repo_path,
+                if is_revert {
+                    revert_head.as_deref()
+                } else {
+                    cherry_pick_head.as_deref()
+                },
+                if is_revert {
+                    "Reverting commit"
+                } else {
+                    "Picked commit"
+                },
+            );
+            let marker = if read_git_state_file(repo_path, "sequencer/head")?.is_some() {
+                "sequencer/head"
+            } else if is_revert {
+                "REVERT_HEAD"
+            } else {
+                "CHERRY_PICK_HEAD"
+            };
+            (source.clone(), head, source, marker.into())
+        }
+        _ => (None, head, None, "HEAD".into()),
+    };
+    let id = if let Some(kind) = operation {
+        let marker_path = if kind == "rebase" {
+            PathBuf::from(&marker)
+        } else {
+            path_from_git_output(
+                repo_path,
+                GitCli::run(repo_path, &["rev-parse", "--git-path", &marker])?.trim(),
+            )
+        };
+        let mut hash = Sha256::new();
+        hash.update(kind.as_bytes());
+        hash.update(fs::read(&marker_path).unwrap_or_default());
+        if kind == "conflict" {
+            hash.update(GitCli::run(repo_path, &["rev-parse", "--verify", "HEAD"])?.as_bytes());
+        }
+        if let Ok(metadata) = fs::metadata(&marker_path) {
+            if let Ok(modified) = metadata.modified().and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .map_err(std::io::Error::other)
+            }) {
+                hash.update(modified.as_nanos().to_le_bytes());
+            }
+        }
+        Some(format!("{:x}", hash.finalize()))
+    } else {
+        None
+    };
+    let mut allowed_actions = Vec::new();
+    if matches!(
         operation,
-        in_rebase,
-        in_merge,
-        in_cherry_pick,
-        in_revert,
+        Some("rebase" | "merge" | "cherryPick" | "revert")
+    ) {
+        if conflicts.is_empty() {
+            allowed_actions.push(OperationAction::Continue);
+        }
+        allowed_actions.push(OperationAction::Abort);
+        if operation == Some("rebase") {
+            allowed_actions.push(OperationAction::Skip);
+        }
+    }
+    Ok(OperationSnapshot {
+        id,
+        operation: operation.map(str::to_string),
+        phase: if operation.is_none() {
+            "idle"
+        } else if conflicts.is_empty() {
+            "ready"
+        } else {
+            "conflicted"
+        }
+        .into(),
+        source,
+        target: if operation.is_some() { target } else { None },
+        current,
         rebase,
-        merge_head,
-        cherry_pick_head,
-        revert_head,
         conflicts,
+        allowed_actions,
+        current_label: current_label.into(),
+        incoming_label: incoming_label.into(),
     })
+}
+
+fn commit_descriptor(
+    repo_path: &Path,
+    revision: Option<&str>,
+    label: &str,
+) -> Option<OperationCommit> {
+    let revision = revision?;
+    let output = GitCli::run(
+        repo_path,
+        &["show", "-s", "--format=%H%x00%s", revision, "--"],
+    )
+    .ok()?;
+    let (hash, subject) = output.trim_end().split_once('\0')?;
+    Some(OperationCommit {
+        hash: hash.into(),
+        subject: subject.into(),
+        label: label.into(),
+    })
+}
+
+pub fn preflight_operation_action(
+    repo_path: &Path,
+    operation_id: &str,
+    action: OperationAction,
+) -> Result<OperationSnapshot, AppError> {
+    let snapshot = get_operation_summary(repo_path)?;
+    if snapshot.id.as_deref() != Some(operation_id) {
+        return Err(AppError::GitError(
+            "The Git operation changed. Reload before taking an action.".into(),
+        ));
+    }
+    if !snapshot.allowed_actions.contains(&action) {
+        return Err(AppError::GitError(
+            if action == OperationAction::Continue && !snapshot.conflicts.is_empty() {
+                "Resolve and stage every conflicted file before continuing."
+            } else {
+                "This action is not available for the current Git operation."
+            }
+            .into(),
+        ));
+    }
+    Ok(snapshot)
 }
 
 fn get_rerere_enabled(repo_path: &Path) -> Result<bool, AppError> {
@@ -394,43 +509,6 @@ fn get_conflicted_files(repo_path: &Path) -> Result<Vec<ConflictFile>, AppError>
         .collect())
 }
 
-fn read_index_stage(repo_path: &Path, stage: u8, file_path: &str) -> Result<String, AppError> {
-    let revision = format!(":{}:{}", stage, file_path);
-    match GitCli::run(repo_path, &["show", revision.as_str()]) {
-        Ok(content) => Ok(content),
-        Err(AppError::GitError(_)) => Ok(String::new()),
-        Err(e) => Err(e),
-    }
-}
-
-fn read_worktree_file(repo_path: &Path, file_path: &str) -> Result<String, AppError> {
-    let root_output = GitCli::run(repo_path, &["rev-parse", "--show-toplevel"])?;
-    let root = path_from_git_output(repo_path, root_output.trim());
-    let path = root.join(file_path);
-
-    match fs::read(path) {
-        Ok(content) => Ok(String::from_utf8_lossy(&content).to_string()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(e) => Err(AppError::IoError(e.to_string())),
-    }
-}
-
-fn validate_repo_relative_path(file_path: &str) -> Result<(), AppError> {
-    let path = Path::new(file_path);
-    if file_path.is_empty()
-        || path.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-    {
-        return Err(AppError::InvalidPath(file_path.to_string()));
-    }
-
-    Ok(())
-}
-
 fn append_todo_item(todo: &mut String, item: &RebaseTodoItem) -> Result<(), AppError> {
     validate_todo_field(&item.action)?;
     validate_todo_field(&item.commit)?;
@@ -472,9 +550,8 @@ fn validate_todo_field(value: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_todo_item, checkout_conflict_side, get_rerere_config, get_rerere_status,
-        parse_operation_conflict_entry, parse_todo_line, preview_rebase, required_git_arg,
-        set_rerere_enabled, validate_repo_relative_path, GitCli,
+        append_todo_item, get_rerere_config, get_rerere_status, parse_operation_conflict_entry,
+        parse_todo_line, preview_rebase, required_git_arg, set_rerere_enabled, GitCli,
     };
     use crate::models::rebase::RebaseTodoItem;
     use std::fs;
@@ -552,21 +629,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_conflict_side() {
-        let err =
-            checkout_conflict_side(std::path::Path::new("."), "src/app.rs", "both").unwrap_err();
-        assert!(err.to_string().contains("Unsupported conflict side"));
-    }
-
-    #[test]
-    fn rejects_unsafe_conflict_paths() {
-        assert!(validate_repo_relative_path("src/app.rs").is_ok());
-        assert!(validate_repo_relative_path("../outside").is_err());
-        assert!(validate_repo_relative_path("/absolute").is_err());
-        assert!(validate_repo_relative_path("").is_err());
-    }
-
-    #[test]
     fn parses_operation_conflict_status_map() {
         let entry = "u UU N... 100644 100644 100644 100644 aaaaaaa bbbbbbb ccccccc file.txt";
         let conflict = parse_operation_conflict_entry(entry).expect("parse conflict");
@@ -628,5 +690,144 @@ mod tests {
 
         set_rerere_enabled(&temp.path, false).expect("disable rerere");
         assert!(!get_rerere_config(&temp.path).expect("read disabled rerere config"));
+    }
+
+    #[test]
+    fn native_operations_expose_semantic_sides_and_guarded_actions() {
+        for operation in ["merge", "cherryPick", "revert"] {
+            let temp = TestDir::new(operation);
+            init_repo(&temp.path);
+            git(&temp.path, &["config", "rerere.enabled", "false"]);
+            commit_file(&temp.path, "file.txt", "base\n", "Base");
+            git(&temp.path, &["switch", "-c", "incoming"]);
+            let incoming = commit_file(&temp.path, "file.txt", "incoming\n", "Incoming");
+            if operation == "revert" {
+                commit_file(&temp.path, "file.txt", "later\n", "Later");
+            } else {
+                git(&temp.path, &["switch", "main"]);
+                commit_file(&temp.path, "file.txt", "current\n", "Current");
+            }
+            let args = match operation {
+                "merge" => vec!["merge", "--no-edit", "incoming"],
+                "cherryPick" => vec!["cherry-pick", incoming.as_str()],
+                _ => vec!["revert", "--no-edit", incoming.as_str()],
+            };
+            assert_ne!(
+                GitCli::run_with_status(&temp.path, &args)
+                    .unwrap()
+                    .status_code,
+                0
+            );
+            let snapshot = super::get_operation_summary(&temp.path).unwrap();
+            assert_eq!(snapshot.operation.as_deref(), Some(operation));
+            assert_eq!(snapshot.phase, "conflicted");
+            assert_eq!(snapshot.source.as_ref().unwrap().hash, incoming);
+            assert!(super::preflight_operation_action(
+                &temp.path,
+                snapshot.id.as_deref().unwrap(),
+                super::OperationAction::Continue
+            )
+            .is_err());
+            assert!(super::preflight_operation_action(
+                &temp.path,
+                "stale",
+                super::OperationAction::Abort
+            )
+            .is_err());
+            if operation == "revert" {
+                assert!(snapshot.incoming_label.contains("Parent"));
+            }
+            fs::write(temp.path.join("file.txt"), "resolved\n").unwrap();
+            git(&temp.path, &["add", "file.txt"]);
+            let ready = super::preflight_operation_action(
+                &temp.path,
+                snapshot.id.as_deref().unwrap(),
+                super::OperationAction::Continue,
+            )
+            .unwrap();
+            assert_eq!(ready.phase, "ready");
+            assert!(!ready
+                .allowed_actions
+                .contains(&super::OperationAction::Skip));
+            let command = if operation == "cherryPick" {
+                "cherry-pick"
+            } else {
+                operation
+            };
+            git(&temp.path, &[command, "--abort"]);
+            assert!(super::preflight_operation_action(
+                &temp.path,
+                snapshot.id.as_deref().unwrap(),
+                super::OperationAction::Abort
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn rebase_identity_survives_resolution_and_next_conflicting_commit() {
+        let temp = TestDir::new("rebase-identity");
+        init_repo(&temp.path);
+        git(&temp.path, &["config", "rerere.enabled", "false"]);
+        commit_file(&temp.path, "one.txt", "base\n", "Base one");
+        commit_file(&temp.path, "two.txt", "base\n", "Base two");
+        git(&temp.path, &["switch", "-c", "feature"]);
+        let first = commit_file(&temp.path, "one.txt", "feature one\n", "Feature one");
+        let original = commit_file(&temp.path, "two.txt", "feature two\n", "Feature two");
+        git(&temp.path, &["switch", "main"]);
+        commit_file(&temp.path, "one.txt", "target one\n", "Target one");
+        let target = commit_file(&temp.path, "two.txt", "target two\n", "Target two");
+        git(&temp.path, &["switch", "feature"]);
+        assert_ne!(
+            GitCli::run_with_status(&temp.path, &["rebase", "main"])
+                .unwrap()
+                .status_code,
+            0
+        );
+        let start = super::get_operation_summary(&temp.path).unwrap();
+        assert_eq!(start.source.as_ref().unwrap().hash, original);
+        assert_eq!(start.target.as_ref().unwrap().hash, target);
+        assert_eq!(start.current.as_ref().unwrap().hash, first);
+        assert!(start.current_label.contains("Updated target"));
+        assert!(start.incoming_label.contains("replayed"));
+        assert!(start
+            .allowed_actions
+            .contains(&super::OperationAction::Skip));
+        fs::write(temp.path.join("one.txt"), "merged one\n").unwrap();
+        git(&temp.path, &["add", "one.txt"]);
+        let ready = super::get_operation_summary(&temp.path).unwrap();
+        assert_eq!(ready.id, start.id);
+        let result = GitCli::command()
+            .current_dir(&temp.path)
+            .env("GIT_EDITOR", "true")
+            .args(["rebase", "--continue"])
+            .output()
+            .unwrap();
+        assert!(!result.status.success());
+        let next = super::get_operation_summary(&temp.path).unwrap();
+        assert_eq!(next.id, start.id);
+        assert_eq!(next.current.as_ref().unwrap().hash, original);
+        assert_eq!(next.phase, "conflicted");
+    }
+
+    #[test]
+    fn squash_conflict_never_claims_native_continue_or_abort() {
+        let temp = TestDir::new("squash");
+        init_repo(&temp.path);
+        git(&temp.path, &["config", "rerere.enabled", "false"]);
+        commit_file(&temp.path, "file.txt", "base\n", "Base");
+        git(&temp.path, &["switch", "-c", "feature"]);
+        commit_file(&temp.path, "file.txt", "feature\n", "Feature");
+        git(&temp.path, &["switch", "main"]);
+        commit_file(&temp.path, "file.txt", "current\n", "Current");
+        assert_ne!(
+            GitCli::run_with_status(&temp.path, &["merge", "--squash", "feature"])
+                .unwrap()
+                .status_code,
+            0
+        );
+        let snapshot = super::get_operation_summary(&temp.path).unwrap();
+        assert_eq!(snapshot.operation.as_deref(), Some("conflict"));
+        assert!(snapshot.allowed_actions.is_empty());
     }
 }

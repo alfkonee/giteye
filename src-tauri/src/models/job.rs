@@ -9,6 +9,8 @@ pub enum GitJobStatus {
     Running,
     Interrupted,
     Succeeded,
+    #[serde(rename = "attentionRequired")]
+    AttentionRequired,
     Failed,
     Canceled,
 }

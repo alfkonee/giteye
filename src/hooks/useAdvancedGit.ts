@@ -44,7 +44,6 @@ export function useRepairWorktree(repoPath: string | null) {
   return useMutation(gitMutations.repairWorktree(queryClient, repoPath));
 }
 
-
 export function useRepairWorktreeDryRun(repoPath: string | null) {
   return useMutation(gitMutations.repairWorktreeDryRun(repoPath));
 }
@@ -58,9 +57,10 @@ export function useSubmoduleForeachStatus(
   recursive: boolean,
   enabled = true,
 ) {
-  return useQuery(gitQueries.submoduleForeachStatus(repoPath, recursive, enabled));
+  return useQuery(
+    gitQueries.submoduleForeachStatus(repoPath, recursive, enabled),
+  );
 }
-
 
 export function useUpdateSubmodule(repoPath: string | null) {
   const queryClient = useQueryClient();
@@ -87,31 +87,21 @@ export function useBumpSubmodule(repoPath: string | null) {
   return useMutation(gitMutations.bumpSubmodule(queryClient, repoPath));
 }
 
-export function useRebaseState(repoPath: string | null) {
-  return useQuery(gitQueries.rebaseState(repoPath));
-}
-
-export function useConflictContent(repoPath: string | null, filePath: string | null) {
+export function useConflictContent(
+  repoPath: string | null,
+  filePath: string | null,
+) {
   return useQuery(gitQueries.conflictContent(repoPath, filePath));
-}
-
-export function useRebaseActions(repoPath: string | null) {
-  const queryClient = useQueryClient();
-
-  return {
-    continueRebase: useMutation(gitMutations.continueRebase(queryClient, repoPath)),
-    abortRebase: useMutation(gitMutations.abortRebase(queryClient, repoPath)),
-    skipRebase: useMutation(gitMutations.skipRebase(queryClient, repoPath)),
-    markFileResolved: useMutation(gitMutations.markFileResolved(queryClient, repoPath)),
-    updateTodo: useMutation(gitMutations.updateRebaseTodo(queryClient, repoPath)),
-  };
 }
 
 export function useRepositoryGithubOverview(repoPath: string | null) {
   return useQuery(gitQueries.githubOverview(repoPath));
 }
 
-export function usePullRequestDiff(repoPath: string | null, number: number | null) {
+export function usePullRequestDiff(
+  repoPath: string | null,
+  number: number | null,
+) {
   return useQuery(gitQueries.pullRequestDiff(repoPath, number));
 }
 
@@ -119,8 +109,12 @@ export function usePullRequestActions(repoPath: string | null) {
   const queryClient = useQueryClient();
 
   return {
-    checkout: useMutation(gitMutations.checkoutPullRequest(queryClient, repoPath)),
-    updateBranch: useMutation(gitMutations.updatePullRequestBranch(queryClient, repoPath)),
+    checkout: useMutation(
+      gitMutations.checkoutPullRequest(queryClient, repoPath),
+    ),
+    updateBranch: useMutation(
+      gitMutations.updatePullRequestBranch(queryClient, repoPath),
+    ),
     merge: useMutation(gitMutations.mergePullRequest(queryClient, repoPath)),
   };
 }

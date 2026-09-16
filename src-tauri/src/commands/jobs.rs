@@ -1,6 +1,9 @@
 use crate::errors::AppError;
 use crate::git::job_runner::{GitJobRequest, GitJobRunnerState};
+use crate::git::rebase_service;
 use crate::models::job::{GitJobRecord, GitJobSummary, GitRecoveryState};
+use crate::models::rebase::OperationAction;
+use std::path::Path;
 use tauri::{AppHandle, Manager, State};
 
 /// Lists GitEye-triggered background Git jobs, optionally scoped to one repository path.
@@ -40,18 +43,21 @@ pub fn get_git_recovery_state(
     state.get_recovery_state(&repo_path)
 }
 
-/// Continues or aborts the Git operation that is still present on disk.
+/// Executes a revision-checked action on the operation still present on disk.
 #[tauri::command]
 pub fn recover_git_operation(
     app: AppHandle,
     state: State<'_, GitJobRunnerState>,
     repo_path: String,
-    action: String,
+    action: OperationAction,
+    operation_id: String,
 ) -> Result<GitJobSummary, AppError> {
-    let operation = state
-        .get_recovery_state(&repo_path)?
-        .operation
-        .ok_or_else(|| AppError::GitError("No recoverable Git operation is in progress".to_string()))?;
+    let operation =
+        rebase_service::preflight_operation_action(Path::new(&repo_path), &operation_id, action)?
+            .operation
+            .ok_or_else(|| {
+                AppError::GitError("No recoverable Git operation is in progress".into())
+            })?;
     let command = match operation.as_str() {
         "rebase" => "rebase",
         "merge" => "merge",
@@ -63,21 +69,34 @@ pub fn recover_git_operation(
             ))
         }
     };
-    let option = match action.as_str() {
-        "continue" => "--continue",
-        "abort" => "--abort",
-        _ => return Err(AppError::GitError("Recovery action must be continue or abort".to_string())),
-    };
-    let title = format!("{} {}", if action == "continue" { "Continue" } else { "Abort" }, command);
+    let option = format!("--{}", action.as_str());
+    let title = format!("{} {}", action.as_str(), command);
+    let preflight_repo = repo_path.clone();
+    let action_name = action.as_str();
     let repo_hook = repo_path.clone();
     let app_hook = app.clone();
     let request = GitJobRequest::new(
         repo_path,
-        format!("recovery.{operation}.{action}"),
+        format!("recovery.{operation}.{action_name}"),
         title,
-        vec![command.to_string(), option.to_string()],
+        vec![
+            "-c".into(),
+            "core.editor=true".into(),
+            "-c".into(),
+            "sequence.editor=true".into(),
+            command.to_string(),
+            option,
+        ],
     )
     .with_invalidation_reasons(vec!["rebase", "refs", "worktree"])
+    .before_start(Box::new(move || {
+        rebase_service::preflight_operation_action(
+            Path::new(&preflight_repo),
+            &operation_id,
+            action,
+        )
+        .map(|_| ())
+    }))
     .on_success(Box::new(move || {
         let state = app_hook.state::<GitJobRunnerState>();
         let _ = state.dismiss_interrupted_for_repo(&app_hook, &repo_hook);

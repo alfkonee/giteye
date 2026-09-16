@@ -4,6 +4,7 @@ pub mod branch_service;
 pub mod cli;
 pub mod commit_service;
 pub mod config_service;
+pub mod conflict_service;
 pub mod diagnostics_service;
 pub mod diff_service;
 pub mod github_service;
