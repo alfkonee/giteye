@@ -99,6 +99,7 @@ All Tauri commands that run blocking work (git/gh subprocesses, HTTP, filesystem
 - Diff viewer with syntax-colored unified diff fallback
 - File status badges (M/A/D/R/C/!/??/!!/T)
 - Settings wire theme, diff mode, per-repository Git author identity, credential helper config, and local SSH key management; Git path remains informational
+- Settings → About shows the running app version, full build commit, release channel, application ID (`com.giteye.app`), operating system, Tauri runtime, and Git/Git LFS versions. Copy app details produces a bug-report summary without repository paths or credentials; project, release-note, and issue links are included.
 - Loading, error, and empty states throughout
 
 ### @pierre/diffs Integration
@@ -159,6 +160,8 @@ bun run build:appimage
 ```
 
 The AppImage is written to `src-tauri/target/release/bundle/appimage/`. The GitHub Actions workflow at `.github/workflows/release.yml` runs when a GitHub Release is published, builds Linux, Windows, and macOS bundles, and uploads the generated artifacts to that release.
+
+CI stamps the actual checked-out commit into the native binary using `scripts/stamp-build-metadata.mjs`. Release builds first synchronize the version from the release tag, then verify that `package.json`, Tauri configuration, Cargo manifest, and Cargo lockfile agree and that the production identifier remains `com.giteye.app`. The native build rejects mismatched CI commit/version values and invalidates cached metadata when they change. Local builds derive the commit from Git; source archives without Git metadata display an unavailable commit rather than an unrelated repository's runtime HEAD.
 
 ### Typecheck & Lint
 

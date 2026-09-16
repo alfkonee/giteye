@@ -55,6 +55,9 @@ jobs:
       - name: Sync app version from release tag
         run: bun scripts/sync-release-version.mjs "${{ github.event.release.tag_name }}"
 
+      - name: Stamp and verify release build metadata
+        run: bun scripts/stamp-build-metadata.mjs "${{ github.event.release.tag_name }}"
+
       - name: Cache Rust artifacts
         uses: swatinem/rust-cache@v2
         with:

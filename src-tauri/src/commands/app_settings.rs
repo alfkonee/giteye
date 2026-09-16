@@ -2,6 +2,12 @@ use crate::errors::AppError;
 use crate::storage::{self, AppSettings};
 
 #[tauri::command]
+pub fn get_app_build_commit() -> Option<&'static str> {
+    let commit = env!("GITEYE_BUILD_COMMIT");
+    (!commit.is_empty()).then_some(commit)
+}
+
+#[tauri::command]
 pub async fn get_app_settings(app_handle: tauri::AppHandle) -> Result<AppSettings, AppError> {
     tauri::async_runtime::spawn_blocking(move || storage::load_app_settings(&app_handle))
         .await
