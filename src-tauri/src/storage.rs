@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use tauri::Manager;
 
@@ -75,6 +75,7 @@ pub struct AppSettings {
     pub user_email: Option<String>,
     pub diff_mode: String,
     pub background_pull_request_loading: bool,
+    pub cli_setup_prompted: bool,
 }
 
 impl Default for AppSettings {
@@ -86,6 +87,7 @@ impl Default for AppSettings {
             user_email: None,
             diff_mode: "unified".to_string(),
             background_pull_request_loading: false,
+            cli_setup_prompted: false,
         }
     }
 }
@@ -116,12 +118,15 @@ fn interrupted_git_jobs_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, A
 }
 
 /// Loads jobs that had not reached a terminal state when GitEye last exited.
-pub fn load_interrupted_git_jobs(app_handle: &tauri::AppHandle) -> Result<Vec<GitJobRecord>, AppError> {
+pub fn load_interrupted_git_jobs(
+    app_handle: &tauri::AppHandle,
+) -> Result<Vec<GitJobRecord>, AppError> {
     let path = interrupted_git_jobs_path(app_handle)?;
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let data = fs::read_to_string(path).map_err(|error| AppError::StorageError(error.to_string()))?;
+    let data =
+        fs::read_to_string(path).map_err(|error| AppError::StorageError(error.to_string()))?;
     serde_json::from_str(&data).map_err(|error| AppError::SerializationError(error.to_string()))
 }
 
@@ -342,21 +347,20 @@ pub fn set_repository_favorite(
 }
 
 pub fn load_app_settings(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
-    with_app_settings_lock(app_handle, || load_app_settings_unlocked(app_handle))
+    let path = app_settings_path(app_handle)?;
+    with_app_settings_lock(&path, || load_app_settings_unlocked(&path))
 }
 
-fn load_app_settings_unlocked(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
-    let path = app_settings_path(app_handle)?;
+fn load_app_settings_unlocked(path: &Path) -> Result<AppSettings, AppError> {
     if !path.exists() {
         let backup = path.with_extension("json.backup");
         if backup.exists() {
-            fs::rename(&backup, &path)
-                .map_err(|error| AppError::StorageError(error.to_string()))?;
+            fs::rename(&backup, path).map_err(|error| AppError::StorageError(error.to_string()))?;
         } else {
             return Ok(AppSettings::default());
         }
     }
-    let data = fs::read_to_string(&path).map_err(|e| AppError::StorageError(e.to_string()))?;
+    let data = fs::read_to_string(path).map_err(|e| AppError::StorageError(e.to_string()))?;
     let parsed_settings = serde_json::from_str::<AppSettings>(&data).ok();
     let recovered_from_backup = parsed_settings.is_none();
     let raw_settings = parsed_settings.or_else(|| {
@@ -366,17 +370,14 @@ fn load_app_settings_unlocked(app_handle: &tauri::AppHandle) -> Result<AppSettin
     });
     let settings = normalize_app_settings(raw_settings.clone().unwrap_or_default());
     if recovered_from_backup || raw_settings.as_ref() != Some(&settings) {
-        write_app_settings(app_handle, &settings)?;
+        write_app_settings(path, &settings)?;
     }
     Ok(settings)
 }
 
-fn save_app_settings_unlocked(
-    app_handle: &tauri::AppHandle,
-    settings: AppSettings,
-) -> Result<AppSettings, AppError> {
+fn save_app_settings_unlocked(path: &Path, settings: AppSettings) -> Result<AppSettings, AppError> {
     let settings = normalize_app_settings(settings);
-    write_app_settings(app_handle, &settings)?;
+    write_app_settings(path, &settings)?;
     Ok(settings)
 }
 
@@ -384,31 +385,53 @@ pub fn update_git_executable_path(
     app_handle: &tauri::AppHandle,
     executable_path: Option<String>,
 ) -> Result<AppSettings, AppError> {
-    with_app_settings_lock(app_handle, || {
-        let mut settings = load_app_settings_unlocked(app_handle)?;
+    let path = app_settings_path(app_handle)?;
+    with_app_settings_lock(&path, || {
+        let mut settings = load_app_settings_unlocked(&path)?;
         settings.git_executable_path = executable_path;
-        save_app_settings_unlocked(app_handle, settings)
+        save_app_settings_unlocked(&path, settings)
     })
 }
 
-pub fn save_app_settings_preserving_git_path(
+pub fn remember_cli_setup(app_handle: &tauri::AppHandle) -> Result<AppSettings, AppError> {
+    remember_cli_setup_at(&app_settings_path(app_handle)?)
+}
+
+fn remember_cli_setup_at(path: &Path) -> Result<AppSettings, AppError> {
+    with_app_settings_lock(path, || {
+        let mut settings = load_app_settings_unlocked(path)?;
+        if settings.cli_setup_prompted {
+            return Ok(settings);
+        }
+        settings.cli_setup_prompted = true;
+        save_app_settings_unlocked(path, settings)
+    })
+}
+
+pub fn save_app_settings_preserving_device_fields(
     app_handle: &tauri::AppHandle,
-    mut settings: AppSettings,
+    settings: AppSettings,
 ) -> Result<AppSettings, AppError> {
-    with_app_settings_lock(app_handle, || {
-        settings.git_executable_path = load_app_settings_unlocked(app_handle)?.git_executable_path;
-        save_app_settings_unlocked(app_handle, settings)
+    save_app_settings_at(&app_settings_path(app_handle)?, settings)
+}
+
+fn save_app_settings_at(path: &Path, mut settings: AppSettings) -> Result<AppSettings, AppError> {
+    with_app_settings_lock(path, || {
+        let current = load_app_settings_unlocked(path)?;
+        settings.git_executable_path = current.git_executable_path;
+        settings.cli_setup_prompted = current.cli_setup_prompted;
+        save_app_settings_unlocked(path, settings)
     })
 }
 
 fn with_app_settings_lock<T>(
-    app_handle: &tauri::AppHandle,
+    path: &Path,
     operation: impl FnOnce() -> Result<T, AppError>,
 ) -> Result<T, AppError> {
     let _guard = APP_SETTINGS_LOCK
         .lock()
         .map_err(|error| AppError::StorageError(error.to_string()))?;
-    let lock_path = get_storage_dir(app_handle)?.join("app_settings.lock");
+    let lock_path = path.with_extension("lock");
     let lock_file = OpenOptions::new()
         .create(true)
         .read(true)
@@ -423,11 +446,7 @@ fn with_app_settings_lock<T>(
     result
 }
 
-fn write_app_settings(
-    app_handle: &tauri::AppHandle,
-    settings: &AppSettings,
-) -> Result<(), AppError> {
-    let path = app_settings_path(app_handle)?;
+fn write_app_settings(path: &Path, settings: &AppSettings) -> Result<(), AppError> {
     let data = serde_json::to_string_pretty(settings)
         .map_err(|e| AppError::SerializationError(e.to_string()))?;
     let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
@@ -439,10 +458,10 @@ fn write_app_settings(
         .map_err(|error| AppError::StorageError(error.to_string()))?;
     if path.exists() {
         let _ = fs::remove_file(&backup);
-        fs::rename(&path, &backup).map_err(|error| AppError::StorageError(error.to_string()))?;
+        fs::rename(path, &backup).map_err(|error| AppError::StorageError(error.to_string()))?;
     }
-    if let Err(error) = fs::rename(&temporary, &path) {
-        let _ = fs::rename(&backup, &path);
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::rename(&backup, path);
         return Err(AppError::StorageError(error.to_string()));
     }
     let _ = fs::remove_file(backup);
@@ -452,6 +471,29 @@ fn write_app_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("giteye-settings-{name}-{nonce}"));
+            fs::create_dir_all(&path).expect("create test dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
 
     #[test]
     fn dedupe_by_path_keeps_first_recent_for_each_normalized_path() {
@@ -524,6 +566,7 @@ mod tests {
             user_email: Some(" user@example.com ".to_string()),
             diff_mode: "side-by-side".to_string(),
             background_pull_request_loading: true,
+            cli_setup_prompted: false,
         });
 
         assert_eq!(settings.theme, "dark");
@@ -546,5 +589,45 @@ mod tests {
         assert_eq!(settings.diff_mode, "unified");
         assert!(!settings.background_pull_request_loading);
         assert_eq!(settings.git_executable_path, None);
+    }
+
+    #[test]
+    fn cli_setup_after_preferences_save_keeps_preferences() {
+        let dir = TestDir::new("preferences-first");
+        let path = dir.path.join("app_settings.json");
+        let mut preferences = load_app_settings_unlocked(&path).unwrap();
+        preferences.theme = "light".to_string();
+        preferences.diff_mode = "split".to_string();
+        preferences.background_pull_request_loading = true;
+
+        save_app_settings_at(&path, preferences).unwrap();
+        remember_cli_setup_at(&path).unwrap();
+
+        let persisted: AppSettings =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(persisted.theme, "light");
+        assert_eq!(persisted.diff_mode, "split");
+        assert!(persisted.background_pull_request_loading);
+        assert!(persisted.cli_setup_prompted);
+    }
+
+    #[test]
+    fn stale_preferences_save_keeps_cli_setup() {
+        let dir = TestDir::new("cli-setup-first");
+        let path = dir.path.join("app_settings.json");
+        let mut delayed_preferences = load_app_settings_unlocked(&path).unwrap();
+        delayed_preferences.theme = "light".to_string();
+        delayed_preferences.diff_mode = "split".to_string();
+        delayed_preferences.background_pull_request_loading = true;
+
+        remember_cli_setup_at(&path).unwrap();
+        save_app_settings_at(&path, delayed_preferences).unwrap();
+
+        let persisted: AppSettings =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(persisted.theme, "light");
+        assert_eq!(persisted.diff_mode, "split");
+        assert!(persisted.background_pull_request_loading);
+        assert!(persisted.cli_setup_prompted);
     }
 }

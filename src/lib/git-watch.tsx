@@ -34,10 +34,8 @@ export function GitStateWatcher() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const watchedRepos = new Set(watchedRepoPaths);
+    const startedRepos = new Set<string>();
 
-    for (const repoPath of watchedRepoPaths) {
-      void gitApi.startRepositoryWatch(repoPath);
-    }
 
     void listen<GitStateChangedPayload>("git-state-changed", (event) => {
       if (!watchedRepos.has(event.payload.repoPath)) return;
@@ -47,13 +45,17 @@ export function GitStateWatcher() {
         cleanup();
       } else {
         unlisten = cleanup;
+        for (const repoPath of watchedRepoPaths) {
+          startedRepos.add(repoPath);
+          void gitApi.startRepositoryWatch(repoPath);
+        }
       }
     });
 
     return () => {
       disposed = true;
       unlisten?.();
-      for (const repoPath of watchedRepoPaths) {
+      for (const repoPath of startedRepos) {
         void gitApi.stopRepositoryWatch(repoPath);
       }
     };

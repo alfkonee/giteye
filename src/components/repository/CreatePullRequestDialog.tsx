@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, GitPullRequest, Sparkles, X } from "lucide-react";
 import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
+import { useBranchPullRequests } from "../../lib/branch-pull-requests";
 import type { Branch } from "../../types/git";
 import { Button } from "../ui";
 
@@ -22,6 +23,11 @@ export function CreatePullRequestDialog({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState(false);
+  const { query: pullRequestsQuery, openPullRequest, isCurrentSelection } =
+    useBranchPullRequests(repoPath, branch);
+  const pullRequests = pullRequestsQuery.data ?? [];
+  const canCreate = pullRequestsQuery.isSuccess && !pullRequestsQuery.isFetching
+    && pullRequests.length === 0 && isCurrentSelection;
 
   const suggestMutation = useMutation({
     mutationFn: async () => {
@@ -40,7 +46,7 @@ export function CreatePullRequestDialog({
 
   const createMutation = useMutation(gitMutations.createPullRequest(queryClient, repoPath));
 
-  if (!branch || branch.isRemote) return null;
+  if (!branch || branch.isRemote || !isCurrentSelection) return null;
 
   const busy = suggestMutation.isPending || createMutation.isPending;
   const error = createMutation.error ?? suggestMutation.error;
@@ -48,7 +54,7 @@ export function CreatePullRequestDialog({
     aiConfig?.providers.find((provider) => provider.id === aiConfig.provider)?.label ?? "OpenAI";
 
   const handleCreate = () => {
-    if (!title.trim() || !repoPath) return;
+    if (!title.trim() || !repoPath || !canCreate) return;
     createMutation.mutate(
       {
         head: branch.shortName,
@@ -78,7 +84,7 @@ export function CreatePullRequestDialog({
           </div>
           <div className="min-w-0 flex-1">
             <h2 id="create-pr-title" className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Create pull request
+              {pullRequests.length > 0 ? "Open pull request" : "Create pull request"}
             </h2>
             <p className="mt-1 truncate font-mono text-xs text-[var(--color-text-secondary)]">{branch.shortName}</p>
           </div>
@@ -94,6 +100,47 @@ export function CreatePullRequestDialog({
         </header>
 
         <div className="space-y-3 px-4 py-3">
+          {pullRequestsQuery.isFetching ? (
+            <p role="status" className="text-xs text-[var(--color-text-muted)]">
+              Checking for an existing open pull request…
+            </p>
+          ) : pullRequestsQuery.isError ? (
+            <div role="alert" className="space-y-2 text-xs text-[var(--color-danger)]">
+              <p>Unable to check for existing pull requests: {gitActionErrorMessage(pullRequestsQuery.error)}</p>
+              <Button variant="secondary" size="sm" onClick={() => void pullRequestsQuery.refetch()}>
+                Retry lookup
+              </Button>
+            </div>
+          ) : pullRequests.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                {pullRequests.length === 1
+                  ? "This branch already has an open pull request."
+                  : "This branch has multiple open pull requests. Choose one to review."}
+              </p>
+              {pullRequests.map((pullRequest) => (
+                <button
+                  key={`${pullRequest.baseRepository}#${pullRequest.number}`}
+                  type="button"
+                  onClick={async () => { if (await openPullRequest(pullRequest)) onClose(); }}
+                  className="block w-full rounded-lg border border-[var(--color-border-muted)] p-3 text-left text-xs hover:bg-[var(--color-bg-hover)]"
+                >
+                  <span className="font-medium text-[var(--color-text-primary)]">
+                    {pullRequest.reviewInApp ? "Open" : "Open on GitHub"} #{pullRequest.number} — {pullRequest.title}
+                  </span>
+                  <span className="mt-1 block text-[var(--color-text-muted)]">
+                    {pullRequest.baseRepository} · {pullRequest.headRefName} → {pullRequest.baseRefName}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p role="status" className="text-xs text-[var(--color-text-muted)]">
+              No open pull request found for this branch.
+            </p>
+          )}
+          {canCreate ? (
+            <>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
@@ -166,6 +213,8 @@ export function CreatePullRequestDialog({
               <p className="mt-0.5 text-[var(--color-text-muted)]">Open the pull request without notifying reviewers.</p>
             </div>
           </label>
+            </>
+          ) : null}
 
           {error ? (
             <p className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
@@ -178,14 +227,16 @@ export function CreatePullRequestDialog({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
+          {canCreate ? (
           <Button
             variant="primary"
             icon={<GitPullRequest className="h-3.5 w-3.5" />}
             onClick={handleCreate}
-            disabled={busy || !title.trim()}
+            disabled={busy || !title.trim() || !canCreate}
           >
             {createMutation.isPending ? "Creating…" : "Create pull request"}
           </Button>
+          ) : null}
         </footer>
       </section>
     </div>,

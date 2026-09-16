@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { formatRebasePreview } from "../../lib/git-preview";
-import { gitMutations } from "../../lib/git-data";
+import { gitActionErrorMessage, gitMutations } from "../../lib/git-data";
+import { useBranchPullRequests } from "../../lib/branch-pull-requests";
 import { appDialog } from "../common/AppDialogProvider";
 import type { Branch, StartRebaseRequest } from "../../types/git";
 
@@ -50,6 +51,9 @@ export function BranchContextMenu({
   const rebaseUpstreamMutation = useMutation(
     gitMutations.rebaseUpstream(queryClient, repoPath),
   );
+  const { query: pullRequestsQuery, openPullRequest, isCurrentSelection } =
+    useBranchPullRequests(repoPath, branch);
+  const pullRequests = pullRequestsQuery.data ?? [];
 
   useLayoutEffect(() => {
     if (!branch || !menuRef.current) return;
@@ -65,7 +69,7 @@ export function BranchContextMenu({
     updatePosition();
     window.addEventListener("resize", updatePosition);
     return () => window.removeEventListener("resize", updatePosition);
-  }, [branch, x, y]);
+  }, [branch, x, y, pullRequestsQuery.status, pullRequests.length]);
 
   const rebaseCurrentBranch = async () => {
     if (!branch || branch.isCurrent || !repoPath) return;
@@ -184,13 +188,53 @@ export function BranchContextMenu({
         />
 
         <div className="giteye-context-separator" />
-        <BranchMenuItem
-          label="Create pull request…"
-          detail={branch.isRemote ? "local branches only" : branch.shortName}
-          disabled={!canUseLocalBranchTools || !onCreatePullRequest}
-          onSelect={() => onCreatePullRequest?.(branch)}
-          onClose={onClose}
-        />
+        {pullRequestsQuery.isError ? (
+          <BranchMenuItem
+            label="Retry pull request lookup"
+            detail={gitActionErrorMessage(pullRequestsQuery.error)}
+            disabled={!isCurrentSelection || pullRequestsQuery.isFetching}
+            keepOpen
+            onSelect={() => void pullRequestsQuery.refetch()}
+            onClose={onClose}
+          />
+        ) : pullRequests.length > 0 ? (
+          <>
+            {pullRequests.length > 1 ? (
+              <p className="px-3 py-1 text-[10.5px] text-[var(--color-text-muted)]">
+                Choose an open pull request
+              </p>
+            ) : null}
+            {pullRequests.map((pullRequest) => (
+              <BranchMenuItem
+                key={`${pullRequest.baseRepository}#${pullRequest.number}`}
+                label={!pullRequest.reviewInApp ? "Open on GitHub" :
+                  pullRequests.length === 1 ? "Open pull request" : `Open #${pullRequest.number}`}
+                detail={`${pullRequest.baseRepository}#${pullRequest.number} ${pullRequest.title} → ${pullRequest.baseRefName ?? "base"}`}
+                disabled={pullRequestsQuery.isFetching || !isCurrentSelection}
+                keepOpen
+                onSelect={async () => { if (await openPullRequest(pullRequest)) onClose(); }}
+                onClose={onClose}
+              />
+            ))}
+          </>
+        ) : (
+          <BranchMenuItem
+            label={pullRequestsQuery.isFetching ? "Finding open pull requests…" : "No open pull request"}
+            detail={branch.shortName}
+            disabled
+            onClose={onClose}
+          />
+        )}
+        {pullRequests.length === 0 ? (
+          <BranchMenuItem
+            label="Create pull request…"
+            detail={branch.isRemote ? "local branches only" : branch.shortName}
+            disabled={!canUseLocalBranchTools || !onCreatePullRequest
+              || !isCurrentSelection || !pullRequestsQuery.isSuccess || pullRequestsQuery.isFetching}
+            onSelect={() => onCreatePullRequest?.(branch)}
+            onClose={onClose}
+          />
+        ) : null}
 
         <div className="giteye-context-separator" />
         <BranchMenuItem
@@ -278,7 +322,7 @@ function BranchMenuItem({
   disabled?: boolean;
   /** Handlers that own their own dismissal (async previews) keep the menu open. */
   keepOpen?: boolean;
-  onSelect: () => void;
+  onSelect?: () => void;
   onClose: () => void;
 }) {
   return (
@@ -290,7 +334,7 @@ function BranchMenuItem({
       onClick={() => {
         if (disabled) return;
         if (!keepOpen) onClose();
-        onSelect();
+        onSelect?.();
       }}
       className={
         tone === "danger"

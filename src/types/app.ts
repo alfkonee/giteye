@@ -7,6 +7,7 @@ export interface AppSettings {
   userEmail: string | null;
   diffMode: "unified" | "split";
   backgroundPullRequestLoading: boolean;
+  cliSetupPrompted: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   userEmail: null,
   diffMode: "unified",
   backgroundPullRequestLoading: false,
+  cliSetupPrompted: false,
 };
 
 export interface ToolComponentStatus {

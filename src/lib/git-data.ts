@@ -393,6 +393,10 @@ export const gitKeys = {
   ) => [...gitKeys.repository(repoPath), "conflict-content", filePath] as const,
   githubOverview: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "github-overview"] as const,
+  branchPullRequests: (repoPath: string | null | undefined, branchRef: string | null) =>
+    [...gitKeys.repository(repoPath), "branch-pull-requests", branchRef] as const,
+  pullRequestSummary: (repoPath: string | null | undefined, number: number | null) =>
+    [...gitKeys.repository(repoPath), "pull-request-summary", number] as const,
   pullRequestDiff: (
     repoPath: string | null | undefined,
     number: number | null | undefined,
@@ -466,6 +470,10 @@ export function invalidateGitStateByReason(
     reason === "bisect"
   ) {
     invalidations.push(
+      queryClient.invalidateQueries({ queryKey: gitKeys.worktrees(repoPath) }),
+      queryClient.invalidateQueries({ queryKey: gitKeys.submodules(repoPath) }),
+    );
+    invalidations.push(
       queryClient.invalidateQueries({
         queryKey: gitKeys.branchSummary(repoPath),
       }),
@@ -509,6 +517,11 @@ export function invalidateGitStateByReason(
         queryKey: [...gitKeys.repository(repoPath), "reflog"],
       }),
     );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "branch-pull-requests"],
+      }),
+    );
   }
 
   if (reason === "worktree" || reason === "rebase" || reason === "bisect") {
@@ -528,6 +541,11 @@ export function invalidateGitStateByReason(
     invalidations.push(
       queryClient.invalidateQueries({
         queryKey: [...gitKeys.repository(repoPath), "pull-request-diff"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "pull-request-summary"],
       }),
     );
   }
@@ -1091,6 +1109,24 @@ export const gitQueries = {
       queryKey: gitKeys.githubOverview(repoPath),
       queryFn: () => gitApi.getRepositoryGithubOverview(repoPath!),
       enabled: enabledRepo(repoPath) && enabled,
+    }),
+
+  branchPullRequests: (repoPath: string | null, branchRef: string | null, enabled: boolean) =>
+    queryOptions({
+      queryKey: gitKeys.branchPullRequests(repoPath, branchRef),
+      queryFn: () => gitApi.getBranchPullRequests(repoPath!, branchRef!),
+      enabled: enabledRepo(repoPath) && Boolean(branchRef) && enabled,
+      staleTime: 0,
+      retry: false,
+      refetchOnWindowFocus: false,
+    }),
+
+  pullRequestSummary: (repoPath: string | null, number: number | null, enabled = true) =>
+    queryOptions({
+      queryKey: gitKeys.pullRequestSummary(repoPath, number),
+      queryFn: () => gitApi.getPullRequestSummary(repoPath!, number!),
+      enabled: enabledRepo(repoPath) && number !== null && enabled,
+      retry: false,
     }),
 
   pullRequestDiff: (
@@ -1686,7 +1722,9 @@ export const gitMutations = {
         startGitActionNotice(
           strategy === "stash"
             ? "Stashing changes and checking out branch"
-            : "Checking out branch",
+            : strategy === "discard"
+              ? "Discarding changes and checking out branch"
+              : "Checking out branch",
           branchName,
           repoPath,
         ),
@@ -1700,8 +1738,12 @@ export const gitMutations = {
           `${branchName} checked out and repository views refreshed.`,
         );
       },
-      onError: (error, _branchName, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _branchName, context) => {
+        failGitActionNotice(context, error);
+        // Git can switch HEAD before a hook fails, or retain a recovery stash.
+        // Show the actual state even when the checkout reports an error.
+        await invalidateGitState(queryClient, repoPath);
+      },
     }),
 
   createBranch: (queryClient: QueryClient, repoPath: string | null) =>

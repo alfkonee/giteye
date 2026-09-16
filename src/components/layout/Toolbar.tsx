@@ -18,7 +18,7 @@ import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
 import type { Branch } from "../../types/git";
-import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
+import { useBranchActivation } from "../../lib/branch-activation";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { BranchContextMenu } from "../branches/BranchContextMenu";
 import { BranchDeleteDialog } from "../branches/BranchDeleteDialog";
@@ -61,7 +61,6 @@ export function Toolbar({ currentBranch, isClean }: ToolbarProps) {
   const queryClient = useQueryClient();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [pushMenuOpen, setPushMenuOpen] = useState(false);
-  const [branchToSwitch, setBranchToSwitch] = useState<Branch | null>(null);
   const [contextBranch, setContextBranch] = useState<{ branch: Branch; x: number; y: number } | null>(null);
   const [deleteBranchTarget, setDeleteBranchTarget] = useState<Branch | null>(null);
   const branchMenuRef = useRef<HTMLDivElement>(null);
@@ -69,7 +68,14 @@ export function Toolbar({ currentBranch, isClean }: ToolbarProps) {
   const { data: branches, isFetching: branchesFetching } = useQuery(
     gitQueries.branches(activeRepoPath),
   );
-  const checkoutBranch = useMutation(gitMutations.checkoutBranch(queryClient, activeRepoPath));
+  const branchActivation = useBranchActivation({
+    repoPath: activeRepoPath,
+    branches: branches ?? [],
+    onAdvancedIntegrate: (ref) => {
+      setPendingAdvancedBranchName(ref);
+      setActiveView("workspace");
+    },
+  });
   const createBranch = useMutation(gitMutations.createBranch(queryClient, activeRepoPath));
   const fastForwardBranchMutation = useMutation(gitMutations.fastForwardBranch(queryClient, activeRepoPath));
   const mergeBranchMutation = useMutation(gitMutations.mergeBranch(queryClient, activeRepoPath));
@@ -115,18 +121,10 @@ export function Toolbar({ currentBranch, isClean }: ToolbarProps) {
   }, []);
 
   const requestBranchSwitch = (branch: Branch) => {
-    if (branch.isCurrent) return;
-    setBranchToSwitch(branch);
+    void branchActivation.activateBranch(branch);
     setBranchMenuOpen(false);
   };
 
-  const confirmBranchSwitch = (strategy: CheckoutBranchStrategy) => {
-    if (!branchToSwitch) return;
-    checkoutBranch.mutate(
-      { branchName: branchToSwitch.shortName, strategy },
-      { onSuccess: () => setBranchToSwitch(null) },
-    );
-  };
 
   const openBranchContextMenu = (event: ReactMouseEvent, branch: Branch) => {
     event.preventDefault();
@@ -428,11 +426,13 @@ export function Toolbar({ currentBranch, isClean }: ToolbarProps) {
         />
       </div>
       <BranchSwitchDialog
-        branch={branchToSwitch}
+        branch={branchActivation.switchBranch}
         isClean={isClean ?? true}
-        isPending={checkoutBranch.isPending}
-        onCancel={() => setBranchToSwitch(null)}
-        onConfirm={confirmBranchSwitch}
+        isPending={branchActivation.switchPending}
+        error={branchActivation.switchError}
+        followUpNote={branchActivation.switchFollowUp}
+        onCancel={branchActivation.cancelSwitch}
+        onConfirm={branchActivation.confirmSwitch}
       />
       <BranchContextMenu
         branch={contextBranch?.branch ?? null}

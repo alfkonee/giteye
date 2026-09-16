@@ -16,13 +16,27 @@ pub async fn open_repository(
     app_handle: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let repo_path = Path::new(&path);
-        if !repo_path.exists() {
-            return Err(AppError::RepositoryNotFound(path.clone()));
+        let repo_path = Path::new(&path)
+            .canonicalize()
+            .map_err(|error| AppError::InvalidPath(format!("{path}: {error}")))?;
+        if !repo_path.is_dir() {
+            return Err(AppError::InvalidPath(format!(
+                "{path}: expected a repository directory"
+            )));
         }
-        let snapshot = repository_service::get_repository_snapshot(repo_path)?;
-        storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
-        repository_service::prime_repository_context_with_budget(repo_path.to_path_buf(), false);
+        // Normalize nested directories and linked worktrees before snapshot,
+        // recent-list, cache, and watcher keys are created.
+        let root = GitCli::run(&repo_path, &["rev-parse", "--show-toplevel"])?;
+        let repo_path = PathBuf::from(root.trim_end_matches(['\r', '\n']))
+            .canonicalize()
+            .map_err(|error| AppError::InvalidPath(error.to_string()))?;
+        let snapshot = repository_service::get_repository_snapshot(&repo_path)?;
+        storage::save_recent_repository(
+            &app_handle,
+            &snapshot.repository_info.path,
+            &snapshot.repository_info.name,
+        )?;
+        repository_service::prime_repository_context_with_budget(repo_path, false);
         Ok(snapshot)
     })
     .await
@@ -38,7 +52,10 @@ pub async fn init_repository(
         repository_service::init_repository(Path::new(&path))?;
         let snapshot = repository_service::get_repository_snapshot(Path::new(&path))?;
         storage::save_recent_repository(&app_handle, &path, &snapshot.repository_info.name)?;
-        repository_service::prime_repository_context_with_budget(Path::new(&path).to_path_buf(), false);
+        repository_service::prime_repository_context_with_budget(
+            Path::new(&path).to_path_buf(),
+            false,
+        );
         Ok(snapshot)
     })
     .await
@@ -123,7 +140,10 @@ pub async fn get_workspace_summary(path: String) -> Result<WorkspaceSummary, App
 }
 
 #[tauri::command]
-pub async fn warm_repository_context(repo_path: String, include_github: bool) -> Result<(), AppError> {
+pub async fn warm_repository_context(
+    repo_path: String,
+    include_github: bool,
+) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         repository_service::warm_repository_context(
             Path::new(&repo_path).to_path_buf(),

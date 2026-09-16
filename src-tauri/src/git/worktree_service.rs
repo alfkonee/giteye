@@ -257,7 +257,7 @@ fn build_worktree(record: WorktreeRecord, current_path: Option<&Path>) -> Worktr
 }
 
 fn status_counts(path: &Path) -> Result<(u32, u32), AppError> {
-    let output = GitCli::run(path, &["status", "--porcelain=v1"])?;
+    let output = GitCli::run(path, &["--no-optional-locks", "status", "--porcelain=v1"])?;
     let mut modified = 0;
     let mut staged = 0;
 

@@ -1,9 +1,9 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
 use crate::models::github::{
-    ActivityItem, CheckRunSummary, GitHubAccount, LabelSummary, PullRequestDiff,
-    PullRequestFileDiff, PullRequestSummary, RepositoryGithubOverview, ReviewCommentSummary,
-    ReviewRequestSummary, ReviewSummary,
+    ActivityItem, BranchPullRequestMatch, CheckRunSummary, GitHubAccount, LabelSummary,
+    PullRequestDiff, PullRequestFileDiff, PullRequestSummary, RepositoryGithubOverview,
+    ReviewCommentSummary, ReviewRequestSummary, ReviewSummary,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -678,6 +678,218 @@ pub fn create_pull_request(
     Ok(output.trim().to_string())
 }
 
+/// Resolve the selected ref, not the checked-out branch or an arbitrary same-name fork.
+fn branch_head_identity(
+    repo_path: &Path,
+    branch_ref: &str,
+) -> Result<(String, String, String), AppError> {
+    GitCli::run(repo_path, &["show-ref", "--verify", "--quiet", branch_ref])?;
+    let (remote, head) = if let Some(local) = branch_ref.strip_prefix("refs/heads/") {
+        let tracking = GitCli::run(
+            repo_path,
+            &[
+                "for-each-ref",
+                "--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)",
+                branch_ref,
+            ],
+        )?;
+        let fields = tracking
+            .lines()
+            .find_map(|line| {
+                let fields: Vec<_> = line.split('\0').collect();
+                (fields.len() == 3 && fields[0] == branch_ref).then_some(fields)
+            })
+            .ok_or_else(|| AppError::GitError("Selected branch no longer exists".to_string()))?;
+        if fields[1].is_empty() {
+            ("origin".to_string(), local.to_string())
+        } else {
+            let head = fields[2].strip_prefix("refs/heads/").ok_or_else(|| {
+                AppError::GitError("The branch does not track a GitHub branch".to_string())
+            })?;
+            (fields[1].to_string(), head.to_string())
+        }
+    } else if let Some(remote_ref) = branch_ref.strip_prefix("refs/remotes/") {
+        let remotes = GitCli::run(repo_path, &["remote"])?;
+        let (remote, head) = split_remote_branch(remote_ref, &remotes).ok_or_else(|| {
+            AppError::GitError("Unable to identify the selected branch's remote".to_string())
+        })?;
+        (remote.to_string(), head.to_string())
+    } else {
+        return Err(AppError::GitError(
+            "Select a local or remote branch".to_string(),
+        ));
+    };
+    let url = GitCli::run(repo_path, &["remote", "get-url", &remote])?;
+    let (owner, repo) = parse_github_remote(url.trim())
+        .ok_or_else(|| AppError::GitError(format!("Remote {remote} is not a GitHub repository")))?;
+    Ok((owner, repo, head))
+}
+
+fn split_remote_branch<'a>(remote_ref: &'a str, remotes: &'a str) -> Option<(&'a str, &'a str)> {
+    remotes
+        .lines()
+        .filter_map(|remote| {
+            let head = remote_ref.strip_prefix(remote)?.strip_prefix('/')?;
+            (!head.is_empty()).then_some((remote, head))
+        })
+        .max_by_key(|(remote, _)| remote.len())
+}
+
+#[derive(Deserialize)]
+struct BranchPullRequestRepository {
+    full_name: String,
+}
+
+#[derive(Deserialize)]
+struct BranchPullRequestHead {
+    #[serde(rename = "ref")]
+    ref_name: String,
+    repo: Option<BranchPullRequestRepository>,
+}
+
+#[derive(Deserialize)]
+struct BranchPullRequest {
+    number: u64,
+    title: String,
+    state: String,
+    merged_at: Option<String>,
+    user: Option<GhAuthor>,
+    html_url: Option<String>,
+    head: BranchPullRequestHead,
+    base: BranchPullRequestHead,
+    #[serde(default)]
+    draft: bool,
+    updated_at: Option<String>,
+    labels: Option<Vec<GhLabel>>,
+    requested_reviewers: Option<Vec<GhAuthor>>,
+}
+
+fn matching_branch_pull_requests(
+    pages: Vec<Vec<BranchPullRequest>>,
+    head_repository: &str,
+    head_branch: &str,
+    review_repository: &str,
+) -> Vec<BranchPullRequestMatch> {
+    pages
+        .into_iter()
+        .flatten()
+        .filter(|pr| {
+            pr.state.eq_ignore_ascii_case("open")
+                && pr.merged_at.is_none()
+                && pr.head.ref_name == head_branch
+                && pr
+                    .head
+                    .repo
+                    .as_ref()
+                    .is_some_and(|repo| repo.full_name.eq_ignore_ascii_case(head_repository))
+        })
+        .filter_map(|pr| {
+            let base_repository = pr.base.repo?.full_name;
+            Some(BranchPullRequestMatch {
+                review_in_app: base_repository.eq_ignore_ascii_case(review_repository),
+                base_repository,
+                pull_request: PullRequestSummary {
+                    number: pr.number,
+                    title: pr.title,
+                    state: pr.state,
+                    author: pr.user.and_then(|user| user.login),
+                    url: pr.html_url,
+                    head_ref_name: Some(pr.head.ref_name),
+                    base_ref_name: Some(pr.base.ref_name),
+                    is_draft: pr.draft,
+                    updated_at: pr.updated_at,
+                    labels: map_labels(pr.labels),
+                    review_requests: pr
+                        .requested_reviewers
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|user| user.login)
+                        .map(|login| ReviewRequestSummary {
+                            login,
+                            kind: "user".to_string(),
+                        })
+                        .collect(),
+                    ..PullRequestSummary::default()
+                },
+            })
+        })
+        .collect()
+}
+
+pub fn get_branch_pull_requests(
+    repo_path: &Path,
+    branch_ref: &str,
+) -> Result<Vec<BranchPullRequestMatch>, AppError> {
+    let (head_owner, head_repo, head_branch) = branch_head_identity(repo_path, branch_ref)?;
+    let (owner, repo) = github_repository(repo_path)?;
+    let review_repository = format!("{owner}/{repo}");
+    let repository_endpoint = format!("repos/{review_repository}");
+    let parent = run_required_process(
+        "gh",
+        &[
+            "api",
+            &repository_endpoint,
+            "--hostname",
+            "github.com",
+            "--jq",
+            ".parent.full_name // empty",
+        ],
+        repo_path,
+        GhOp::Read,
+    )?;
+    let head_filter = format!("head={head_owner}:{head_branch}");
+    let head_repository = format!("{head_owner}/{head_repo}");
+    let mut targets = vec![review_repository.as_str()];
+    if !parent.trim().is_empty() && !parent.trim().eq_ignore_ascii_case(&review_repository) {
+        targets.push(parent.trim());
+    }
+    let mut matches = Vec::new();
+    // The overview is deliberately bounded. Search both this repository and a
+    // fork's parent without quotas, and keep their distinct navigation targets.
+    for target in targets {
+        let endpoint = format!("repos/{target}/pulls");
+        let output = run_required_process(
+            "gh",
+            &[
+                "api",
+                &endpoint,
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                "--paginate",
+                "--slurp",
+                "-f",
+                "state=open",
+                "-f",
+                "per_page=100",
+                "-f",
+                &head_filter,
+            ],
+            repo_path,
+            GhOp::Read,
+        )?;
+        let pages = serde_json::from_str(&output).map_err(|error| {
+            AppError::GitError(format!("Unable to read branch pull requests: {error}"))
+        })?;
+        matches.extend(matching_branch_pull_requests(
+            pages,
+            &head_repository,
+            &head_branch,
+            &review_repository,
+        ));
+    }
+    Ok(matches)
+}
+
+pub fn get_pull_request_summary(
+    repo_path: &Path,
+    number: u64,
+) -> Result<PullRequestSummary, AppError> {
+    let (owner, repo) = github_repository(repo_path)?;
+    fetch_pull_request(repo_path, &owner, &repo, number)
+        .ok_or_else(|| AppError::GitError(format!("Unable to load pull request #{number}")))
+}
 
 fn github_repository(repo_path: &Path) -> Result<(String, String), AppError> {
     let remote_url = GitCli::run(repo_path, &["remote", "get-url", "origin"])
@@ -1582,9 +1794,9 @@ fn canonical_repo_key(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_github_overview, clear_github_overview_cache, join_pipe_reader, merge_method_flag,
-        normalize_review_comment_side, parse_github_remote, spawn_pipe_reader,
-        store_github_overview,
+        cached_github_overview, clear_github_overview_cache, join_pipe_reader,
+        matching_branch_pull_requests, merge_method_flag, normalize_review_comment_side,
+        parse_github_remote, spawn_pipe_reader, split_remote_branch, store_github_overview,
     };
     use crate::errors::AppError;
     use crate::models::github::RepositoryGithubOverview;
@@ -1592,6 +1804,144 @@ mod tests {
         atomic::{AtomicBool, Ordering},
         Arc,
     };
+
+    #[test]
+    fn branch_lookup_excludes_unrelated_forks_and_closed_prs_but_keeps_ambiguous_open_matches() {
+        let pr = |number, repository: Option<&str>, branch, state, merged: Option<&str>, base| {
+            serde_json::json!({
+                "number": number, "title": "Branch change", "state": state, "merged_at": merged,
+                "head": { "ref": branch, "repo": repository.map(|name| serde_json::json!({ "full_name": name })) },
+                "base": { "ref": base, "repo": { "full_name": "upstream/project" } }
+            })
+        };
+        let pages = serde_json::from_value(serde_json::json!([
+            [
+                pr(
+                    1,
+                    Some("alice/project"),
+                    "feature/login",
+                    "open",
+                    None,
+                    "main"
+                ),
+                pr(
+                    2,
+                    Some("bob/project"),
+                    "feature/login",
+                    "open",
+                    None,
+                    "main"
+                ),
+                pr(
+                    3,
+                    Some("alice/unrelated"),
+                    "feature/login",
+                    "open",
+                    None,
+                    "main"
+                ),
+                pr(
+                    4,
+                    Some("alice/project"),
+                    "feature/login",
+                    "closed",
+                    None,
+                    "main"
+                )
+            ],
+            [
+                pr(
+                    5,
+                    Some("alice/project"),
+                    "feature/login",
+                    "open",
+                    Some("2026-01-01"),
+                    "main"
+                ),
+                pr(6, None, "feature/login", "open", None, "main"),
+                pr(
+                    7,
+                    Some("alice/project"),
+                    "Feature/login",
+                    "open",
+                    None,
+                    "main"
+                ),
+                pr(
+                    8,
+                    Some("ALICE/Project"),
+                    "feature/login",
+                    "open",
+                    None,
+                    "release"
+                )
+            ]
+        ]))
+        .unwrap();
+        let matches = matching_branch_pull_requests(
+            pages,
+            "alice/project",
+            "feature/login",
+            "UPSTREAM/Project",
+        );
+        assert_eq!(
+            matches
+                .iter()
+                .map(|pr| pr.pull_request.number)
+                .collect::<Vec<_>>(),
+            vec![1, 8]
+        );
+        assert_eq!(
+            matches[1].pull_request.base_ref_name.as_deref(),
+            Some("release")
+        );
+        assert!(matches.iter().all(|pr| pr.review_in_app));
+    }
+
+    #[test]
+    fn fork_parent_pr_keeps_its_url_instead_of_aliasing_an_origin_pr_with_the_same_number() {
+        let pages = serde_json::from_value(serde_json::json!([[
+            {
+                "number": 42, "title": "Local PR", "state": "open",
+                "head": { "ref": "feature", "repo": { "full_name": "alice/project" } },
+                "base": { "ref": "main", "repo": { "full_name": "alice/project" } },
+                "html_url": "https://github.com/alice/project/pull/42"
+            },
+            {
+                "number": 42, "title": "Upstream PR", "state": "open",
+                "head": { "ref": "feature", "repo": { "full_name": "alice/project" } },
+                "base": { "ref": "main", "repo": { "full_name": "upstream/project" } },
+                "html_url": "https://github.com/upstream/project/pull/42"
+            }
+        ]]))
+        .unwrap();
+        let matches =
+            matching_branch_pull_requests(pages, "alice/project", "feature", "alice/project");
+        assert!(matches[0].review_in_app);
+        assert!(!matches[1].review_in_app);
+        assert_eq!(matches[1].base_repository, "upstream/project");
+        assert_eq!(
+            matches[1].pull_request.url.as_deref(),
+            Some("https://github.com/upstream/project/pull/42")
+        );
+    }
+
+    #[test]
+    fn remote_branch_identity_preserves_slashes_and_prefers_the_complete_remote_name() {
+        let remotes = "origin\nteam\nteam/fork\n";
+        assert_eq!(
+            split_remote_branch("team/fork/feature/login", remotes),
+            Some(("team/fork", "feature/login"))
+        );
+        assert_eq!(
+            split_remote_branch("origin/feature/login", remotes),
+            Some(("origin", "feature/login"))
+        );
+        assert_eq!(
+            split_remote_branch("origin-other/feature/login", remotes),
+            None
+        );
+    }
 
     #[test]
     fn parses_github_remote_urls() {

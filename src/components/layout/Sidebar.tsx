@@ -116,8 +116,6 @@ export function Sidebar() {
 
   const shouldLoadBranches = Boolean(activeRepoPath);
   const shouldLoadGithub = isCollaborationView(activeView);
-  const shouldLoadWorktrees = activeView === "worktrees";
-  const shouldLoadSubmodules = activeView === "submodules";
 
   const branchesQuery = useQuery(
     gitQueries.branches(activeRepoPath, shouldLoadBranches),
@@ -147,10 +145,10 @@ export function Sidebar() {
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
   const worktreesQuery = useQuery(
-    gitQueries.worktrees(activeRepoPath, shouldLoadWorktrees),
+    gitQueries.worktrees(activeRepoPath, false),
   );
   const submodulesQuery = useQuery(
-    gitQueries.submodules(activeRepoPath, shouldLoadSubmodules),
+    gitQueries.submodules(activeRepoPath, false),
   );
 
   const remotesQuery = useQuery(
@@ -202,8 +200,8 @@ export function Sidebar() {
     hasCollaborationData || isCollaborationView(activeView);
   const viewCounts: Partial<Record<ViewType, number | undefined>> = {
     workspace: hasConflicts ? conflictCount : statusFileCount,
-    worktrees: workspaceSummary?.worktreeCount,
-    submodules: workspaceSummary?.submoduleCount,
+    worktrees: worktreesQuery.data?.length ?? workspaceSummary?.worktreeCount,
+    submodules: submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount,
     remotes: remotesQuery.data?.length,
     stashes: stashesQuery.data?.length,
     tags: tagsQuery.data?.length,
@@ -473,15 +471,12 @@ export function Sidebar() {
 
         <SidebarSection
           title="Worktree Paths"
-          count={workspaceSummary?.worktreeCount}
+          count={worktreesQuery.data?.length ?? workspaceSummary?.worktreeCount}
         />
-        {shouldLoadWorktrees && worktreesQuery.isLoading ? (
+        {worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
-        ) : shouldLoadWorktrees && worktreesQuery.error ? (
+        ) : worktreesQuery.error ? (
           <SidebarNote>Worktrees unavailable</SidebarNote>
-        ) : !shouldLoadWorktrees &&
-          (workspaceSummary?.worktreeCount ?? 0) > 0 ? (
-          <SidebarNote>Open Worktrees to load linked paths</SidebarNote>
         ) : worktrees.length === 0 ? (
           <SidebarNote>No linked worktrees</SidebarNote>
         ) : (
@@ -507,15 +502,12 @@ export function Sidebar() {
 
         <SidebarSection
           title="Submodule Paths"
-          count={workspaceSummary?.submoduleCount}
+          count={submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount}
         />
-        {shouldLoadSubmodules && submodulesQuery.isLoading ? (
+        {submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
-        ) : shouldLoadSubmodules && submodulesQuery.error ? (
+        ) : submodulesQuery.error ? (
           <SidebarNote>Submodules unavailable</SidebarNote>
-        ) : !shouldLoadSubmodules &&
-          (workspaceSummary?.submoduleCount ?? 0) > 0 ? (
-          <SidebarNote>Open Submodules to load configured paths</SidebarNote>
         ) : submodules.length === 0 ? (
           <SidebarNote>No submodules configured</SidebarNote>
         ) : (
@@ -559,6 +551,7 @@ export function Sidebar() {
           branch={branchActivation.switchBranch}
           isClean={isClean}
           isPending={branchActivation.switchPending}
+          error={branchActivation.switchError}
           followUpNote={branchActivation.switchFollowUp}
           onCancel={branchActivation.cancelSwitch}
           onConfirm={branchActivation.confirmSwitch}

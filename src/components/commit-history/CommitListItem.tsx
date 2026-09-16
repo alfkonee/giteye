@@ -6,6 +6,7 @@ import type { CommitGraphRow } from "./commit-graph";
 import { COMMIT_ROW_HEIGHT, laneX } from "./commit-graph";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 import { buildDisplayRefs, describeRef, RefPill, type DisplayRef } from "./commit-refs";
+import { describeBranchActivation } from "../../lib/branch-activation";
 
 interface CommitListItemProps {
   commit: CommitSummary;
@@ -13,6 +14,7 @@ interface CommitListItemProps {
   branches: Branch[] | undefined;
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
+  onActivateBranch: (branch: Branch) => void;
 }
 
 /**
@@ -26,6 +28,7 @@ export function CommitListItem({
   branches,
   isSelected,
   onSelect,
+  onActivateBranch,
 }: CommitListItemProps) {
   const displayRefs = buildDisplayRefs(commit.refs, branches);
   const isHead = displayRefs.some((ref) => ref.isHead);
@@ -77,14 +80,21 @@ export function CommitListItem({
         </span>
         {displayRefs.length > 0 && (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
-            {displayRefs.slice(0, 2).map((ref) => (
-              <RefPill
-                key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
-                displayRef={ref}
-                onSelectedRow={isSelected}
-                className="max-w-[110px]"
-              />
-            ))}
+            {displayRefs.slice(0, 2).map((ref) => {
+              const branch = !ref.isTag && ref.label !== "HEAD"
+                ? branches?.find((candidate) => candidate.shortName === ref.label && candidate.isRemote === ref.isRemote)
+                : undefined;
+              return (
+                <RefPill
+                  key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
+                  displayRef={ref}
+                  onSelectedRow={isSelected}
+                  className="max-w-[110px]"
+                  onActivate={branch ? () => onActivateBranch(branch) : undefined}
+                  activationTitle={branch ? describeBranchActivation(branch, branches ?? []) : undefined}
+                />
+              );
+            })}
             {displayRefs.length > 2 && (
               <span
                 className="text-[10px] text-[var(--color-text-muted)]"

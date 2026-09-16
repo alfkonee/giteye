@@ -1,7 +1,9 @@
+pub mod cli_install;
 mod commands;
 mod errors;
 mod git;
 mod keychain;
+pub mod launch;
 mod models;
 mod storage;
 mod watcher;
@@ -10,9 +12,17 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    run_with_launch(None);
+}
+
+pub fn run_with_launch(initial_launch: Option<launch::LaunchIntent>) {
     configure_linux_webkit_environment();
 
-    let builder = tauri::Builder::default()
+    let builder =
+        tauri::Builder::default().manage(launch::RepositoryLaunchState::new(initial_launch));
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(launch::forward_launch));
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
 
@@ -41,8 +51,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            launch::take_repository_launches,
+            cli_install::get_cli_launcher_status,
+            cli_install::install_cli_launcher,
+            cli_install::uninstall_cli_launcher,
             commands::app_settings::get_app_settings,
             commands::app_settings::save_app_settings,
+            commands::app_settings::remember_cli_setup,
             commands::toolchain::get_toolchain_status,
             commands::toolchain::install_git_toolchain,
             commands::toolchain::install_and_enable_lfs,
@@ -217,6 +232,8 @@ pub fn run() {
             commands::diagnostics::run_git_maintenance,
             commands::diagnostics::verify_git_signature,
             commands::github::get_repository_github_overview,
+            commands::github::get_branch_pull_requests,
+            commands::github::get_pull_request_summary,
             commands::github::get_pull_request_diff,
             commands::github::checkout_pull_request,
             commands::github::update_pull_request_branch,

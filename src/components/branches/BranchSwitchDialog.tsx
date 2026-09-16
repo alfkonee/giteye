@@ -1,20 +1,26 @@
 import type { Branch } from "../../types/git";
 import type { CheckoutBranchStrategy } from "../../lib/tauri-api";
-import { Archive, ArrowRightLeft, GitBranch, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowRightLeft, GitBranch, Trash2, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 
 interface BranchSwitchDialogProps {
   branch: Branch | null;
   isClean: boolean;
   isPending: boolean;
+  error?: Error | null;
   /** Extra action GitEye performs right after the checkout succeeds. */
   followUpNote?: string | null;
   onCancel: () => void;
   onConfirm: (strategy: CheckoutBranchStrategy) => void;
 }
 
-export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, onCancel, onConfirm }: BranchSwitchDialogProps) {
+export function BranchSwitchDialog({ branch, isClean, isPending, error, followUpNote, onCancel, onConfirm }: BranchSwitchDialogProps) {
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  useEffect(() => {
+    setConfirmingDiscard(false);
+  }, [branch]);
   if (!branch) return null;
 
   const branchKind = branch.isRemote ? "remote" : "local";
@@ -33,7 +39,7 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
               Switch branch?
             </h2>
             <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-              Switch to {branchKind} branch.
+              {branch.isRemote ? "Create and check out a local tracking branch." : "Switch to local branch."}
             </p>
             <code className="mt-1 block break-all font-mono text-xs text-[var(--color-text-secondary)]">
               {branch.shortName}
@@ -54,7 +60,7 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
               <Archive className="mt-0.5 h-4 w-4 shrink-0" />
               <p>This repository has uncommitted changes. Choose how to handle the existing working copy.</p>
             </div>
-            <div className="grid gap-3 min-[480px]:grid-cols-2">
+            <div className="grid gap-3 min-[640px]:grid-cols-3">
               <div className="rounded-lg border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] p-3">
                 <div className="flex items-center gap-2 font-medium text-[var(--color-text-primary)]">
                   <ArrowRightLeft className="h-4 w-4 shrink-0 text-[var(--color-accent)]" />
@@ -69,6 +75,13 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
                 </div>
                 <p className="mt-1.5 text-[var(--color-text-muted)]">Create a stash, including untracked files, before switching.</p>
               </div>
+              <div className="rounded-lg border border-[var(--color-danger)] bg-[var(--color-bg-tertiary)] p-3">
+                <div className="flex items-center gap-2 font-medium text-[var(--color-danger)]">
+                  <Trash2 className="h-4 w-4 shrink-0" />
+                  <span>Discard changes</span>
+                </div>
+                <p className="mt-1.5 text-[var(--color-text-muted)]">Delete staged and unstaged edits and untracked files. Ignored files are kept. GitEye refuses unsafe nested repository or submodule changes.</p>
+              </div>
             </div>
           </div>
         )}
@@ -79,7 +92,24 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
           </p>
         ) : null}
 
-        <div className="mt-5 grid gap-2 min-[480px]:grid-cols-[auto_auto_1fr]">
+        {error ? (
+          <p role="alert" className="mt-3 whitespace-pre-wrap break-words text-xs text-[var(--color-danger)]">
+            {error.message}
+          </p>
+        ) : null}
+
+        {confirmingDiscard ? (
+          <div role="alert" className="mt-4 rounded-lg border border-[var(--color-danger)] p-3 text-xs text-[var(--color-danger)]">
+            <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4 shrink-0" /> Permanently discard changes?</p>
+            <p className="mt-2">Staged and unstaged edits and untracked files will be deleted when the switch succeeds. There is no undo in GitEye. Ignored files are preserved; nested repositories and submodule work are never silently deleted.</p>
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <Button variant="secondary" disabled={isPending} onClick={() => setConfirmingDiscard(false)}>Keep changes</Button>
+              <Button variant="danger" disabled={isPending} onClick={() => onConfirm("discard")}>Discard changes and switch</Button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button
             variant="ghost"
             onClick={onCancel}
@@ -89,7 +119,18 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
           >
             Cancel
           </Button>
-          {!isClean && (
+          {!isClean && !confirmingDiscard && (
+            <Button
+              variant="danger"
+              onClick={() => setConfirmingDiscard(true)}
+              disabled={isPending}
+              icon={<Trash2 className="h-4 w-4" />}
+              className="w-full min-[480px]:w-auto"
+            >
+              Discard changes…
+            </Button>
+          )}
+          {!isClean && !confirmingDiscard && (
             <Button
               variant="secondary"
               onClick={() => onConfirm("stash")}
@@ -100,15 +141,16 @@ export function BranchSwitchDialog({ branch, isClean, isPending, followUpNote, o
               Stash and switch
             </Button>
           )}
-          <Button
+          {!confirmingDiscard && <Button
             variant="primary"
+            autoFocus
             onClick={() => onConfirm("move")}
             disabled={isPending}
             icon={isClean ? <GitBranch className="h-4 w-4" /> : <ArrowRightLeft className="h-4 w-4" />}
             className="w-full min-[480px]:w-auto"
           >
             {isClean ? "Switch branch" : "Move changes and switch"}
-          </Button>
+          </Button>}
         </div>
       </div>
     </div>,

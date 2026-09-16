@@ -41,6 +41,15 @@ pub struct PullRequestSummary {
     pub merge_state_status: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchPullRequestMatch {
+    #[serde(flatten)]
+    pub pull_request: PullRequestSummary,
+    pub base_repository: String,
+    pub review_in_app: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequestFileDiff {
