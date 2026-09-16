@@ -121,23 +121,19 @@ function ResolverContents({
   const navigateRegion = (index: number) => {
     if (!selectedPath || !regions.length) return;
     const next = (index + regions.length) % regions.length;
-    useConflictStore
-      .getState()
-      .updateFile(repoPath, selectedPath, (draft) => ({
-        ...draft,
-        activeRegion: next,
-      }));
+    useConflictStore.getState().updateFile(repoPath, selectedPath, (draft) => ({
+      ...draft,
+      activeRegion: next,
+    }));
     setNavigationRequest((value) => value + 1);
   };
   const resolveRegion = (index: number, choice: RegionChoice) => {
     if (!selectedPath) return;
     const result = applyRegion(text, regions[index], choice);
-    useConflictStore
-      .getState()
-      .updateFile(repoPath, selectedPath, (draft) => ({
-        ...draft,
-        activeRegion: index,
-      }));
+    useConflictStore.getState().updateFile(repoPath, selectedPath, (draft) => ({
+      ...draft,
+      activeRegion: index,
+    }));
     change({ kind: "text", content: result });
     setNavigationRequest((value) => value + 1);
   };
@@ -331,7 +327,11 @@ function ResolverContents({
       !stage.present
         ? { kind: "delete" }
         : stage.content !== null && file.content.kind === "text"
-          ? { kind: "text", content: stage.content }
+          ? {
+              kind: "text",
+              content: stage.content,
+              mode: stage.mode === "100755" ? "100755" : "100644",
+            }
           : { kind: "side", side },
     );
   };
@@ -485,13 +485,11 @@ function ResolverContents({
         operationId: current.operationId,
       });
       if (action !== "continue")
-        useConflictStore
-          .getState()
-          .updateSession(repoPath, (value) => ({
-            ...value,
-            files: {},
-            todoDraft: value.todoSaved,
-          }));
+        useConflictStore.getState().updateSession(repoPath, (value) => ({
+          ...value,
+          files: {},
+          todoDraft: value.todoSaved,
+        }));
       await refresh();
     } catch (cause) {
       setError(gitActionErrorMessage(cause));

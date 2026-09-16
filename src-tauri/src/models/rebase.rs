@@ -82,9 +82,15 @@ pub struct ConflictSubmodule {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConflictResolution {
-    Text { content: String },
+    Text {
+        content: String,
+        #[serde(default)]
+        mode: Option<String>,
+    },
     Keep,
-    Side { side: ConflictSide },
+    Side {
+        side: ConflictSide,
+    },
     Delete,
     SubmoduleHead,
 }

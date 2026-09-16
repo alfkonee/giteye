@@ -222,6 +222,31 @@ test("saved re-edits of resolved files block continuation until explicitly resta
   expect(sessionHasDrafts(session)).toBe(false);
 });
 
+test("external conflict advancement clears obsolete staging requirements", () => {
+  const store = useConflictStore.getState();
+  store.sync("/repo", operation({ conflicts: [], phase: "ready" }));
+  store.receive("/repo", content());
+  store.setResolution("/repo", "file.txt", {
+    kind: "text",
+    content: "new content",
+  });
+  const version =
+    useConflictStore.getState().sessions["/repo"].files["file.txt"].version;
+  store.receive(
+    "/repo",
+    content({ revision: "saved", result: "new content" }),
+    version,
+  );
+  expect(
+    useConflictStore.getState().sessions["/repo"].files["file.txt"]
+      .needsStaging,
+  ).toBe(true);
+  store.sync("/repo", operation({ conflicts: [], phase: "ready" }));
+  const session = useConflictStore.getState().sessions["/repo"];
+  expect(session.files["file.txt"].needsStaging).toBe(false);
+  expect(sessionHasDrafts(session)).toBe(false);
+});
+
 test("operation replacement retains dirty buffers until confirmed discard", () => {
   const store = useConflictStore.getState();
   store.sync("/repo", operation());

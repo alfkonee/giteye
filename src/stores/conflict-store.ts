@@ -178,6 +178,7 @@ export const useConflictStore = create<ConflictStore>((set, get) => ({
           files[path] = {
             ...draft,
             resolved: !conflicts.has(path),
+            needsStaging: conflicts.has(path) ? draft.needsStaging : false,
             ai:
               stepChanged && draft.ai.status !== "idle"
                 ? {

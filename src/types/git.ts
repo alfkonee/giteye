@@ -437,7 +437,7 @@ export interface ConflictContent {
 }
 
 export type ConflictResolution =
-  | { kind: "text"; content: string }
+  | { kind: "text"; content: string; mode?: "100644" | "100755" }
   | { kind: "side"; side: "ours" | "theirs" }
   | { kind: "delete" }
   | { kind: "keep" }

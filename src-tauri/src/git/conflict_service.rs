@@ -850,14 +850,28 @@ fn resolve(repo: &Path, request: &ConflictResolutionRequest, mark: bool) -> Resu
         ));
     }
     let (next, mode, oid) = match &request.resolution {
-        ConflictResolution::Text { content: text } => {
+        ConflictResolution::Text {
+            content: text,
+            mode,
+        } => {
             if content.kind != "text" || text.len() > TEXT_LIMIT {
                 return Err(invalid(
                     "This conflict cannot safely accept an editable text result.",
                 ));
             }
-            let executable = matches!(&prior, Worktree::File(_, true))
-                || content.ours.mode.as_deref() == Some("100755");
+            let executable = match mode.as_deref() {
+                Some("100755") => true,
+                Some("100644") => false,
+                Some(_) => {
+                    return Err(invalid(
+                        "Editable text can only use regular file modes 100644 or 100755.",
+                    ))
+                }
+                None => {
+                    matches!(&prior, Worktree::File(_, true))
+                        || content.ours.mode.as_deref() == Some("100755")
+                }
+            };
             let oid = if mark {
                 Some(hash_blob(
                     &path.root,
@@ -1065,6 +1079,7 @@ mod tests {
                 &content,
                 ConflictResolution::Text {
                     content: "\u{feff}resolved\r\n".into(),
+                    mode: None,
                 },
             ),
         )
@@ -1081,7 +1096,8 @@ mod tests {
             &request(
                 &draft,
                 ConflictResolution::Text {
-                    content: "old draft\n".into()
+                    content: "old draft\n".into(),
+                    mode: None,
                 }
             )
         )
@@ -1100,6 +1116,7 @@ mod tests {
                 &content,
                 ConflictResolution::Text {
                     content: "merged\n".into(),
+                    mode: None,
                 },
             ),
         )
@@ -1120,6 +1137,7 @@ mod tests {
                 &resolved,
                 ConflictResolution::Text {
                     content: "revisited\n".into(),
+                    mode: None,
                 },
             ),
         )
@@ -1127,6 +1145,51 @@ mod tests {
         assert_eq!(
             git_bytes(&repo.0, &["show", ":file.txt"]).unwrap(),
             b"revisited\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn text_side_choice_stages_the_selected_executable_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = Repo::new();
+        repo.commit("file.txt", b"base\n", "Base");
+        git(&repo.0, &["switch", "-c", "incoming"]);
+        fs::write(repo.0.join("file.txt"), b"incoming\n").unwrap();
+        fs::set_permissions(repo.0.join("file.txt"), fs::Permissions::from_mode(0o755)).unwrap();
+        git(&repo.0, &["add", "--", "file.txt"]);
+        git(&repo.0, &["commit", "-m", "Executable incoming"]);
+        git(&repo.0, &["switch", "main"]);
+        repo.commit("file.txt", b"current\n", "Current");
+        assert_ne!(
+            GitCli::run_with_status(&repo.0, &["merge", "--no-edit", "incoming"])
+                .unwrap()
+                .status_code,
+            0
+        );
+        let content = get_conflict_content(&repo.0, "file.txt").unwrap();
+        assert_eq!(content.ours.mode.as_deref(), Some("100644"));
+        assert_eq!(content.theirs.mode.as_deref(), Some("100755"));
+        mark_conflict_resolved(
+            &repo.0,
+            &request(
+                &content,
+                ConflictResolution::Text {
+                    content: "incoming\n".into(),
+                    mode: Some("100755".into()),
+                },
+            ),
+        )
+        .unwrap();
+        assert!(git(&repo.0, &["ls-files", "-s", "--", "file.txt"]).starts_with("100755 "));
+        assert_ne!(
+            fs::metadata(repo.0.join("file.txt"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o111,
+            0
         );
     }
 
@@ -1181,7 +1244,8 @@ mod tests {
             &request(
                 &content,
                 ConflictResolution::Text {
-                    content: "replacement".into()
+                    content: "replacement".into(),
+                    mode: None,
                 }
             )
         )
@@ -1217,7 +1281,8 @@ mod tests {
             &request(
                 &content,
                 ConflictResolution::Text {
-                    content: "merged".into()
+                    content: "merged".into(),
+                    mode: None,
                 }
             )
         )
@@ -1244,7 +1309,8 @@ mod tests {
             &request(
                 &original,
                 ConflictResolution::Text {
-                    content: "bad".into()
+                    content: "bad".into(),
+                    mode: None,
                 }
             )
         )
