@@ -70,7 +70,7 @@ Critical paths:
 | History visualization | Done | Pinned operation row, dashed direction, and commit-role badges verified in the live app. |
 | Resolver dialog and navigation | Done | Persistent drafts, Previous/Next file and region controls, highlighting, and inline resolution links verified. |
 | Merger AI configuration and review queue | Done | Context preview, consent binding, inheritance/custom settings, and missing-key failure verified; successful provider generation still requires credentials. |
-| Refresh, cleanup, and QA | Done | Obsolete paths removed, QA fixtures/manual matrix updated, production build passes, 46 frontend tests and 243 native tests pass. |
+| Refresh, cleanup, and QA | Done | Obsolete paths removed, QA fixtures/manual matrix updated, both review findings resolved, production build passes, 47 frontend tests and 244 native tests pass. |
 
 Remaining optional manual coverage: successful remote AI proposal generation, launching a selected external editor, and exact narrow-viewport visual inspection.
 
@@ -140,7 +140,7 @@ Remaining optional manual coverage: successful remote AI proposal generation, la
 
 ### Recorded verification
 
-- Integrated frontend production build and all 46 frontend tests pass; all 243 native tests pass with isolated global/system Git configuration.
+- Integrated frontend production build and all 47 frontend tests pass; all 244 native tests pass with isolated global/system Git configuration. Review regressions now cover selected-side executable modes and externally advanced conflict state.
 - Real Tauri smoke: merge, rebase, cherry-pick, and revert resolutions continued to idle; squash resolution produced an ordinary commit. Merge/rebase/cherry-pick starts reported `attentionRequired` when paused.
 - Real editor smoke: two separated CRLF/Unicode conflicts, Previous/Next wraparound and highlighting, inline current/ordered-both choices, unchanged worktree before Save, preserved bytes after Save, and an unmerged index until explicit Mark resolved.
 - Real lifecycle smoke: dialog dismissal/reopening retained drafts; an external file edit retained both versions and blocked writes until reconciliation; Tab wrapped within the dialog.
