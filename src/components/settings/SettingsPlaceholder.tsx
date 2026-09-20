@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Copy, FileText, GitBranch, GitPullRequest, KeyRound, Monitor, Moon, Palette, Save, ShieldCheck, SlidersHorizontal, Sun, Undo2, User, Trash2, Radio, Download, Upload, Wrench, type LucideIcon } from "lucide-react";
+import { Bot, Copy, FileText, GitBranch, GitPullRequest, KeyRound, Monitor, Moon, Palette, Save, ShieldCheck, SlidersHorizontal, Sun, Undo2, User, Trash2, Radio, Download, Upload, Wrench, type LucideIcon, Info } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { gitApi, type AiProvider } from "../../lib/tauri-api";
@@ -12,8 +12,9 @@ import { ToolchainSettings } from "../toolchain/ToolchainSetup";
 import { CliSetupControls } from "./CliSetup";
 import { useNoticeStore } from "../../stores/notice-store";
 import { Button, Select } from "../ui";
+import { AboutSettings } from "./AboutSettings";
 
-type SettingsTab = "general" | "appearance" | "toolchain" | "ai" | "security";
+type SettingsTab = "general" | "appearance" | "toolchain" | "ai" | "security" | "about";
 
 export function SettingsPlaceholder() {
   const theme = useAppStore((s) => s.theme);
@@ -237,6 +238,7 @@ export function SettingsPlaceholder() {
     { id: "toolchain", label: "Git Toolchain", icon: Wrench },
     { id: "ai", label: "AI Provider", icon: Bot },
     { id: "security", label: "Security", icon: ShieldCheck },
+    { id: "about", label: "About", icon: Info },
   ];
 
   const savePreferences = async () => {
@@ -306,7 +308,7 @@ export function SettingsPlaceholder() {
             </Button>
           </div>
         </div>
-        <nav className="mt-4 flex items-center gap-1" role="tablist" aria-label="Settings sections">
+        <nav className="mt-4 flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Settings sections">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
@@ -318,7 +320,7 @@ export function SettingsPlaceholder() {
                 aria-selected={selected}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex items-center gap-2 rounded-none border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
+                  "flex shrink-0 items-center gap-2 rounded-none border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors",
                   selected
                     ? "border-[var(--color-accent)] text-[var(--color-text-primary)]"
                     : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
@@ -334,6 +336,7 @@ export function SettingsPlaceholder() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl space-y-5">
+          {activeTab === "about" && <AboutSettings />}
           {activeTab === "appearance" && (
             <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
               <SettingsHeader

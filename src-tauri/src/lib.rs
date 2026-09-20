@@ -58,6 +58,7 @@ pub fn run_with_launch(initial_launch: Option<launch::LaunchIntent>) {
             commands::app_settings::get_app_settings,
             commands::app_settings::save_app_settings,
             commands::app_settings::remember_cli_setup,
+            commands::app_settings::get_app_build_commit,
             commands::toolchain::get_toolchain_status,
             commands::toolchain::install_git_toolchain,
             commands::toolchain::install_and_enable_lfs,
