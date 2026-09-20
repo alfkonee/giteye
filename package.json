@@ -2,6 +2,16 @@
   "name": "giteye",
   "private": true,
   "version": "0.0.2",
+  "description": "A cross-platform desktop Git client for repositories, worktrees, and pull request reviews.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/alfkonee/giteye#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alfkonee/giteye.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alfkonee/giteye/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +24,16 @@
     "build:appimage": "CI=false tauri build --bundles appimage"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.5",
+    "@codemirror/view": "^6.43.12",
     "@pierre/diffs": "^1.2.7",
     "@radix-ui/react-dialog": "^1",
     "@radix-ui/react-dropdown-menu": "^2",
