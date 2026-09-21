@@ -1,9 +1,12 @@
 [package]
 name = "giteye"
 version = "0.0.2"
-description = "A Tauri App"
-authors = ["you"]
+description = "A cross-platform desktop Git client for repositories, worktrees, and pull request reviews."
+authors = ["GitEye contributors"]
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/alfkonee/giteye"
+homepage = "https://github.com/alfkonee/giteye"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

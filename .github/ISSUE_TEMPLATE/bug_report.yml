@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in GitEye
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Search existing issues first. For vulnerabilities, stop and use private vulnerability reporting from SECURITY.md.
+  - type: textarea
+    id: app-details
+    attributes:
+      label: App details
+      description: Paste Settings → About → Copy app details. This excludes repository paths and credentials.
+      placeholder: |
+        GitEye
+        Version: ...
+        Build commit: ...
+        Application ID: com.giteye.app
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Use a disposable repository where possible. Provide the smallest repeatable sequence.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Every time
+        - Intermittent
+        - Once
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and screenshots
+      description: Add sanitized command-log output, screenshots, or recordings. Never include credentials, private keys, tokens, or confidential repository contents.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed credentials, private data, and personal paths from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

@@ -2,6 +2,16 @@
   "name": "giteye",
   "private": true,
   "version": "0.0.2",
+  "description": "A cross-platform desktop Git client for repositories, worktrees, and pull request reviews.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/alfkonee/giteye#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alfkonee/giteye.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alfkonee/giteye/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
