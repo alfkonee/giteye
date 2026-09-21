@@ -737,15 +737,8 @@ fn publish_pull_request_head(
             "Branch {head} does not track a publishable remote branch."
         ))
     })?;
-    let remote_url = GitCli::run(repo_path, &["remote", "get-url", &remote])?;
-    let (head_owner, head_repo) = parse_github_remote(remote_url.trim())
-        .ok_or_else(|| AppError::GitError(format!("Remote {remote} is not a GitHub repository")))?;
-    let refspec = format!("{local_ref}:{remote_ref}");
-    if set_upstream {
-        GitCli::run(repo_path, &["push", "--set-upstream", &remote, &refspec])?;
-    } else {
-        GitCli::run(repo_path, &["push", &remote, &refspec])?;
-    }
+    let (head_owner, head_repo) = github_push_repository(repo_path, &remote)?;
+    push_pull_request_branch(repo_path, &remote, &local_ref, &remote_ref, set_upstream)?;
 
     Ok(
         if head_owner.eq_ignore_ascii_case(base_owner) && head_repo.eq_ignore_ascii_case(base_repo)
@@ -755,6 +748,31 @@ fn publish_pull_request_head(
             format!("{head_owner}:{remote_branch}")
         },
     )
+}
+
+fn github_push_repository(repo_path: &Path, remote: &str) -> Result<(String, String), AppError> {
+    let push_url = GitCli::run(repo_path, &["remote", "get-url", "--push", remote])?;
+    parse_github_remote(push_url.trim()).ok_or_else(|| {
+        AppError::GitError(format!(
+            "Remote {remote}'s push URL is not a GitHub repository"
+        ))
+    })
+}
+
+fn push_pull_request_branch(
+    repo_path: &Path,
+    remote: &str,
+    local_ref: &str,
+    remote_ref: &str,
+    set_upstream: bool,
+) -> Result<(), AppError> {
+    let refspec = format!("{local_ref}:{remote_ref}");
+    if set_upstream {
+        GitCli::run(repo_path, &["push", "--set-upstream", remote, &refspec])?;
+    } else {
+        GitCli::run(repo_path, &["push", remote, &refspec])?;
+    }
+    Ok(())
 }
 
 /// Resolve the selected ref, not the checked-out branch or an arbitrary same-name fork.
@@ -1873,10 +1891,11 @@ fn canonical_repo_key(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_github_overview, clear_github_overview_cache, join_pipe_reader,
-        matching_branch_pull_requests, merge_method_flag, normalize_review_comment_side,
-        parse_github_remote, publish_pull_request_head, pull_request_creation_error,
-        spawn_pipe_reader, split_remote_branch, store_github_overview,
+        cached_github_overview, clear_github_overview_cache, github_push_repository,
+        join_pipe_reader, matching_branch_pull_requests, merge_method_flag,
+        normalize_review_comment_side, parse_github_remote, publish_pull_request_head,
+        pull_request_creation_error, push_pull_request_branch, spawn_pipe_reader,
+        split_remote_branch, store_github_overview,
     };
     use crate::errors::AppError;
     use crate::git::cli::GitCli;
@@ -2026,7 +2045,7 @@ mod tests {
     }
 
     #[test]
-    fn unpublished_local_pr_branch_is_pushed_before_creation() {
+    fn split_remote_urls_use_push_repository_and_publish_local_branch() {
         let root = std::env::temp_dir().join(format!(
             "giteye-pr-publish-{}-{}",
             std::process::id(),
@@ -2057,6 +2076,21 @@ mod tests {
         .unwrap();
         GitCli::run(
             &repo,
+            &[
+                "remote",
+                "set-url",
+                "--push",
+                "origin",
+                "git@github.com:fork/project.git",
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            github_push_repository(&repo, "origin").unwrap(),
+            ("fork".to_string(), "project".to_string())
+        );
+        GitCli::run(
+            &repo,
             &["remote", "set-url", "--push", "origin", &remote_arg],
         )
         .unwrap();
@@ -2067,9 +2101,14 @@ mod tests {
         fs::write(repo.join("file.txt"), "readiness\n").unwrap();
         GitCli::run(&repo, &["commit", "-am", "Readiness"]).unwrap();
 
-        let head = publish_pull_request_head(&repo, "docs/readiness", "acme", "project").unwrap();
-
-        assert_eq!(head, "docs/readiness");
+        push_pull_request_branch(
+            &repo,
+            "origin",
+            "refs/heads/docs/readiness",
+            "refs/heads/docs/readiness",
+            true,
+        )
+        .unwrap();
         assert_eq!(
             GitCli::run(
                 &root,
