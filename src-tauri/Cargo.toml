@@ -32,14 +32,14 @@ directories = "6"
 cap-std = "4"
 cap-fs-ext = "4"
 cap-tempfile = "4"
-tauri-plugin-mcp-bridge = "0.11.2"
+tauri-plugin-mcp-bridge = "0.13.0"
 notify = "8"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.13", features = ["blocking", "json"] }
 flate2 = "1"
 bzip2 = "0.6"
 tar = "0.4"
-zip = { version = "4", default-features = false, features = ["deflate"] }
-sha2 = "0.10"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+sha2 = "0.11"
 fs2 = "0.4"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
