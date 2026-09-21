@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
+import { useConflictStore } from "../../stores/conflict-store";
 import {
   Box,
   Command,
   GitBranch,
+  GitMerge,
   Globe,
   Layers,
   PanelLeft,
@@ -26,7 +28,6 @@ import { BranchContextMenu } from "../branches/BranchContextMenu";
 import {
   BranchTree,
   ShowMoreButton,
-  isUnmergedStatus,
   visibleBranches,
 } from "./sidebar/BranchTree";
 import {
@@ -43,6 +44,7 @@ import {
   useBranchActivation,
 } from "../../lib/branch-activation";
 import { AppSidebar } from "./AppSidebar";
+import { operationName, operationStatus } from "../commit-history/commit-graph";
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -144,9 +146,7 @@ export function Sidebar() {
   const githubOverviewQuery = useQuery(
     gitQueries.githubOverview(activeRepoPath, shouldLoadGithub),
   );
-  const worktreesQuery = useQuery(
-    gitQueries.worktrees(activeRepoPath, false),
-  );
+  const worktreesQuery = useQuery(gitQueries.worktrees(activeRepoPath, false));
   const submodulesQuery = useQuery(
     gitQueries.submodules(activeRepoPath, false),
   );
@@ -163,8 +163,8 @@ export function Sidebar() {
   const tagsQuery = useQuery(
     gitQueries.tags(activeRepoPath, activeView === "tags"),
   );
-  const rebaseQuery = useQuery(
-    gitQueries.rebaseState(activeRepoPath, Boolean(activeRepoPath)),
+  const { data: operation } = useQuery(
+    gitQueries.operationSummary(activeRepoPath),
   );
   const branchActivation = useBranchActivation({
     repoPath: activeRepoPath,
@@ -182,10 +182,19 @@ export function Sidebar() {
   const localBranches = branchesQuery.data?.filter((b) => !b.isRemote) ?? [];
   const remoteBranches = branchesQuery.data?.filter((b) => b.isRemote) ?? [];
   const isClean = snapshot?.repositoryInfo.isClean ?? true;
-  const conflictCount =
-    snapshot?.files.filter((file) => isUnmergedStatus(file.status)).length ?? 0;
+  const conflictCount = operation?.conflicts.length ?? 0;
   const hasConflicts = conflictCount > 0;
-  const hasActiveRebase = Boolean(rebaseQuery.data?.inProgress);
+  const hasActiveOperation = Boolean(
+    operation?.operation && operation.phase !== "idle",
+  );
+  const operationTitle = operation
+    ? `${operationName(operation.operation)} active · ${operationStatus(operation)} — open conflict resolver`
+    : "";
+  const openOperation = () => {
+    if (!activeRepoPath) return;
+    navigate("workspace");
+    useConflictStore.getState().open(activeRepoPath);
+  };
   const collaborationOverview = githubOverviewQuery.data;
   const hasCollaborationData = Boolean(
     collaborationOverview &&
@@ -201,7 +210,8 @@ export function Sidebar() {
   const viewCounts: Partial<Record<ViewType, number | undefined>> = {
     workspace: hasConflicts ? conflictCount : statusFileCount,
     worktrees: worktreesQuery.data?.length ?? workspaceSummary?.worktreeCount,
-    submodules: submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount,
+    submodules:
+      submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount,
     remotes: remotesQuery.data?.length,
     stashes: stashesQuery.data?.length,
     tags: tagsQuery.data?.length,
@@ -354,7 +364,7 @@ export function Sidebar() {
         countBadges={viewCountBadges[definition.id]}
         active={activeView === definition.id}
         tone={
-          definition.id === "workspace" && (hasConflicts || hasActiveRebase)
+          definition.id === "workspace" && (hasConflicts || hasActiveOperation)
             ? "warning"
             : "default"
         }
@@ -383,6 +393,18 @@ export function Sidebar() {
         >
           <PanelLeft className="h-4 w-4" />
         </button>
+        {hasActiveOperation ? (
+          <button
+            type="button"
+            onClick={openOperation}
+            aria-haspopup="dialog"
+            aria-label={operationTitle}
+            title={operationTitle}
+            className="giteye-btn giteye-btn-ghost giteye-btn-icon giteye-btn-sm mt-2 text-[var(--color-warning)]"
+          >
+            <GitMerge className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -390,6 +412,16 @@ export function Sidebar() {
   return (
     <AppSidebar>
       <div className="flex-1 overflow-y-auto py-1.5">
+        {hasActiveOperation && operation ? (
+          <SidebarNavItem
+            icon={<GitMerge className="h-4 w-4" />}
+            label={`${operationName(operation.operation)} · ${operation.phase === "conflicted" ? "conflicts" : "ready"}`}
+            count={conflictCount || undefined}
+            tone="warning"
+            title={operationTitle}
+            onClick={openOperation}
+          />
+        ) : null}
         {viewGroups.map((group) => {
           const views = getViewsForGroup(group.id).filter(shouldShowView);
           if (views.length === 0) {
@@ -502,7 +534,9 @@ export function Sidebar() {
 
         <SidebarSection
           title="Submodule Paths"
-          count={submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount}
+          count={
+            submodulesQuery.data?.length ?? workspaceSummary?.submoduleCount
+          }
         />
         {submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>

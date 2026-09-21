@@ -27,6 +27,8 @@ pub struct AiExportConfig {
     pub model: String,
     #[serde(default)]
     pub prompts: Option<ai_service::AiPrompts>,
+    #[serde(default)]
+    pub merge_resolution: Option<ai_service::AiWorkflowConfig>,
 }
 
 #[tauri::command]
@@ -52,6 +54,7 @@ pub async fn export_settings(
                 provider: ai_config.provider,
                 model: ai_config.model,
                 prompts: Some(ai_config.prompts),
+                merge_resolution: ai_config.merge_resolution,
             }),
             recent_repositories: recents,
             favorite_repositories: favorites,
@@ -60,7 +63,8 @@ pub async fn export_settings(
         let json = serde_json::to_string_pretty(&bundle)
             .map_err(|e| AppError::SerializationError(e.to_string()))?;
 
-        fs::write(Path::new(&output_path), json).map_err(|e| AppError::StorageError(e.to_string()))?;
+        fs::write(Path::new(&output_path), json)
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
 
         Ok(format!("Settings exported to {output_path}"))
     })
@@ -96,10 +100,15 @@ pub async fn import_settings(
             let _ = ai_service::save_ai_config(
                 &app_handle,
                 ai_service::SaveAiConfigRequest {
-                    provider: ai_config.provider,
-                    model: ai_config.model.clone(),
-                    api_key: None,
-                    prompts,
+                    provider: Some(ai_config.provider),
+                    model: Some(ai_config.model.clone()),
+                    prompts: Some(ai_service::AiPromptUpdate {
+                        commit_message: Some(prompts.commit_message),
+                        conflict_resolution: Some(prompts.conflict_resolution),
+                    }),
+                    // An old bundle without the field explicitly restores inheritance.
+                    merge_resolution: Some(ai_config.merge_resolution.clone()),
+                    ..ai_service::SaveAiConfigRequest::default()
                 },
             )?;
         }
@@ -108,4 +117,42 @@ pub async fn import_settings(
     })
     .await
     .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_ai_config_round_trips_workflow_and_prompts_but_not_credentials() {
+        let config: AiExportConfig = serde_json::from_value(serde_json::json!({
+            "provider": "openai",
+            "model": "default-model",
+            "apiKey": "legacy-secret",
+            "mergeApiKey": "merge-secret",
+            "mergeResolution": {"provider": "claude", "model": "merge-model"},
+            "prompts": {
+                "commitMessage": "Commit instructions",
+                "conflictResolution": "Merge instructions",
+            },
+        }))
+        .unwrap();
+        let encoded = serde_json::to_string(&config).unwrap();
+        assert!(!encoded.contains("legacy-secret"));
+        assert!(!encoded.contains("merge-secret"));
+        let restored: AiExportConfig = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(restored.merge_resolution.unwrap().model, "merge-model");
+        assert_eq!(
+            restored.prompts.unwrap().conflict_resolution,
+            "Merge instructions"
+        );
+    }
+
+    #[test]
+    fn older_ai_exports_deserialize_to_workflow_inheritance() {
+        let old: AiExportConfig =
+            serde_json::from_str(r#"{"provider":"deepseek","model":"deepseek-chat"}"#).unwrap();
+        assert!(old.merge_resolution.is_none());
+        assert!(old.prompts.is_none());
+    }
 }

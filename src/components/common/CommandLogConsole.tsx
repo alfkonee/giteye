@@ -13,7 +13,11 @@ import {
 } from "lucide-react";
 import { gitApi } from "../../lib/tauri-api";
 import { cn } from "../../lib/cn";
-import { isTerminalStatus, useJobStore, type GitJobLogEntry } from "../../stores/job-store";
+import {
+  isTerminalStatus,
+  useJobStore,
+  type GitJobLogEntry,
+} from "../../stores/job-store";
 import type { GitJobStatus } from "../../types/git";
 import { Button, Select } from "../ui";
 
@@ -57,14 +61,23 @@ export function CommandLogConsole() {
   const [mounted, setMounted] = useState(open);
   const dragOrigin = useRef<{ y: number; height: number } | null>(null);
 
-  const jobs = useMemo(() => jobOrder.map((jobId) => jobsById[jobId]).filter(Boolean), [jobOrder, jobsById]);
-  const repos = useMemo(() => Array.from(new Set(jobs.map((job) => job.repoPath))), [jobs]);
+  const jobs = useMemo(
+    () => jobOrder.map((jobId) => jobsById[jobId]).filter(Boolean),
+    [jobOrder, jobsById],
+  );
+  const repos = useMemo(
+    () => Array.from(new Set(jobs.map((job) => job.repoPath))),
+    [jobs],
+  );
   const filteredJobs = useMemo(
     () => jobs.filter((job) => !repoFilter || job.repoPath === repoFilter),
     [jobs, repoFilter],
   );
-  const selectedJob = (selectedJobId ? jobsById[selectedJobId] : null) ?? filteredJobs[0] ?? null;
-  const runningCount = jobs.filter((job) => !isTerminalStatus(job.status)).length;
+  const selectedJob =
+    (selectedJobId ? jobsById[selectedJobId] : null) ?? filteredJobs[0] ?? null;
+  const runningCount = jobs.filter(
+    (job) => !isTerminalStatus(job.status),
+  ).length;
 
   // Keep the panel mounted through the slide-out so the exit animation runs.
   useEffect(() => {
@@ -72,7 +85,10 @@ export function CommandLogConsole() {
       setMounted(true);
       return;
     }
-    const timer = window.setTimeout(() => setMounted(false), CLOSE_ANIMATION_MS);
+    const timer = window.setTimeout(
+      () => setMounted(false),
+      CLOSE_ANIMATION_MS,
+    );
     return () => window.clearTimeout(timer);
   }, [open]);
 
@@ -93,7 +109,13 @@ export function CommandLogConsole() {
         return;
       }
       // Bare backquote is the Quake binding; Ctrl/Cmd+` belongs to the trace panel.
-      if (event.code !== "Backquote" || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (
+        event.code !== "Backquote" ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
       if (isTypingTarget(event.target)) return;
       event.preventDefault();
       toggleOpen();
@@ -142,8 +164,13 @@ export function CommandLogConsole() {
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1">
         <TerminalSquare className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-        <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">Command log</span>
-        <span className="giteye-chip tabular-nums" data-tone={runningCount > 0 ? "accent" : undefined}>
+        <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+          Command log
+        </span>
+        <span
+          className="giteye-chip tabular-nums"
+          data-tone={runningCount > 0 ? "accent" : undefined}
+        >
           {runningCount > 0 ? `${runningCount} running` : `${jobs.length} jobs`}
         </span>
 
@@ -154,7 +181,13 @@ export function CommandLogConsole() {
           value={repoFilter ?? ""}
           onValueChange={(value) => setRepoFilter(value || null)}
           placeholder="All repositories"
-          options={[{ value: "", label: "All repositories" }, ...repos.map((repoPath) => ({ value: repoPath, label: repoName(repoPath) }))]}
+          options={[
+            { value: "", label: "All repositories" },
+            ...repos.map((repoPath) => ({
+              value: repoPath,
+              label: repoName(repoPath),
+            })),
+          ]}
         />
 
         <Button
@@ -167,7 +200,11 @@ export function CommandLogConsole() {
             void gitApi.clearGitJobLog(repoFilter).catch(() => undefined);
           }}
           disabled={filteredJobs.length === 0}
-          title={repoFilter ? "Clear filtered command output" : "Clear command output"}
+          title={
+            repoFilter
+              ? "Clear filtered command output"
+              : "Clear command output"
+          }
         >
           Clear command output
         </Button>
@@ -253,7 +290,9 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
       <header className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-1.5">
         <div className="flex items-center gap-2">
           <JobStatusIcon status={job.status} />
-          <h3 className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">{job.title}</h3>
+          <h3 className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
+            {job.title}
+          </h3>
           <span
             className={cn(
               "shrink-0 rounded-full border px-1.5 text-[9.5px] uppercase tracking-[0.1em]",
@@ -262,7 +301,10 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
           >
             {statusLabel(job.status)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[10.5px] text-[var(--color-text-muted)]" title={job.repoPath}>
+          <span
+            className="min-w-0 flex-1 truncate text-[10.5px] text-[var(--color-text-muted)]"
+            title={job.repoPath}
+          >
             {repoName(job.repoPath)}
           </span>
           {canCancel && (
@@ -282,14 +324,26 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
           <MetadataItem label="kind" value={job.kind} />
           <MetadataItem
             label="took"
-            value={durationLabel(job.startedAt ?? job.createdAt, job.finishedAt ?? Date.now())}
+            value={durationLabel(
+              job.startedAt ?? job.createdAt,
+              job.finishedAt ?? Date.now(),
+            )}
           />
           <MetadataItem label="job" value={job.jobId} />
           {job.invalidationReasons.length > 0 ? (
-            <MetadataItem label="invalidates" value={job.invalidationReasons.join(", ")} />
+            <MetadataItem
+              label="invalidates"
+              value={job.invalidationReasons.join(", ")}
+            />
           ) : null}
           {job.exitCode !== null || job.error ? (
-            <span className={job.error ? "text-[var(--color-danger)]" : "text-[var(--color-text-secondary)]"}>
+            <span
+              className={
+                job.error
+                  ? "text-[var(--color-danger)]"
+                  : "text-[var(--color-text-secondary)]"
+              }
+            >
               {job.error ?? `exit ${job.exitCode}`}
             </span>
           ) : null}
@@ -305,8 +359,18 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
           <ol>
             {job.lines.map((line) => (
               <li key={line.id} className="grid grid-cols-[3.2rem_1fr] gap-2">
-                <span className={line.channel === "stderr" ? "text-[var(--color-danger)]" : "text-sky-300"}>{line.channel}</span>
-                <span className="whitespace-pre-wrap break-words">{line.line}</span>
+                <span
+                  className={
+                    line.channel === "stderr"
+                      ? "text-[var(--color-danger)]"
+                      : "text-sky-300"
+                  }
+                >
+                  {line.channel}
+                </span>
+                <span className="whitespace-pre-wrap break-words">
+                  {line.line}
+                </span>
               </li>
             ))}
           </ol>
@@ -319,16 +383,24 @@ function JobDetails({ job }: { job: GitJobLogEntry }) {
 function EmptyJobDetails() {
   return (
     <div className="flex h-full items-center justify-center p-6 text-center text-[11px] text-[var(--color-text-muted)]">
-      Select a command to inspect its metadata, stdout, stderr, and final result.
+      Select a command to inspect its metadata, stdout, stderr, and final
+      result.
     </div>
   );
 }
 
 function MetadataItem({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex min-w-0 max-w-[420px] items-baseline gap-1" title={`${label}: ${value}`}>
-      <dt className="shrink-0 uppercase tracking-[0.1em] text-[var(--color-text-subtle)]">{label}</dt>
-      <dd className="min-w-0 truncate font-mono text-[var(--color-text-secondary)]">{value}</dd>
+    <span
+      className="inline-flex min-w-0 max-w-[420px] items-baseline gap-1"
+      title={`${label}: ${value}`}
+    >
+      <dt className="shrink-0 uppercase tracking-[0.1em] text-[var(--color-text-subtle)]">
+        {label}
+      </dt>
+      <dd className="min-w-0 truncate font-mono text-[var(--color-text-secondary)]">
+        {value}
+      </dd>
     </span>
   );
 }
@@ -337,33 +409,45 @@ function JobStatusIcon({ status }: { status: GitJobStatus }) {
   const className = cn("h-3.5 w-3.5 shrink-0", statusIconClass(status));
 
   if (status === "queued") return <Clock3 className={className} />;
-  if (status === "running") return <Loader2 className={cn(className, "animate-spin")} />;
-  if (status === "interrupted") return <AlertTriangle className={className} />;
+  if (status === "running")
+    return <Loader2 className={cn(className, "animate-spin")} />;
+  if (status === "interrupted" || status === "attentionRequired")
+    return <AlertTriangle className={className} />;
   if (status === "succeeded") return <CheckCircle2 className={className} />;
   if (status === "failed") return <XCircle className={className} />;
-  if (status === "canceled" || status === "cancelled") return <Ban className={className} />;
+  if (status === "canceled" || status === "cancelled")
+    return <Ban className={className} />;
   return <CircleDashed className={className} />;
 }
 
 function statusIconClass(status: GitJobStatus) {
   if (status === "succeeded") return "text-[var(--color-success)]";
   if (status === "failed") return "text-[var(--color-danger)]";
-  if (status === "interrupted") return "text-amber-400";
-  if (status === "canceled" || status === "cancelled") return "text-[var(--color-text-muted)]";
+  if (status === "interrupted" || status === "attentionRequired")
+    return "text-amber-400";
+  if (status === "canceled" || status === "cancelled")
+    return "text-[var(--color-text-muted)]";
   return "text-[var(--color-accent)]";
 }
 
 function statusPillClass(status: GitJobStatus) {
-  if (status === "succeeded") return "border-[var(--color-success)]/35 bg-[var(--color-success)]/10 text-[var(--color-success)]";
-  if (status === "failed") return "border-[var(--color-danger)]/35 bg-[var(--color-danger)]/10 text-[var(--color-danger)]";
-  if (status === "interrupted") return "border-amber-500/35 bg-amber-500/10 text-amber-300";
+  if (status === "succeeded")
+    return "border-[var(--color-success)]/35 bg-[var(--color-success)]/10 text-[var(--color-success)]";
+  if (status === "failed")
+    return "border-[var(--color-danger)]/35 bg-[var(--color-danger)]/10 text-[var(--color-danger)]";
+  if (status === "interrupted" || status === "attentionRequired")
+    return "border-amber-500/35 bg-amber-500/10 text-amber-300";
   if (status === "canceled" || status === "cancelled")
     return "border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]";
   return "border-[var(--color-accent)]/35 bg-[var(--color-accent)]/10 text-[var(--color-accent)]";
 }
 
 function statusLabel(status: GitJobStatus) {
-  return status === "cancelled" ? "canceled" : status;
+  return status === "attentionRequired"
+    ? "Paused for conflicts"
+    : status === "cancelled"
+      ? "canceled"
+      : status;
 }
 
 function repoName(repoPath: string) {
@@ -371,7 +455,11 @@ function repoName(repoPath: string) {
 }
 
 function timeLabel(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function durationLabel(start: number, end: number) {

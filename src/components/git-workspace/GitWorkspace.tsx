@@ -1,6 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
   AlertTriangle,
@@ -14,21 +21,20 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { gitMutations, gitQueries, invalidateGitState } from "../../lib/git-data";
-import { gitApi } from "../../lib/tauri-api";
+import { gitQueries, invalidateGitState } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
 import { useAppStore } from "../../stores/app-store";
 import { CommitHistory } from "../commit-history/CommitHistory";
-import { RebaseConflictResolver } from "../rebase/RebaseConflictResolver";
+import { ConflictResolverDialog } from "../conflicts/ConflictResolverDialog";
+import { useConflictStore } from "../../stores/conflict-store";
 import { IntegratePanel } from "./IntegratePanel";
 import { BranchPruneButton } from "../branches/BranchPruneDialog";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
-import { appDialog } from "../common/AppDialogProvider";
 import { useBranchActivation } from "../../lib/branch-activation";
 import type { Branch } from "../../types/git";
 import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
 
-type DrawerTab = "integrate" | "conflicts";
+type DrawerTab = "integrate";
 
 /**
  * The single Git working surface: staging and committing, the commit graph,
@@ -37,38 +43,37 @@ type DrawerTab = "integrate" | "conflicts";
  */
 export function GitWorkspace() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
-  const pendingAdvancedBranchName = useAppStore((s) => s.pendingAdvancedBranchName);
-  const setPendingAdvancedBranchName = useAppStore((s) => s.setPendingAdvancedBranchName);
+  const pendingAdvancedBranchName = useAppStore(
+    (s) => s.pendingAdvancedBranchName,
+  );
+  const setPendingAdvancedBranchName = useAppStore(
+    (s) => s.setPendingAdvancedBranchName,
+  );
   const queryClient = useQueryClient();
 
   const [drawerTab, setDrawerTab] = useState<DrawerTab | null>(null);
   const [prefillRef, setPrefillRef] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [prBranch, setPrBranch] = useState<Branch | null>(null);
-  const autoOpenedOperation = useRef<string | null>(null);
 
-  const { data: snapshot } = useQuery(gitQueries.repositorySnapshot(activeRepoPath));
+  const { data: snapshot } = useQuery(
+    gitQueries.repositorySnapshot(activeRepoPath),
+  );
   const branchesQuery = useQuery(gitQueries.branches(activeRepoPath));
   const operationQuery = useQuery(
     gitQueries.operationSummary(activeRepoPath, Boolean(activeRepoPath)),
   );
   const { data: tags = [] } = useQuery(gitQueries.tags(activeRepoPath));
-  const continueRebaseMutation = useMutation(
-    gitMutations.continueRebase(queryClient, activeRepoPath),
-  );
-  const skipRebaseMutation = useMutation(gitMutations.skipRebase(queryClient, activeRepoPath));
-  const abortRebaseMutation = useMutation(gitMutations.abortRebase(queryClient, activeRepoPath));
-  const recoverMutation = useMutation({
-    mutationFn: (action: "continue" | "abort") =>
-      gitApi.recoverGitOperation(activeRepoPath!, action),
-    onSuccess: () => invalidateGitState(queryClient, activeRepoPath),
-  });
 
   const repoInfo = snapshot?.repositoryInfo;
   const summary = snapshot?.summary;
   const branches = branchesQuery.data ?? [];
   const localBranches = branches.filter((branch) => !branch.isRemote);
-  const currentBranch = localBranches.find((branch) => branch.isCurrent) ?? null;
+  const currentBranch =
+    localBranches.find((branch) => branch.isCurrent) ?? null;
   const branchActivation = useBranchActivation({
     repoPath: activeRepoPath,
     branches,
@@ -82,14 +87,8 @@ export function GitWorkspace() {
     ? tags.filter((tag) => tag.commitHash === repoInfo.headCommit)
     : [];
   const conflicts = operation?.conflicts ?? [];
-  const activeOperation =
-    operation?.operation ?? (operation?.inRebase ? "rebase" : operation?.inMerge ? "merge" : null);
-  const inRebase = Boolean(operation?.inRebase || operation?.rebase.inProgress);
-  const operationPending =
-    continueRebaseMutation.isPending ||
-    skipRebaseMutation.isPending ||
-    abortRebaseMutation.isPending ||
-    recoverMutation.isPending;
+  const activeOperation = operation?.operation ?? null;
+  const inRebase = operation?.operation === "rebase";
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || !activeRepoPath) return;
@@ -111,28 +110,8 @@ export function GitWorkspace() {
     setPrBranch(null);
   }, [activeRepoPath]);
 
-  // Surface conflicts once per operation; reopening stays the user's choice.
-  useEffect(() => {
-    if (!activeOperation) {
-      autoOpenedOperation.current = null;
-      return;
-    }
-    if (autoOpenedOperation.current === activeOperation) return;
-    autoOpenedOperation.current = activeOperation;
-    setDrawerTab("conflicts");
-  }, [activeOperation]);
-
-  const openDrawer = (tab: DrawerTab) => setDrawerTab((current) => (current === tab ? null : tab));
-  const abortOperation = async () => {
-    if (!activeOperation) return;
-    const confirmed = await appDialog.confirm(
-      `Abort the in-progress ${activeOperation}?\n\nGit restores the pre-operation state; resolved conflict edits made in this operation are discarded.`,
-      `Abort ${activeOperation}?`,
-      "danger",
-    );
-    if (!confirmed) return;
-    inRebase ? abortRebaseMutation.mutate() : recoverMutation.mutate("abort");
-  };
+  const openDrawer = (tab: DrawerTab) =>
+    setDrawerTab((current) => (current === tab ? null : tab));
 
   return (
     <div
@@ -190,7 +169,13 @@ export function GitWorkspace() {
                 </span>
               ))}
               {headTags.length > 3 ? (
-                <span className="giteye-chip tabular-nums" title={headTags.slice(3).map((tag) => tag.name).join(", ")}>
+                <span
+                  className="giteye-chip tabular-nums"
+                  title={headTags
+                    .slice(3)
+                    .map((tag) => tag.name)
+                    .join(", ")}
+                >
                   +{headTags.length - 3}
                 </span>
               ) : null}
@@ -200,7 +185,9 @@ export function GitWorkspace() {
           <div className="ml-auto flex items-center gap-1">
             <button
               type="button"
-              onClick={() => void invalidateGitState(queryClient, activeRepoPath)}
+              onClick={() =>
+                void invalidateGitState(queryClient, activeRepoPath)
+              }
               className="giteye-btn giteye-btn-ghost giteye-btn-sm giteye-btn-icon"
               title="Refresh repository state"
             >
@@ -228,7 +215,9 @@ export function GitWorkspace() {
               data-state={drawerTab === "integrate" ? "active" : undefined}
               className={cn(
                 "giteye-btn giteye-btn-sm",
-                drawerTab === "integrate" ? "giteye-btn-primary" : "giteye-btn-secondary",
+                drawerTab === "integrate"
+                  ? "giteye-btn-primary"
+                  : "giteye-btn-secondary",
               )}
               title="Merge and rebase controls"
             >
@@ -237,7 +226,10 @@ export function GitWorkspace() {
             </button>
             <button
               type="button"
-              onClick={() => openDrawer("conflicts")}
+              onClick={() =>
+                activeRepoPath &&
+                useConflictStore.getState().open(activeRepoPath)
+              }
               className={cn(
                 "giteye-btn giteye-btn-sm",
                 conflicts.length > 0 || inRebase
@@ -259,7 +251,9 @@ export function GitWorkspace() {
       {activeOperation ? (
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-2.5 py-1 text-[11px] text-[var(--color-warning)]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-semibold uppercase tracking-[0.06em]">{activeOperation} in progress</span>
+          <span className="font-semibold uppercase tracking-[0.06em]">
+            {activeOperation} in progress
+          </span>
           <span className="text-[var(--color-text-secondary)]">
             {conflicts.length > 0
               ? `${conflicts.length} unmerged file${conflicts.length === 1 ? "" : "s"}`
@@ -268,35 +262,10 @@ export function GitWorkspace() {
           <div className="ml-auto flex items-center gap-1">
             <button
               type="button"
-              disabled={operationPending}
               onClick={() =>
-                inRebase ? continueRebaseMutation.mutate() : recoverMutation.mutate("continue")
+                activeRepoPath &&
+                useConflictStore.getState().open(activeRepoPath)
               }
-              className="giteye-btn giteye-btn-sm giteye-btn-secondary"
-            >
-              Continue
-            </button>
-            {inRebase ? (
-              <button
-                type="button"
-                disabled={operationPending}
-                onClick={() => skipRebaseMutation.mutate()}
-                className="giteye-btn giteye-btn-sm giteye-btn-secondary"
-              >
-                Skip commit
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={operationPending}
-              onClick={() => void abortOperation()}
-              className="giteye-btn giteye-btn-sm border border-[var(--color-danger)] text-[var(--color-danger)]"
-            >
-              Abort
-            </button>
-            <button
-              type="button"
-              onClick={() => setDrawerTab("conflicts")}
               className="giteye-btn giteye-btn-sm giteye-btn-secondary"
             >
               Open resolver
@@ -317,23 +286,23 @@ export function GitWorkspace() {
             <PanelResizeHandle className="group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
               <div className="absolute -inset-y-1.5 inset-x-0" />
             </PanelResizeHandle>
-            <Panel id="workspace-drawer" order={2} defaultSize={42} minSize={18}>
+            <Panel
+              id="workspace-drawer"
+              order={2}
+              defaultSize={42}
+              minSize={18}
+            >
               <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
                 <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2 py-1">
                   <div className="giteye-segmented">
                     <button
                       type="button"
-                      data-state={drawerTab === "integrate" ? "active" : undefined}
+                      data-state={
+                        drawerTab === "integrate" ? "active" : undefined
+                      }
                       onClick={() => setDrawerTab("integrate")}
                     >
                       Integrate
-                    </button>
-                    <button
-                      type="button"
-                      data-state={drawerTab === "conflicts" ? "active" : undefined}
-                      onClick={() => setDrawerTab("conflicts")}
-                    >
-                      Conflicts{conflicts.length > 0 ? ` (${conflicts.length})` : ""}
                     </button>
                   </div>
                   <button
@@ -347,17 +316,23 @@ export function GitWorkspace() {
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
-                  {drawerTab === "integrate" ? (
-                    <IntegratePanel prefillRef={prefillRef} activeOperation={activeOperation} />
-                  ) : (
-                    <ConflictsTab conflicts={conflicts} inRebase={inRebase} />
-                  )}
+                  <IntegratePanel
+                    prefillRef={prefillRef}
+                    activeOperation={activeOperation}
+                  />
                 </div>
               </section>
             </Panel>
           </>
         ) : null}
       </PanelGroup>
+      {activeRepoPath && (
+        <ConflictResolverDialog
+          key={activeRepoPath}
+          repoPath={activeRepoPath}
+          snapshot={operation}
+        />
+      )}
       <WorkspaceContextMenu
         x={contextMenu?.x ?? 0}
         y={contextMenu?.y ?? 0}
@@ -470,7 +445,11 @@ function WorkspaceContextMenu({
               type="button"
               role="menuitem"
               disabled={branch.isCurrent || switching}
-              title={branch.isCurrent ? `${branch.shortName} is current` : `Switch to ${branch.shortName}`}
+              title={
+                branch.isCurrent
+                  ? `${branch.shortName} is current`
+                  : `Switch to ${branch.shortName}`
+              }
               onClick={() => {
                 if (branch.isCurrent || switching) return;
                 onClose();
@@ -480,14 +459,15 @@ function WorkspaceContextMenu({
             >
               <span className="giteye-context-label">{branch.shortName}</span>
               <span className="giteye-context-detail">
-                {branch.isCurrent ? "current" : branch.upstream ?? "local"}
+                {branch.isCurrent ? "current" : (branch.upstream ?? "local")}
               </span>
             </button>
           ))
         )}
         {localBranches.length > visibleBranches.length ? (
           <WorkspaceMenuNote>
-            Showing first {visibleBranches.length} of {localBranches.length} local branches.
+            Showing first {visibleBranches.length} of {localBranches.length}{" "}
+            local branches.
           </WorkspaceMenuNote>
         ) : null}
       </div>
@@ -497,49 +477,9 @@ function WorkspaceContextMenu({
 }
 
 function WorkspaceMenuNote({ children }: { children: ReactNode }) {
-  return <div className="px-3 py-2 text-[11px] text-[var(--color-text-muted)]">{children}</div>;
-}
-
-function ConflictsTab({
-  conflicts,
-  inRebase,
-}: {
-  conflicts: Array<{ path: string; status: string; conflictType: string }>;
-  inRebase: boolean;
-}) {
-  if (inRebase) {
-    return (
-      <div className="h-full overflow-hidden">
-        <RebaseConflictResolver />
-      </div>
-    );
-  }
-
-  if (conflicts.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-[11px] text-[var(--color-text-muted)]">
-        No unmerged files. Conflict tools appear here while a merge, rebase, cherry-pick, or revert is stopped.
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full space-y-0.5 overflow-y-auto p-2">
-      {conflicts.map((conflict) => (
-        <div
-          key={conflict.path}
-          title={`${conflict.status} · ${conflict.conflictType}`}
-          className="flex items-center gap-2 rounded border border-[var(--color-border-muted)] bg-[var(--color-bg-tertiary)] px-2 py-1 text-[11px]"
-        >
-          <AlertTriangle className="h-3 w-3 shrink-0 text-[var(--color-warning)]" />
-          <span className="shrink-0 font-mono text-[10.5px] text-[var(--color-warning)]">{conflict.status}</span>
-          <span className="min-w-0 flex-1 truncate text-[var(--color-text-secondary)]">{conflict.path}</span>
-          <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">{conflict.conflictType}</span>
-        </div>
-      ))}
-      <p className="pt-1 text-[10.5px] text-[var(--color-text-muted)]">
-        Resolve these files from the Changes panel, stage them, then continue the operation from the banner above.
-      </p>
+    <div className="px-3 py-2 text-[11px] text-[var(--color-text-muted)]">
+      {children}
     </div>
   );
 }

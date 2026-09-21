@@ -32,3 +32,15 @@ pub async fn remember_cli_setup(app_handle: tauri::AppHandle) -> Result<AppSetti
         .await
         .map_err(|error| AppError::IoError(error.to_string()))?
 }
+
+#[tauri::command]
+pub async fn set_external_editor_path(
+    app_handle: tauri::AppHandle,
+    path: Option<String>,
+) -> Result<AppSettings, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        storage::update_external_editor_path(&app_handle, path)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}

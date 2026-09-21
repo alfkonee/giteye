@@ -2,9 +2,13 @@ import { useEffect, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../stores/app-store";
-import { useJobStore } from "../stores/job-store";
+import { isTerminalStatus, useJobStore } from "../stores/job-store";
 import { useNoticeStore, type NoticeStatus } from "../stores/notice-store";
-import type { GitJobEvent, GitJobStatus } from "../types/git";
+import type {
+  GitJobEvent,
+  GitJobStatus,
+  RepositorySnapshot,
+} from "../types/git";
 import { gitKeys, invalidateGitStateByReason } from "./git-data";
 import { GIT_JOB_EVENT_NAME, gitApi } from "./tauri-api";
 
@@ -36,10 +40,14 @@ export function GitStateWatcher() {
     const watchedRepos = new Set(watchedRepoPaths);
     const startedRepos = new Set<string>();
 
-
     void listen<GitStateChangedPayload>("git-state-changed", (event) => {
       if (!watchedRepos.has(event.payload.repoPath)) return;
-      void invalidateGitStateByReason(queryClient, event.payload.repoPath, event.payload.reason);
+      void invalidateGitStateByReason(
+        queryClient,
+        event.payload.repoPath,
+        event.payload.reason,
+      );
+      invalidateSubmoduleParent(queryClient, event.payload.repoPath);
     }).then((cleanup) => {
       if (disposed) {
         cleanup();
@@ -73,7 +81,10 @@ export function GitJobEventListener() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    void gitApi.listGitJobs().then(hydrateJobs).catch(() => undefined);
+    void gitApi
+      .listGitJobs()
+      .then(hydrateJobs)
+      .catch(() => undefined);
 
     const jobNoticeIds = new Map<string, string>();
     let disposed = false;
@@ -82,9 +93,23 @@ export function GitJobEventListener() {
     void listen<GitJobEvent>(GIT_JOB_EVENT_NAME, (event) => {
       const payload = event.payload;
       ingestEvent(payload);
-      updateJobNotice(payload, jobNoticeIds, startNotice, updateNotice, finishNotice);
+      updateJobNotice(
+        payload,
+        jobNoticeIds,
+        startNotice,
+        updateNotice,
+        finishNotice,
+      );
       refreshRepositoryListsForCompletedClone(queryClient, payload);
       refreshLfsDataForCompletedJob(queryClient, payload);
+      if (isTerminalStatus(payload.status)) {
+        void invalidateGitStateByReason(
+          queryClient,
+          payload.repoPath,
+          "worktree",
+        );
+        invalidateSubmoduleParent(queryClient, payload.repoPath);
+      }
     }).then((cleanup) => {
       if (disposed) {
         cleanup();
@@ -97,12 +122,32 @@ export function GitJobEventListener() {
       disposed = true;
       unlisten?.();
     };
-  }, [finishNotice, hydrateJobs, ingestEvent, queryClient, startNotice, updateNotice]);
+  }, [
+    finishNotice,
+    hydrateJobs,
+    ingestEvent,
+    queryClient,
+    startNotice,
+    updateNotice,
+  ]);
 
   return null;
 }
 
-function refreshRepositoryListsForCompletedClone(queryClient: QueryClient, event: GitJobEvent) {
+function invalidateSubmoduleParent(queryClient: QueryClient, repoPath: string) {
+  const snapshot = queryClient.getQueryData<RepositorySnapshot>(
+    gitKeys.repositorySnapshot(repoPath),
+  );
+  const parent = snapshot?.repositoryInfo.submoduleParent;
+  if (parent?.relationshipKind === "submodule") {
+    void invalidateGitStateByReason(queryClient, parent.path, "worktree");
+  }
+}
+
+function refreshRepositoryListsForCompletedClone(
+  queryClient: QueryClient,
+  event: GitJobEvent,
+) {
   if (event.kind !== "clone" || event.status !== "succeeded") return;
 
   void Promise.all([
@@ -111,25 +156,36 @@ function refreshRepositoryListsForCompletedClone(queryClient: QueryClient, event
   ]);
 }
 
-function refreshLfsDataForCompletedJob(queryClient: QueryClient, event: GitJobEvent) {
-  if (!event.kind.startsWith("lfs.") || !isTerminalJobStatus(event.status)) return;
+function refreshLfsDataForCompletedJob(
+  queryClient: QueryClient,
+  event: GitJobEvent,
+) {
+  if (!event.kind.startsWith("lfs.") || !isTerminalStatus(event.status)) return;
   void Promise.all([
-    queryClient.invalidateQueries({ queryKey: gitKeys.lfsStatus(event.repoPath) }),
+    queryClient.invalidateQueries({
+      queryKey: gitKeys.lfsStatus(event.repoPath),
+    }),
     queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey;
-        return key[0] === "git" && key[1] === "repository" && key[2] === event.repoPath && key[3] === "lfs-locks";
+        return (
+          key[0] === "git" &&
+          key[1] === "repository" &&
+          key[2] === event.repoPath &&
+          key[3] === "lfs-locks"
+        );
       },
     }),
   ]);
 }
 
 function normalizeWatchedRepoPaths(state: AppStoreWithOpenRepos) {
-  const paths = state.openRepoPaths && state.openRepoPaths.length > 0
-    ? state.openRepoPaths
-    : state.activeRepoPath
-      ? [state.activeRepoPath]
-      : [];
+  const paths =
+    state.openRepoPaths && state.openRepoPaths.length > 0
+      ? state.openRepoPaths
+      : state.activeRepoPath
+        ? [state.activeRepoPath]
+        : [];
   return Array.from(new Set(paths.filter(Boolean))).sort();
 }
 
@@ -148,17 +204,23 @@ function updateJobNotice(
       status: "pending",
       category: "git",
       repoPath: event.repoPath,
-      action: { label: "Open command log", target: "command-log", jobId: event.jobId },
+      action: {
+        label: "Open command log",
+        target: "command-log",
+        jobId: event.jobId,
+      },
     });
     jobNoticeIds.set(event.jobId, noticeId);
   }
 
-  if (isTerminalJobStatus(event.status)) {
+  if (isTerminalStatus(event.status)) {
     finishNotice(
       noticeId,
       noticeStatusForJob(event.status),
       jobNoticeDetail(event),
-      event.error ? "Open the command log for stdout, stderr, command arguments, and the final error." : null,
+      event.error
+        ? "Open the command log for stdout, stderr, command arguments, and the final error."
+        : null,
     );
     jobNoticeIds.delete(event.jobId);
     return;
@@ -169,7 +231,11 @@ function updateJobNotice(
     detail: jobNoticeDetail(event),
     status: "pending",
     repoPath: event.repoPath,
-    action: { label: "Open command log", target: "command-log", jobId: event.jobId },
+    action: {
+      label: "Open command log",
+      target: "command-log",
+      jobId: event.jobId,
+    },
   });
 }
 
@@ -179,8 +245,16 @@ function jobNoticeDetail(event: GitJobEvent) {
   }
 
   if (event.status === "running") {
-    return event.stream ? `Streaming ${event.stream.channel}: ${event.stream.line}` : "Running; output is streaming to the command log.";
+    return event.stream
+      ? `Streaming ${event.stream.channel}: ${event.stream.line}`
+      : "Running; output is streaming to the command log.";
   }
+
+  if (event.status === "attentionRequired") {
+    return "Paused for conflicts. Open the workspace resolver to review and continue.";
+  }
+  if (event.status === "interrupted")
+    return "Interrupted; inspect repository state before resuming.";
 
   if (event.status === "succeeded") {
     return event.exitCode === null || event.exitCode === undefined
@@ -195,12 +269,10 @@ function jobNoticeDetail(event: GitJobEvent) {
   return "Canceled; open the command log for details.";
 }
 
-function noticeStatusForJob(status: GitJobStatus): Extract<NoticeStatus, "success" | "error" | "info"> {
+function noticeStatusForJob(
+  status: GitJobStatus,
+): Extract<NoticeStatus, "success" | "error" | "info"> {
   if (status === "succeeded") return "success";
   if (status === "failed") return "error";
   return "info";
-}
-
-function isTerminalJobStatus(status: GitJobStatus) {
-  return status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
 }

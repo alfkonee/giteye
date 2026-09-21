@@ -27,14 +27,18 @@ import type {
   Worktree,
   Submodule,
   SubmoduleForeachStatus,
-  RebaseState,
   ConflictContent,
+  ConflictResolutionRequest,
+  OperationAction,
+  AiConflictRequest,
+  AiConflictContext,
+  AiConflictProposal,
   RebaseTodoItem,
   MergeWithOptionsRequest,
   StartRebaseRequest,
   RebasePreviewItem,
   RerereStatus,
-  GitOperationSummary,
+  OperationSnapshot,
   GitIdentity,
   HubCommitActivity,
   GitCredentialConfig,
@@ -115,11 +119,23 @@ export interface AiProviderView {
   label: string;
   defaultModel: string;
   models: string[];
+  apiKeyConfigured: boolean;
+  apiKeySource: AiApiKeySource;
 }
 
 export interface AiPrompts {
   commitMessage: string;
   conflictResolution: string;
+}
+
+export interface AiWorkflowConfig {
+  provider: AiProvider;
+  model: string;
+}
+
+export interface AiEffectiveWorkflow extends AiWorkflowConfig {
+  apiKeyConfigured: boolean;
+  apiKeySource: AiApiKeySource;
 }
 
 export interface AiConfigView {
@@ -130,13 +146,19 @@ export interface AiConfigView {
   providers: AiProviderView[];
   prompts: AiPrompts;
   defaultPrompts: AiPrompts;
+  mergeResolution: AiWorkflowConfig | null;
+  effectiveMergeResolution: AiEffectiveWorkflow;
 }
 
 export interface SaveAiConfigRequest {
-  provider: AiProvider;
-  model: string;
-  apiKey: string | null;
-  prompts: AiPrompts;
+  provider?: AiProvider;
+  model?: string;
+  apiKey?: string | null;
+  prompts?: Partial<AiPrompts>;
+  /** Omit to preserve the override; null restores default inheritance. */
+  mergeResolution?: AiWorkflowConfig | null;
+  /** Omit/null keeps the provider key; empty string clears the stored key. */
+  mergeApiKey?: string | null;
 }
 
 export interface ListAiModelsRequest {
@@ -171,6 +193,9 @@ export const gitApi = {
 
   saveAppSettings: (settings: AppSettings) =>
     invoke<AppSettings>("save_app_settings", { settings }),
+
+  setExternalEditorPath: (path: string | null) =>
+    invoke<AppSettings>("set_external_editor_path", { path }),
 
   rememberCliSetup: () => invoke<AppSettings>("remember_cli_setup"),
 
@@ -258,8 +283,16 @@ export const gitApi = {
   getGitRecoveryState: (repoPath: string) =>
     invoke<GitRecoveryState>("get_git_recovery_state", { repoPath }),
 
-  recoverGitOperation: (repoPath: string, action: "continue" | "abort") =>
-    invoke<GitJobSummary>("recover_git_operation", { repoPath, action }),
+  recoverGitOperation: (
+    repoPath: string,
+    action: OperationAction,
+    operationId: string,
+  ) =>
+    invoke<GitJobSummary>("recover_git_operation", {
+      repoPath,
+      action,
+      operationId,
+    }),
 
   dismissInterruptedGitJob: (jobId: string) =>
     invoke<void>("dismiss_interrupted_git_job", { jobId }),
@@ -306,10 +339,10 @@ export const gitApi = {
     invoke<CommitDetails>("get_commit_details", { repoPath, commitHash }),
 
   cherryPickCommit: (repoPath: string, commitHash: string) =>
-    invoke<void>("cherry_pick_commit", { repoPath, commitHash }),
+    invoke<GitJobSummary>("cherry_pick_commit", { repoPath, commitHash }),
 
   revertCommit: (repoPath: string, commitHash: string) =>
-    invoke<void>("revert_commit", { repoPath, commitHash }),
+    invoke<GitJobSummary>("revert_commit", { repoPath, commitHash }),
 
   previewResetToCommit: (repoPath: string, commitHash: string) =>
     invoke<ResetPreview | string>("preview_reset_to_commit", {
@@ -901,14 +934,11 @@ export const gitApi = {
     invoke<void>("bump_submodule", { repoPath, path }),
 
   // Rebase / conflicts
-  getRebaseState: (repoPath: string) =>
-    invoke<RebaseState>("get_rebase_state", { repoPath }),
-
   getConflictContent: (repoPath: string, filePath: string) =>
     invoke<ConflictContent>("get_conflict_content", { repoPath, filePath }),
 
   getOperationSummary: (repoPath: string) =>
-    invoke<GitOperationSummary>("get_operation_summary", { repoPath }),
+    invoke<OperationSnapshot>("get_operation_summary", { repoPath }),
 
   getRerereStatus: (repoPath: string) =>
     invoke<RerereStatus>("get_rerere_status", { repoPath }),
@@ -944,23 +974,13 @@ export const gitApi = {
       autostash: request.autostash,
     }),
 
-  continueRebase: (repoPath: string) =>
-    invoke<GitJobSummary>("continue_rebase", { repoPath }),
+  saveConflictResult: (repoPath: string, request: ConflictResolutionRequest) =>
+    invoke<void>("save_conflict_result", { repoPath, request }),
 
-  abortRebase: (repoPath: string) =>
-    invoke<GitJobSummary>("abort_rebase", { repoPath }),
-
-  skipRebase: (repoPath: string) =>
-    invoke<GitJobSummary>("skip_rebase", { repoPath }),
-
-  markFileResolved: (repoPath: string, filePath: string) =>
-    invoke<void>("mark_file_resolved", { repoPath, filePath }),
-
-  checkoutConflictSide: (
+  markConflictResolved: (
     repoPath: string,
-    filePath: string,
-    side: "ours" | "theirs",
-  ) => invoke<void>("checkout_conflict_side", { repoPath, filePath, side }),
+    request: ConflictResolutionRequest,
+  ) => invoke<void>("mark_conflict_resolved", { repoPath, request }),
 
   updateRebaseTodo: (repoPath: string, items: RebaseTodoItem[]) =>
     invoke<void>("update_rebase_todo", { repoPath, items }),
@@ -1023,10 +1043,16 @@ export const gitApi = {
     }),
 
   getBranchPullRequests: (repoPath: string, branchRef: string) =>
-    invoke<BranchPullRequestMatch[]>("get_branch_pull_requests", { repoPath, branchRef }),
+    invoke<BranchPullRequestMatch[]>("get_branch_pull_requests", {
+      repoPath,
+      branchRef,
+    }),
 
   getPullRequestSummary: (repoPath: string, number: number) =>
-    invoke<PullRequestSummary>("get_pull_request_summary", { repoPath, number }),
+    invoke<PullRequestSummary>("get_pull_request_summary", {
+      repoPath,
+      number,
+    }),
 
   getPullRequestDiff: (repoPath: string, number: number) =>
     invoke<PullRequestDiff>("get_pull_request_diff", { repoPath, number }),
@@ -1161,8 +1187,14 @@ export const gitApi = {
   listAiModels: (request: ListAiModelsRequest) =>
     invoke<AiModelListView>("list_ai_models", { request }),
 
-  resolveConflictWithAi: (base: string, ours: string, theirs: string) =>
-    invoke<string>("resolve_conflict_with_ai", { base, ours, theirs }),
+  getConflictAiContext: (repoPath: string, request: AiConflictRequest) =>
+    invoke<AiConflictContext>("get_conflict_ai_context", { repoPath, request }),
+
+  resolveConflictWithAi: (repoPath: string, request: AiConflictRequest) =>
+    invoke<AiConflictProposal>("resolve_conflict_with_ai", {
+      repoPath,
+      request,
+    }),
 
   suggestCommitMessage: (
     diffs: Array<{ filePath: string; status: string; diffText: string }>,

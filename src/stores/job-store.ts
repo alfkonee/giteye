@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { GitJobEvent, GitJobLogChannel, GitJobRecord, GitJobStatus, GitJobStreamLine } from "../types/git";
+import type {
+  GitJobEvent,
+  GitJobLogChannel,
+  GitJobRecord,
+  GitJobStatus,
+  GitJobStreamLine,
+} from "../types/git";
 
 export interface GitJobLogLine {
   id: string;
@@ -56,9 +62,15 @@ export const useJobStore = create<JobStore>((set) => ({
 
   hydrateJobs: (jobs) => {
     set((state) => {
-      let nextState: Pick<JobStore, "jobsById" | "jobOrder" | "selectedJobId"> = state;
+      let nextState: Pick<JobStore, "jobsById" | "jobOrder" | "selectedJobId"> =
+        state;
       for (const job of jobs) {
-        nextState = upsertJobEvent(nextState, job, job.logs ?? job.output ?? [], true);
+        nextState = upsertJobEvent(
+          nextState,
+          job,
+          job.logs ?? job.output ?? [],
+          true,
+        );
       }
       return nextState;
     });
@@ -103,9 +115,14 @@ function upsertJobEvent(
 ) {
   const now = Date.now();
   const existing = state.jobsById[event.jobId];
-  const createdAt = parseEventTime(event.createdAt) ?? existing?.createdAt ?? now;
-  const startedAt = parseEventTime(event.startedAt) ?? existing?.startedAt ?? null;
-  const finishedAt = parseEventTime(event.finishedAt) ?? existing?.finishedAt ?? finishedAtFromStatus(event.status, now);
+  const createdAt =
+    parseEventTime(event.createdAt) ?? existing?.createdAt ?? now;
+  const startedAt =
+    parseEventTime(event.startedAt) ?? existing?.startedAt ?? null;
+  const finishedAt =
+    parseEventTime(event.finishedAt) ??
+    existing?.finishedAt ??
+    finishedAtFromStatus(event.status, now);
   const eventLines = [
     ...output.map((stream) => toLogLine(event.jobId, stream, now)),
     ...(event.stream ? [toLogLine(event.jobId, event.stream, now)] : []),
@@ -123,7 +140,8 @@ function upsertJobEvent(
     args: event.args ?? existing?.args ?? [],
     exitCode: event.exitCode ?? existing?.exitCode ?? null,
     error: event.error ?? existing?.error ?? null,
-    invalidationReasons: event.invalidationReasons ?? existing?.invalidationReasons ?? [],
+    invalidationReasons:
+      event.invalidationReasons ?? existing?.invalidationReasons ?? [],
     lines: mergeLogLines(existing?.lines ?? [], eventLines, replaceLines),
     updatedAt: now,
   };
@@ -142,7 +160,11 @@ function upsertJobEvent(
   };
 }
 
-function toLogLine(jobId: string, stream: GitJobStreamLine, receivedAt: number): GitJobLogLine {
+function toLogLine(
+  jobId: string,
+  stream: GitJobStreamLine,
+  receivedAt: number,
+): GitJobLogLine {
   const sourceKey = logLineSourceKey(jobId, stream);
   return {
     id: sourceKey,
@@ -154,7 +176,11 @@ function toLogLine(jobId: string, stream: GitJobStreamLine, receivedAt: number):
   };
 }
 
-function mergeLogLines(existing: GitJobLogLine[], incoming: GitJobLogLine[], preferIncomingOrder: boolean) {
+function mergeLogLines(
+  existing: GitJobLogLine[],
+  incoming: GitJobLogLine[],
+  preferIncomingOrder: boolean,
+) {
   const first = preferIncomingOrder ? incoming : existing;
   const second = preferIncomingOrder ? existing : incoming;
   const seen = new Set<string>();
@@ -170,7 +196,12 @@ function mergeLogLines(existing: GitJobLogLine[], incoming: GitJobLogLine[], pre
 }
 
 function logLineSourceKey(jobId: string, stream: GitJobStreamLine) {
-  return JSON.stringify([jobId, stream.channel, stream.timestamp ?? "", stream.line]);
+  return JSON.stringify([
+    jobId,
+    stream.channel,
+    stream.timestamp ?? "",
+    stream.line,
+  ]);
 }
 
 function parseEventTime(value: string | null | undefined) {
@@ -188,5 +219,12 @@ function canonicalStatus(status: GitJobStatus): GitJobStatus {
 }
 
 export function isTerminalStatus(status: GitJobStatus) {
-  return status === "interrupted" || status === "succeeded" || status === "failed" || status === "canceled" || status === "cancelled";
+  return (
+    status === "interrupted" ||
+    status === "attentionRequired" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "cancelled"
+  );
 }
