@@ -653,11 +653,15 @@ pub fn create_pull_request(
     draft: bool,
 ) -> Result<String, AppError> {
     let (owner, repo) = github_repository(repo_path)?;
+    let published_head = publish_pull_request_head(repo_path, head, &owner, &repo)?;
+    let repository = format!("{owner}/{repo}");
     let mut args: Vec<String> = vec![
         "pr".to_string(),
         "create".to_string(),
+        "--repo".to_string(),
+        repository,
         "--head".to_string(),
-        head.to_string(),
+        published_head,
         "--title".to_string(),
         title.to_string(),
     ];
@@ -673,9 +677,102 @@ pub fn create_pull_request(
         args.push("--draft".to_string());
     }
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let output = run_required_process("gh", &arg_refs, repo_path, GhOp::Mutation)?;
+    let output = run_required_process("gh", &arg_refs, repo_path, GhOp::Mutation)
+        .map_err(|error| pull_request_creation_error(error, head, base))?;
     clear_github_overview_cache(&owner, &repo);
     Ok(output.trim().to_string())
+}
+
+fn pull_request_creation_error(error: AppError, head: &str, base: Option<&str>) -> AppError {
+    match error {
+        AppError::GitError(message) if message.contains("No commits between") => {
+            let base = base.unwrap_or("the repository's default branch");
+            AppError::GitError(format!(
+                "Branch {head} has no commits that are not already in {base}. Commit a change or choose a different base branch before creating a pull request."
+            ))
+        }
+        error => error,
+    }
+}
+
+fn publish_pull_request_head(
+    repo_path: &Path,
+    head: &str,
+    base_owner: &str,
+    base_repo: &str,
+) -> Result<String, AppError> {
+    if head.trim().is_empty() || head != head.trim() {
+        return Err(AppError::GitError(
+            "The pull request head branch is invalid.".to_string(),
+        ));
+    }
+    let local_ref = format!("refs/heads/{head}");
+    GitCli::run(
+        repo_path,
+        &["rev-parse", "--verify", &format!("{local_ref}^{{commit}}")],
+    )
+    .map_err(|_| {
+        AppError::GitError(format!(
+            "The local branch {head} no longer exists or has no commits."
+        ))
+    })?;
+
+    let tracking = GitCli::run(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--format=%(upstream:remotename)%00%(upstream:remoteref)",
+            &local_ref,
+        ],
+    )?;
+    let tracking = tracking.trim_end_matches(['\r', '\n']);
+    let (remote, remote_ref, set_upstream) = match tracking.split_once('\0') {
+        Some((remote, remote_ref)) if !remote.is_empty() && !remote_ref.is_empty() => {
+            (remote.to_string(), remote_ref.to_string(), false)
+        }
+        _ => ("origin".to_string(), local_ref.clone(), true),
+    };
+    let remote_branch = remote_ref.strip_prefix("refs/heads/").ok_or_else(|| {
+        AppError::GitError(format!(
+            "Branch {head} does not track a publishable remote branch."
+        ))
+    })?;
+    let (head_owner, head_repo) = github_push_repository(repo_path, &remote)?;
+    push_pull_request_branch(repo_path, &remote, &local_ref, &remote_ref, set_upstream)?;
+
+    Ok(
+        if head_owner.eq_ignore_ascii_case(base_owner) && head_repo.eq_ignore_ascii_case(base_repo)
+        {
+            remote_branch.to_string()
+        } else {
+            format!("{head_owner}:{remote_branch}")
+        },
+    )
+}
+
+fn github_push_repository(repo_path: &Path, remote: &str) -> Result<(String, String), AppError> {
+    let push_url = GitCli::run(repo_path, &["remote", "get-url", "--push", remote])?;
+    parse_github_remote(push_url.trim()).ok_or_else(|| {
+        AppError::GitError(format!(
+            "Remote {remote}'s push URL is not a GitHub repository"
+        ))
+    })
+}
+
+fn push_pull_request_branch(
+    repo_path: &Path,
+    remote: &str,
+    local_ref: &str,
+    remote_ref: &str,
+    set_upstream: bool,
+) -> Result<(), AppError> {
+    let refspec = format!("{local_ref}:{remote_ref}");
+    if set_upstream {
+        GitCli::run(repo_path, &["push", "--set-upstream", remote, &refspec])?;
+    } else {
+        GitCli::run(repo_path, &["push", remote, &refspec])?;
+    }
+    Ok(())
 }
 
 /// Resolve the selected ref, not the checked-out branch or an arbitrary same-name fork.
@@ -1794,12 +1891,16 @@ fn canonical_repo_key(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        cached_github_overview, clear_github_overview_cache, join_pipe_reader,
-        matching_branch_pull_requests, merge_method_flag, normalize_review_comment_side,
-        parse_github_remote, spawn_pipe_reader, split_remote_branch, store_github_overview,
+        cached_github_overview, clear_github_overview_cache, github_push_repository,
+        join_pipe_reader, matching_branch_pull_requests, merge_method_flag,
+        normalize_review_comment_side, parse_github_remote, publish_pull_request_head,
+        pull_request_creation_error, push_pull_request_branch, spawn_pipe_reader,
+        split_remote_branch, store_github_overview,
     };
     use crate::errors::AppError;
+    use crate::git::cli::GitCli;
     use crate::models::github::RepositoryGithubOverview;
+    use std::fs;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -1941,6 +2042,118 @@ mod tests {
             split_remote_branch("origin-other/feature/login", remotes),
             None
         );
+    }
+
+    #[test]
+    fn split_remote_urls_use_push_repository_and_publish_local_branch() {
+        let root = std::env::temp_dir().join(format!(
+            "giteye-pr-publish-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let repo = root.join("repo");
+        let remote = root.join("remote.git");
+        fs::create_dir_all(&root).unwrap();
+        let remote_arg = remote.to_string_lossy().to_string();
+        let repo_arg = repo.to_string_lossy().to_string();
+        GitCli::run(&root, &["init", "--bare", &remote_arg]).unwrap();
+        GitCli::run(&root, &["init", "-b", "main", &repo_arg]).unwrap();
+        GitCli::run(&repo, &["config", "user.name", "GitEye Test"]).unwrap();
+        GitCli::run(&repo, &["config", "user.email", "giteye@example.test"]).unwrap();
+        GitCli::run(&repo, &["config", "commit.gpgsign", "false"]).unwrap();
+        GitCli::run(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/project.git",
+            ],
+        )
+        .unwrap();
+        GitCli::run(
+            &repo,
+            &[
+                "remote",
+                "set-url",
+                "--push",
+                "origin",
+                "git@github.com:fork/project.git",
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            github_push_repository(&repo, "origin").unwrap(),
+            ("fork".to_string(), "project".to_string())
+        );
+        GitCli::run(
+            &repo,
+            &["remote", "set-url", "--push", "origin", &remote_arg],
+        )
+        .unwrap();
+        fs::write(repo.join("file.txt"), "base\n").unwrap();
+        GitCli::run(&repo, &["add", "file.txt"]).unwrap();
+        GitCli::run(&repo, &["commit", "-m", "Base"]).unwrap();
+        GitCli::run(&repo, &["switch", "-c", "docs/readiness"]).unwrap();
+        fs::write(repo.join("file.txt"), "readiness\n").unwrap();
+        GitCli::run(&repo, &["commit", "-am", "Readiness"]).unwrap();
+
+        push_pull_request_branch(
+            &repo,
+            "origin",
+            "refs/heads/docs/readiness",
+            "refs/heads/docs/readiness",
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            GitCli::run(
+                &root,
+                &[
+                    "--git-dir",
+                    &remote_arg,
+                    "rev-parse",
+                    "refs/heads/docs/readiness",
+                ],
+            )
+            .unwrap()
+            .trim(),
+            GitCli::run(&repo, &["rev-parse", "HEAD"]).unwrap().trim()
+        );
+        assert_eq!(
+            GitCli::run(
+                &repo,
+                &[
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "--symbolic-full-name",
+                    "@{upstream}",
+                ],
+            )
+            .unwrap()
+            .trim(),
+            "origin/docs/readiness"
+        );
+        let error =
+            publish_pull_request_head(&repo, "docs/missing", "acme", "project").unwrap_err();
+        assert!(
+            matches!(error, AppError::GitError(message) if message.contains("no longer exists or has no commits"))
+        );
+        let error = pull_request_creation_error(
+            AppError::GitError(
+                "GraphQL: No commits between main and docs/readiness (createPullRequest)"
+                    .to_string(),
+            ),
+            "docs/readiness",
+            Some("main"),
+        );
+        assert!(
+            matches!(error, AppError::GitError(message) if message == "Branch docs/readiness has no commits that are not already in main. Commit a change or choose a different base branch before creating a pull request.")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

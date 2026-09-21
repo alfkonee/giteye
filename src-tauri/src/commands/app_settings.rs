@@ -3,8 +3,7 @@ use crate::storage::{self, AppSettings};
 
 #[tauri::command]
 pub fn get_app_build_commit() -> Option<&'static str> {
-    let commit = env!("GITEYE_BUILD_COMMIT");
-    (!commit.is_empty()).then_some(commit)
+    option_env!("GITEYE_BUILD_COMMIT").filter(|commit| !commit.is_empty())
 }
 
 #[tauri::command]
