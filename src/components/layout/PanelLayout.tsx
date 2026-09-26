@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { getViewDefinition } from "../../lib/view-registry";
@@ -240,28 +240,28 @@ export function PanelLayout() {
   }
 
   return (
-    <PanelGroup direction={isNarrowLayout ? "vertical" : "horizontal"} className="h-full bg-[var(--color-bg-primary)]">
+    <Group orientation={isNarrowLayout ? "vertical" : "horizontal"} className="h-full bg-[var(--color-bg-primary)]">
       <Panel
-        defaultSize={60}
-        minSize={30}
+        defaultSize="60%"
+        minSize="30%"
       >
         <div className="h-full overflow-hidden">
           {mainContent}
         </div>
       </Panel>
-      <PanelResizeHandle
+      <Separator
         className={isNarrowLayout
           ? "group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"
           : "group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"}
       >
         <div className={isNarrowLayout ? "absolute -inset-y-1.5 inset-x-0" : "absolute inset-y-0 -inset-x-1.5"} />
-      </PanelResizeHandle>
-      <Panel defaultSize={40} minSize={20}>
+      </Separator>
+      <Panel defaultSize="40%" minSize="20%">
         <div className="h-full overflow-auto bg-[var(--color-bg-primary)]">
           {renderDetailPane()}
         </div>
       </Panel>
-    </PanelGroup>
+    </Group>
   );
 }
 
