@@ -142,6 +142,47 @@ impl LaunchIntent {
     }
 }
 
+/// Relaunches this application with the same arguments as a process detached
+/// from the calling terminal, so the caller can exit and return the prompt.
+/// The child gets null stdio and, on Windows, no console, so it never detaches again.
+pub fn spawn_detached(args: impl IntoIterator<Item = OsString>) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+
+    // An AppImage's mount disappears when its launching runtime exits, so the
+    // detached process must start from the AppImage file, not the mounted binary.
+    #[cfg(target_os = "linux")]
+    let executable = std::env::var_os("APPIMAGE")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    #[cfg(not(target_os = "linux"))]
+    let executable: Option<PathBuf> = None;
+    let executable = match executable {
+        Some(executable) => executable,
+        None => std::env::current_exe()?,
+    };
+
+    let mut command = Command::new(executable);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // Leave the terminal's foreground job so Ctrl+C in the shell cannot reach the app.
+        command.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    command.spawn().map(drop)
+}
+
 fn resolve_repository_path(path: &Path, cwd: &Path) -> Result<String, String> {
     // Never resolve a forwarded relative path against the first process's cwd.
     let absolute = if path.is_absolute() {

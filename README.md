@@ -48,7 +48,7 @@ giteye --help
 giteye --version
 ```
 
-Nested directories resolve to their Git root; linked worktrees open as separate workspaces. To manage the launcher directly:
+Launching from a terminal starts GitEye in the background and returns the prompt immediately; closing the terminal does not close the app. Nested directories resolve to their Git root; linked worktrees open as separate workspaces. To manage the launcher directly:
 
 ```sh
 /path/to/giteye --install-cli
