@@ -244,7 +244,6 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -319,6 +318,31 @@ mod tests {
         assert!(repo.git_output(&["status", "--porcelain"]).is_empty());
     }
 
+    #[test]
+    fn discards_hunks_when_user_config_uses_mnemonic_diff_prefixes() {
+        let repo = TestRepo::new();
+        repo.write("file.txt", "one\ntwo\nthree\n");
+        repo.git(&["init"]);
+        repo.git(&["config", "user.email", "test@example.com"]);
+        repo.git(&["config", "user.name", "Test User"]);
+        repo.git(&["config", "diff.mnemonicPrefix", "true"]);
+        repo.git(&["add", "file.txt"]);
+        repo.git(&["commit", "-m", "initial"]);
+
+        repo.write("file.txt", "one\nTWO\nthree\n");
+        let unstaged_patch = GitCli::run(&repo.path, &["diff", "--", "file.txt"]).unwrap();
+        discard_hunk(&repo.path, "file.txt", false, &unstaged_patch).unwrap();
+        assert_eq!(repo.read("file.txt"), "one\ntwo\nthree\n");
+
+        repo.write("file.txt", "one\nTWO\nthree\n");
+        repo.git(&["add", "file.txt"]);
+        let staged_patch =
+            GitCli::run(&repo.path, &["diff", "--cached", "--", "file.txt"]).unwrap();
+        discard_hunk(&repo.path, "file.txt", true, &staged_patch).unwrap();
+        assert_eq!(repo.read("file.txt"), "one\ntwo\nthree\n");
+        assert!(repo.git_output(&["status", "--porcelain"]).is_empty());
+    }
+
     struct TestRepo {
         path: PathBuf,
     }
@@ -343,7 +367,7 @@ mod tests {
         }
 
         fn git(&self, args: &[&str]) {
-            let output = Command::new("git")
+            let output = GitCli::command()
                 .args(args)
                 .current_dir(&self.path)
                 .output()
@@ -357,7 +381,7 @@ mod tests {
         }
 
         fn git_output(&self, args: &[&str]) -> String {
-            let output = Command::new("git")
+            let output = GitCli::command()
                 .args(args)
                 .current_dir(&self.path)
                 .output()
