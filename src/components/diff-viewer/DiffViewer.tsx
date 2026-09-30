@@ -13,6 +13,7 @@ import { PierreDiffViewer } from "./PierreDiffViewer";
 import { UnifiedDiffFallback } from "./UnifiedDiffFallback";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { cn } from "../../lib/cn";
+import { buildHunkPatch } from "../../lib/hunk-patch";
 import { ChevronDown, ChevronRight, ChevronUp, FileText, FileWarning, Loader2 } from "lucide-react";
 
 interface ErrorBoundaryProps {
@@ -83,7 +84,7 @@ function parseActionHunks(
 
   const finishHunk = () => {
     if (!currentHunk) return;
-    currentHunk.patchText = [...fileHeaderLines, ...currentHunkLines].join("\n");
+    currentHunk.patchText = buildHunkPatch(fileHeaderLines, currentHunkLines);
     currentHunk = null;
     currentHunkLines = [];
   };

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from "react";
 import { cn } from "../../lib/cn";
+import { buildHunkPatch } from "../../lib/hunk-patch";
 import { FileCode2 } from "lucide-react";
 import type { DiffHunkActionContext, DiffHunkActionHandler } from "./DiffViewer.types";
 
@@ -55,7 +56,7 @@ function parseDiff(diffText: string, fallbackFilePath: string, oldFilePath?: str
 
   const finishHunk = () => {
     if (!currentHunk) return;
-    currentHunk.patchText = [...fileHeaderLines, ...currentHunkLines].join("\n");
+    currentHunk.patchText = buildHunkPatch(fileHeaderLines, currentHunkLines);
     currentHunk = null;
     currentHunkLines = [];
   };
