@@ -1121,9 +1121,13 @@ a {
   line-height: 1.3;
 }
 
-/* Shared density for right-click menus (branch, commit, working-tree path). */
+/* Shared density for right-click menus (branch, commit, working-tree path, recents).
+ * WebKitGTK paints overlay scrollbars of non-composited scrollers in a final
+ * pass above all non-composited content, so they would cut through the menu.
+ * Giving the menu its own compositing layer keeps it above them. */
 .giteye-context-menu {
   padding-block: 3px;
+  will-change: transform;
 }
 
 .giteye-context-header {

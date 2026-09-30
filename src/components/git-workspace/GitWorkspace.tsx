@@ -31,6 +31,7 @@ import { IntegratePanel } from "./IntegratePanel";
 import { BranchPruneButton } from "../branches/BranchPruneDialog";
 import { BranchSwitchDialog } from "../branches/BranchSwitchDialog";
 import { useBranchActivation } from "../../lib/branch-activation";
+import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import type { Branch } from "../../types/git";
 import { CreatePullRequestDialog } from "../repository/CreatePullRequestDialog";
 
@@ -385,6 +386,7 @@ function WorkspaceContextMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y });
+  useExclusiveMenu(open, onClose);
 
   useLayoutEffect(() => {
     if (!open || !menuRef.current) return;

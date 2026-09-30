@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatAmendPreview, formatRebasePreview } from "../../lib/git-preview";
@@ -684,6 +685,7 @@ export function CommitActionContextMenu({
   const remoteEntries = remoteRefEntries(refs, actions.branches);
   const head = isHeadCommit ?? actions.isHead(target);
   const position = clampMenuPosition(x, y);
+  useExclusiveMenu(true, onClose);
 
   useEffect(() => {
     window.addEventListener("scroll", onClose, true);
