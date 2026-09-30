@@ -103,6 +103,8 @@ bun run qa:seed
 
 See [docs/manual-qa.md](docs/manual-qa.md) for the manual verification matrix.
 
+For a scripted product demo, `bun run demo:seed` builds `~/giteye-demo`; see [docs/demo.md](docs/demo.md).
+
 ### Desktop builds
 
 ```sh
