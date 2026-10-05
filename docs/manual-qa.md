@@ -17,6 +17,12 @@ Use `node scripts/seed-qa-repositories.mjs` from the repository root to create d
 
 Capture the mapped design screens at 1490×1024 and at least one wider desktop size. Compare against `design/reference/` for density, gutters, footer/status bar placement, color hierarchy, and responsive behavior.
 
+## Window chrome
+
+1. Drag the window by the GitEye/repository title text and by empty titlebar space. Repeat on the toolchain loading, setup, and detection-error screens.
+2. Double-click non-interactive titlebar space to maximize/restore. Confirm the minimize, maximize/restore, and close buttons work without starting a drag.
+3. Click the command search and other titlebar controls: preserve their actions and focus, and do not move the window. Check setup content remains scrollable below the titlebar in a short window.
+
 ## Resolver workflow
 
 1. Open a conflicted fixture. Check the pinned dashed operation row, semantic side labels, dialog auto-open, dismissal, and graph/banner reopening.

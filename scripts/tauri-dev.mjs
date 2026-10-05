@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, options);
@@ -19,7 +20,7 @@ function waitForViteUrl(vite) {
       process.stdout.write(text);
       output += text;
 
-      const match = output.match(/Local:\s+(https?:\/\/[^\s/]+:\d+)\//);
+      const match = stripVTControlCharacters(output).match(/Local:\s+(https?:\/\/[^\s/]+:\d+)\//);
       if (match) {
         resolve(match[1]);
       }

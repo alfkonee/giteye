@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Download, FolderOpen, GitBranch, HardDrive, RefreshCw, ShieldCheck } from "lucide-react";
 import { gitApi } from "../../lib/tauri-api";
 import type { ToolchainStatus } from "../../types/app";
+import { AppChrome } from "../layout/AppChrome";
 
 export const TOOLCHAIN_QUERY_KEY = ["toolchain-status"] as const;
 const LFS_DISMISS_KEY = "giteye:lfs-onboarding-dismissed";
@@ -160,7 +161,11 @@ function ToolCard({ icon, title, ready, detail, children }: { icon: React.ReactN
 }
 
 function ToolchainShell({ children }: { children: React.ReactNode }) {
-  return <main className="flex min-h-screen items-center justify-center overflow-y-auto bg-[radial-gradient(circle_at_top,var(--color-bg-surface),var(--color-bg-primary)_55%)] px-5 py-10 text-[var(--color-text-primary)]">{children}</main>;
+  return (
+    <AppChrome title="GitEye · Setup">
+      <main className="flex h-full items-center justify-center overflow-y-auto bg-[radial-gradient(circle_at_top,var(--color-bg-surface),var(--color-bg-primary)_55%)] px-5 py-10 text-[var(--color-text-primary)]">{children}</main>
+    </AppChrome>
+  );
 }
 
 function ToolchainLoading() {

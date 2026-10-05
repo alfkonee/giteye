@@ -69,6 +69,7 @@ For normal use:
 For development:
 
 - [Bun](https://bun.sh/) 1.x or later
+- [Node.js](https://nodejs.org/) LTS (used by Vite and the TypeScript tooling)
 - Stable [Rust](https://www.rust-lang.org/tools/install)
 - [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform
 - Git
@@ -83,6 +84,8 @@ bun run tauri
 ```
 
 The development command starts Vite on an available local port and launches the Tauri application. GitEye is single-instance: later launches forward repository paths to the existing process.
+
+Close any installed GitEye instance before launching development, otherwise the new process forwards to that instance rather than showing your local changes. The launcher accepts Vite's colored output and automatically selects another port when the default port is occupied.
 
 ### Checks
 
