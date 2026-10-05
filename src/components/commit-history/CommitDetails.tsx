@@ -1,6 +1,6 @@
 import { useState, type MouseEvent, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CommitDetails as CommitDetailsType } from "../../types/git";
+import type { CommitDetails as CommitDetailsType, GitTag } from "../../types/git";
 import { truncateHash } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import { gitQueries } from "../../lib/git-data";
@@ -9,6 +9,7 @@ import { Calendar, User, ChevronRight, ChevronDown, Hash, MessageSquare, Files, 
 import { FileTree } from "../common/FileTree";
 import { CommitActionContextMenu, CommitActionStrip } from "./HistorySurgeryActions";
 import { buildDisplayRefs, RefPill } from "./commit-refs";
+import { GitRefContextMenu } from "./GitRefContextMenu";
 import { SegmentedControl } from "../ui";
 
 interface CommitDetailsProps {
@@ -21,9 +22,12 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
   const setSelectedCommitFilePath = useAppStore((s) => s.setSelectedCommitFilePath);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [tagMenu, setTagMenu] = useState<{ tag: GitTag; x: number; y: number } | null>(null);
+  const setSelectedGitRef = useAppStore((s) => s.setSelectedGitRef);
   const [descriptionExpanded, setDescriptionExpanded] = useState(true);
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
-  const displayRefs = buildDisplayRefs(commit.refs ?? [], branches);
+  const { data: tags } = useQuery(gitQueries.tags(activeRepoPath));
+  const displayRefs = buildDisplayRefs(commit.refs ?? [], branches, tags, commit.hash);
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -83,6 +87,8 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
                   "max-w-[220px]",
                   ref.isHead && "ring-1 ring-inset ring-[var(--color-accent)]/40",
                 )}
+                onInspect={ref.tag ? () => setSelectedGitRef({ kind: "tag", name: ref.tag!.name, commitHash: ref.tag!.commitHash }) : undefined}
+                onOpenMenu={ref.tag ? (x, y) => setTagMenu({ tag: ref.tag!, x, y }) : undefined}
               />
             ))}
           </div>
@@ -115,6 +121,14 @@ export function CommitDetails({ commit }: CommitDetailsProps) {
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      {tagMenu && (
+        <GitRefContextMenu
+          target={{ kind: "tag", tag: tagMenu.tag }}
+          x={tagMenu.x}
+          y={tagMenu.y}
+          onClose={() => setTagMenu(null)}
+        />
+      )}
       {commit.body && (
         <div className="shrink-0 border-b border-[var(--color-border-muted)] px-3 py-2">
           <button

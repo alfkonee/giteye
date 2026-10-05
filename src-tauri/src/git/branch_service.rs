@@ -145,6 +145,16 @@ pub fn checkout_branch(repo_path: &Path, name: &str, strategy: &str) -> Result<(
             "Unsupported checkout strategy: {strategy}"
         )));
     }
+    if strategy == "move" {
+        checkout_branch_inner(repo_path, name, strategy)
+    } else {
+        crate::git::stash_service::with_stash_lock(repo_path, || {
+            checkout_branch_inner(repo_path, name, strategy)
+        })
+    }
+}
+
+fn checkout_branch_inner(repo_path: &Path, name: &str, strategy: &str) -> Result<(), AppError> {
     let target = checkout_target(repo_path, name)?;
     if get_current_branch(repo_path)? == target.local_name {
         return Ok(());
@@ -201,16 +211,15 @@ pub fn checkout_branch(repo_path: &Path, name: &str, strategy: &str) -> Result<(
         ));
     }
     if strategy == "discard" {
-        // Do not drop someone else's stash if an external Git process changed
-        // the stack. Retaining our snapshot is safer than deleting the wrong one.
-        if current_stash(repo_path).as_deref() != Some(backup.as_str()) {
-            return Err(AppError::GitError(format!(
-                "Branch switched, but the stash stack changed. The recovery snapshot {backup} was not deleted."
-            )));
-        }
-        GitCli::run(repo_path, &["stash", "drop", "stash@{0}"]).map_err(|error| {
+        // The stash lock excludes GitEye writers; duplicate entries or external
+        // renumbering still make this selector unsafe to delete.
+        let recovery = crate::models::StashTarget {
+            name: "stash@{0}".to_string(),
+            commit_hash: backup.clone(),
+        };
+        crate::git::stash_service::drop_verified(repo_path, &recovery).map_err(|error| {
             AppError::GitError(format!(
-                "Branch switched, but the recovery snapshot {backup} could not be deleted: {error}"
+                "Branch switched, but the recovery snapshot {backup} was retained: {error}"
             ))
         })?;
     }

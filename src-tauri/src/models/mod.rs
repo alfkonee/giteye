@@ -46,6 +46,6 @@ pub use repository::{
     WorkspaceSummary,
 };
 pub use ssh::{SshAgentIdentity, SshKey, SshStatus};
-pub use stash::StashEntry;
+pub use stash::{StashEntry, StashFile, StashSection, StashTarget};
 pub use status::GitStatusFile;
 pub use tag::GitTag;

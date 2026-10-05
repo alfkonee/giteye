@@ -236,7 +236,7 @@ fn parse_name_status_line(line: &str) -> Option<ResetPreviewFile> {
 fn parse_refs(refs: &str) -> Vec<String> {
     refs.split(',')
         .map(str::trim)
-        .filter(|reference| !reference.is_empty() && !reference.starts_with("tag: "))
+        .filter(|reference| !reference.is_empty())
         .map(|reference| reference.to_string())
         .collect()
 }
@@ -261,7 +261,7 @@ fn verify_commit(repo_path: &Path, rev: &str) -> Result<(), AppError> {
     resolve_commit(repo_path, rev).map(|_| ())
 }
 
-fn resolve_commit(repo_path: &Path, rev: &str) -> Result<String, AppError> {
+pub(crate) fn resolve_commit(repo_path: &Path, rev: &str) -> Result<String, AppError> {
     let rev = required_git_arg(rev, "revision")?;
     let commit_rev = format!("{rev}^{{commit}}");
     let output = GitCli::run(repo_path, &["rev-parse", "--verify", &commit_rev])?;
