@@ -37,11 +37,13 @@ export interface CommitGraphRow {
   passthroughConnections: CommitGraphConnection[];
   parentConnections: CommitGraphConnection[];
   color: string;
+  /** Lanes that continue below this commit, before any inserted snapshot rows. */
+  outgoingLanes: ReadonlyArray<{ hash: string; lane: number; color: string }>;
   width: number;
 }
 
 export function layoutCommitGraph(
-  commits: CommitSummary[],
+  commits: ReadonlyArray<CommitSummary>,
 ): Map<string, CommitGraphRow> {
   const rows = new Map<string, CommitGraphRow>();
   const lanes: LaneState[] = [];
@@ -135,6 +137,11 @@ export function layoutCommitGraph(
       passthroughConnections,
       parentConnections,
       color: commitColor,
+      outgoingLanes: lanesAfter.map((lane, index) => ({
+        hash: lane.hash,
+        lane: visibleLane(index),
+        color: lane.color,
+      })),
       width: MIN_WIDTH,
     });
 

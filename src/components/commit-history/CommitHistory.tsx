@@ -19,9 +19,15 @@ import { History } from "lucide-react";
 import {
   COMMIT_ROW_HEIGHT,
   colorForLane,
-  layoutCommitGraph,
   operationCommitRoles,
 } from "./commit-graph";
+import {
+  buildHistoryRows,
+  commitRangeIndices,
+  historyIndexOfBase,
+  nextLimitForBase,
+} from "./history-rows";
+import { StashRow } from "./StashRow";
 import { ReflogRecoveryPanel } from "./HistorySurgeryActions";
 import { ActiveOperationRow, WorkingTreeRow } from "./WorkingTreeRow";
 import { WORKING_TREE_COMMIT_HASH } from "../../lib/working-tree-node";
@@ -38,8 +44,12 @@ export function CommitHistory({
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const setSelectedCommitRange = useAppStore((s) => s.setSelectedCommitRange);
+  const selectedGitRef = useAppStore((s) => s.selectedGitRef);
+  const setSelectedGitRef = useAppStore((s) => s.setSelectedGitRef);
   const [commitLimit, setCommitLimit] = useState(INITIAL_COMMIT_LIMIT);
   const [showReflog, setShowReflog] = useState(false);
+  const [locateBase, setLocateBase] = useState<{ repoPath: string; hash: string } | null>(null);
+  const [locateError, setLocateError] = useState<string | null>(null);
   const {
     data: commits,
     isLoading,
@@ -52,6 +62,8 @@ export function CommitHistory({
       previousQuery?.queryKey[2] === activeRepoPath ? previousData : undefined,
   });
   const { data: branches } = useQuery(gitQueries.branches(activeRepoPath));
+  const { data: stashes } = useQuery(gitQueries.stashes(activeRepoPath));
+  const { data: tags } = useQuery(gitQueries.tags(activeRepoPath));
   const parentRef = useRef<HTMLDivElement>(null);
   const rangeSelectionAnchor = useRef<string | null>(null);
   const { data: snapshot } = useQuery(
@@ -70,9 +82,11 @@ export function CommitHistory({
   );
   const hasMoreCommits =
     isPlaceholderData || (commits?.length ?? 0) >= commitLimit;
-  const graphRows = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
-  const graphWidth = graphRows.values().next().value?.width ?? 96;
   const headHash = snapshot?.repositoryInfo.headCommit;
+  const { rows: historyRows, graphRows, graphWidth } = useMemo(
+    () => buildHistoryRows(commits ?? [], stashes ?? [], headHash),
+    [commits, stashes, headHash],
+  );
   const headRow = headHash ? graphRows.get(headHash) : undefined;
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
   const unstagedCount = snapshot?.summary.unstagedCount ?? 0;
@@ -89,19 +103,15 @@ export function CommitHistory({
         return;
       }
 
-      const anchorIndex =
-        commits?.findIndex((commit) => commit.hash === anchorHash) ?? -1;
-      const selectedIndex =
-        commits?.findIndex((commit) => commit.hash === hash) ?? -1;
-
-      if (anchorIndex < 0 || selectedIndex < 0) {
+      const indices = commitRangeIndices(commits ?? [], anchorHash, hash);
+      if (!indices) {
         rangeSelectionAnchor.current = hash;
         setSelectedCommitRange([hash]);
         return;
       }
 
       setSelectedCommitRange(
-        anchorIndex > selectedIndex ? [anchorHash, hash] : [hash, anchorHash],
+        indices[0] > indices[1] ? [anchorHash, hash] : [hash, anchorHash],
       );
     },
     [commits, selectedCommitRange, setSelectedCommitRange],
@@ -119,31 +129,49 @@ export function CommitHistory({
 
   useEffect(() => {
     setCommitLimit(INITIAL_COMMIT_LIMIT);
+    setLocateBase(null);
+    setLocateError(null);
   }, [activeRepoPath]);
 
   const virtualizer = useVirtualizer({
-    count: (commits?.length ?? 0) + (hasMoreCommits ? 1 : 0),
+    count: historyRows.length + (hasMoreCommits ? 1 : 0),
     getScrollElement: () => parentRef.current,
+    getItemKey: (index) => historyRows[index]?.key ?? "history:load-more",
     estimateSize: () => COMMIT_ROW_HEIGHT,
     overscan: 10,
   });
   const virtualItems = virtualizer.getVirtualItems();
 
   useEffect(() => {
-    if (
-      !commits ||
-      !hasMoreCommits ||
-      isFetching ||
-      virtualItems.length === 0
-    ) {
+    if (!locateBase || locateBase.repoPath !== activeRepoPath || !commits || isPlaceholderData || isFetching) return;
+    const index = historyIndexOfBase(historyRows, locateBase.hash);
+    if (index >= 0) {
+      virtualizer.scrollToIndex(index, { align: "center" });
+      setLocateBase(null);
       return;
     }
+    const next = nextLimitForBase(commits.length, commitLimit, isFetching, isPlaceholderData, false, COMMIT_LIMIT_INCREMENT);
+    if (next !== null) {
+      setCommitLimit(next);
+    } else {
+      setLocateError(`Base ${locateBase.hash.slice(0, 8)} was not found in committed history.`);
+      setLocateBase(null);
+    }
+  }, [activeRepoPath, commitLimit, commits, historyRows, isFetching, isPlaceholderData, locateBase, virtualizer]);
 
+  useEffect(() => {
+    if (!commits || !hasMoreCommits || isFetching || locateBase || virtualItems.length === 0) return;
     const lastVirtualItem = virtualItems[virtualItems.length - 1];
-    if (lastVirtualItem.index >= commits.length) {
+    if (lastVirtualItem.index >= historyRows.length) {
       setCommitLimit((limit) => limit + COMMIT_LIMIT_INCREMENT);
     }
-  }, [commits, hasMoreCommits, isFetching, virtualItems]);
+  }, [commits, hasMoreCommits, historyRows.length, isFetching, locateBase, virtualItems]);
+
+  const requestBase = (hash: string) => {
+    if (!activeRepoPath) return;
+    setLocateError(null);
+    setLocateBase({ repoPath: activeRepoPath, hash });
+  };
 
   return (
     <div
@@ -169,6 +197,11 @@ export function CommitHistory({
         </button>
       </div>
 
+      {locateError ? (
+        <div role="status" className="border-b border-[var(--color-border-muted)] px-3 py-1 text-[11px] text-[var(--color-warning)]">
+          {locateError}
+        </div>
+      ) : null}
       <ReflogRecoveryPanel open={showReflog} />
 
       {activeOperation && activeRepoPath ? (
@@ -193,7 +226,7 @@ export function CommitHistory({
         <div className="p-4">
           <ErrorCallout message="Failed to load commit history" />
         </div>
-      ) : !commits || commits.length === 0 ? (
+      ) : historyRows.length === 0 ? (
         <EmptyState
           icon={<History className="w-8 h-8" />}
           title="No Commits"
@@ -222,7 +255,7 @@ export function CommitHistory({
                 headLane={headRow?.commitLane ?? 0}
                 headColor={headRow?.color ?? colorForLane(0)}
                 connectToHistory={
-                  headHash === commits[0].hash &&
+                  headHash === commits?.[0]?.hash &&
                   (parentRef.current?.scrollTop ?? 0) === 0
                 }
                 stagedCount={stagedCount}
@@ -246,7 +279,7 @@ export function CommitHistory({
               }}
             >
               {virtualItems.map((virtualItem) => {
-                if (virtualItem.index >= commits.length) {
+                if (virtualItem.index >= historyRows.length) {
                   return (
                     <div
                       key={virtualItem.key}
@@ -272,10 +305,7 @@ export function CommitHistory({
                   );
                 }
 
-                const commit = commits[virtualItem.index];
-                const graph = graphRows.get(commit.hash);
-
-                if (!graph) return null;
+                const row = historyRows[virtualItem.index];
 
                 return (
                   <div
@@ -289,17 +319,30 @@ export function CommitHistory({
                       transform: `translateY(${virtualItem.start}px)`,
                     }}
                   >
-                    <CommitListItem
-                      commit={commit}
-                      graph={graph}
-                      branches={branches}
-                      operationRoles={operationRoles.get(commit.hash)}
-                      onActivateBranch={onActivateBranch}
-                      isSelected={selectedCommitRange.includes(commit.hash)}
-                      onSelect={(selectedCommit, event) =>
-                        selectCommit(selectedCommit.hash, event)
-                      }
-                    />
+                    {row.kind === "commit" ? (
+                      <CommitListItem
+                        commit={row.commit}
+                        graph={row.graph}
+                        tags={tags}
+                        branches={branches}
+                        operationRoles={operationRoles.get(row.commit.hash)}
+                        onActivateBranch={onActivateBranch}
+                        isSelected={selectedCommitRange.includes(row.commit.hash)}
+                        onSelect={(selectedCommit, event) =>
+                          selectCommit(selectedCommit.hash, event)
+                        }
+                      />
+                    ) : (
+                      <StashRow
+                        stash={row.stash}
+                        graph={row.graph}
+                        graphWidth={graphWidth}
+                        isLocatingBase={locateBase?.hash === row.stash.baseCommitHash}
+                        isSelected={selectedGitRef?.kind === "stash" && selectedGitRef.commitHash === row.stash.commitHash}
+                        onSelect={() => setSelectedGitRef({ kind: "stash", name: row.stash.name, commitHash: row.stash.commitHash })}
+                        onLocateBase={requestBase}
+                      />
+                    )}
                   </div>
                 );
               })}

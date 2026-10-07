@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { getViewDefinition } from "../../lib/view-registry";
 import { CommitDetails } from "../commit-history/CommitDetails";
+import { GitRefDetails } from "../commit-history/GitRefDetails";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import type { DiffHunkActionContext } from "../diff-viewer/DiffViewer.types";
 import { BlameTable, FileHistoryList } from "../diff-viewer/FileDetailsViews";
@@ -25,11 +26,28 @@ export function PanelLayout() {
   const selectedCommitHash = useAppStore((s) => s.selectedCommitHash);
   const selectedCommitRange = useAppStore((s) => s.selectedCommitRange);
   const selectedCommitFilePath = useAppStore((s) => s.selectedCommitFilePath);
+  const selectedGitRef = useAppStore((s) => s.selectedGitRef);
   const setActiveRepoPath = useAppStore((s) => s.setActiveRepoPath);
   const setSelectedCommitHash = useAppStore((s) => s.setSelectedCommitHash);
   const queryClient = useQueryClient();
   const isNarrowLayout = useMediaQuery("(max-width: 820px)");
   const activeViewDefinition = getViewDefinition(activeView);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  const rememberedSizes = useRef({ horizontal: 40, vertical: 40 });
+  useLayoutEffect(() => {
+    const element = layoutRef.current;
+    if (!element) return;
+    const updateWidth = () => setLayoutWidth(element.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const stacked = isNarrowLayout || (layoutWidth > 0 && layoutWidth < 640);
+  const direction = stacked ? "vertical" : "horizontal";
+  const detailMinSize = stacked ? 20 : layoutWidth > 1 ? 320 / (layoutWidth - 1) * 100 : 20;
 
   const { data: fileDiff, isLoading: diffLoading, error: diffError } = useQuery(
     gitQueries.fileDiff(activeRepoPath, selectedFilePath, selectedFileStaged)
@@ -93,6 +111,10 @@ export function PanelLayout() {
   const mainContent = activeViewDefinition.render();
 
   const renderDetailPane = useCallback(() => {
+    if (selectedGitRef) {
+      return <GitRefDetails selection={selectedGitRef} />;
+    }
+
     if (isWorkingTreeSelection(selectedCommitHash)) {
       return <WorkingCommitDetails />;
     }
@@ -134,11 +156,10 @@ export function PanelLayout() {
                   key={mode}
                   type="button"
                   onClick={() => setFileDetailMode(mode)}
-                  className={`rounded px-2 py-0.5 text-[10.5px] capitalize transition-colors ${
-                    fileDetailMode === mode
-                      ? "bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] shadow-sm"
-                      : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-                  }`}
+                  className={`rounded px-2 py-0.5 text-[10.5px] capitalize transition-colors ${fileDetailMode === mode
+                    ? "bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] shadow-sm"
+                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+                    }`}
                 >
                   {mode}
                 </button>
@@ -220,48 +241,58 @@ export function PanelLayout() {
       );
     }
 
-    return (
-      <EmptyState
-        icon={<FolderOpen className="w-8 h-8" />}
-        title="No Selection"
-        description="Select a file or commit to view details"
-      />
-    );
-  }, [selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash, fileDetailMode, blameLines, blameLoading, blameError, historyEntries, historyLoading, historyError]);
+    return selectedFilePath ? (
+      <ErrorCallout message={diffError ? String(diffError) : "Unable to load the selected file."} />
+    ) : null;
+  }, [selectedGitRef, selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash, fileDetailMode, blameLines, blameLoading, blameError, historyEntries, historyLoading, historyError]);
 
-  const showDetailPane = Boolean(activeViewDefinition.detailPane);
-
-  if (!showDetailPane) {
-    return (
-      <div className="h-full overflow-hidden bg-[var(--color-bg-primary)]">
-        {mainContent}
-      </div>
-    );
-  }
+  const showDetailPane = Boolean(
+    activeRepoPath && activeViewDefinition.detailPane &&
+    (selectedGitRef || selectedCommitHash || selectedCommitRange.length > 0 || selectedFilePath),
+  );
+  // Adding a panel normalizes both defaults; explicitly restore the saved split.
+  const desiredDetailSize = Math.min(70, Math.max(detailMinSize, rememberedSizes.current[direction]));
+  useLayoutEffect(() => {
+    panelGroupRef.current?.setLayout(showDetailPane
+      ? [100 - desiredDetailSize, desiredDetailSize]
+      : [100]);
+  }, [showDetailPane, direction, desiredDetailSize]);
 
   return (
-    <PanelGroup direction={isNarrowLayout ? "vertical" : "horizontal"} className="h-full bg-[var(--color-bg-primary)]">
-      <Panel
-        defaultSize={60}
-        minSize={30}
-      >
-        <div className="h-full overflow-hidden">
-          {mainContent}
-        </div>
-      </Panel>
-      <PanelResizeHandle
-        className={isNarrowLayout
-          ? "group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"
-          : "group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"}
-      >
-        <div className={isNarrowLayout ? "absolute -inset-y-1.5 inset-x-0" : "absolute inset-y-0 -inset-x-1.5"} />
-      </PanelResizeHandle>
-      <Panel defaultSize={40} minSize={20}>
-        <div className="h-full overflow-auto bg-[var(--color-bg-primary)]">
-          {renderDetailPane()}
-        </div>
-      </Panel>
-    </PanelGroup>
+    <div ref={layoutRef} className="h-full min-w-0 overflow-hidden bg-[var(--color-bg-primary)]">
+      <PanelGroup ref={panelGroupRef} direction={direction} className="h-full">
+        <Panel id="repository-main" order={1} defaultSize={100 - desiredDetailSize} minSize={30}>
+          <div className="h-full overflow-hidden">{mainContent}</div>
+        </Panel>
+        {showDetailPane ? (
+          <>
+            <PanelResizeHandle
+              id="repository-details-resize"
+              aria-label="Resize details sidebar"
+              className={stacked
+                ? "group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"
+                : "group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"}
+            >
+              <div className={stacked ? "absolute -inset-y-1.5 inset-x-0" : "absolute inset-y-0 -inset-x-1.5"} />
+            </PanelResizeHandle>
+            <Panel
+              id="repository-details"
+              order={2}
+              defaultSize={desiredDetailSize}
+              minSize={detailMinSize}
+              maxSize={70}
+              onResize={(size) => {
+                rememberedSizes.current[direction] = size;
+              }}
+            >
+              <div className="h-full min-w-0 overflow-auto bg-[var(--color-bg-primary)]">
+                {renderDetailPane()}
+              </div>
+            </Panel>
+          </>
+        ) : null}
+      </PanelGroup>
+    </div>
   );
 }
 

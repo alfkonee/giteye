@@ -291,13 +291,33 @@ export interface StashEntry {
   commitHash: string;
   shortHash: string;
   timestamp: string | null;
+  baseCommitHash: string;
+  indexCommitHash: string | null;
+  untrackedCommitHash: string | null;
 }
+
+export interface StashTarget {
+  name: string;
+  commitHash: string;
+}
+
+export type StashSection = "staged" | "unstaged" | "untracked";
+
+export interface StashFile {
+  path: string;
+  section: StashSection;
+}
+
+export type GitRefSelection =
+  | { kind: "tag"; name: string; commitHash: string }
+  | { kind: "stash"; name: string; commitHash: string };
 
 export interface GitTag {
   name: string;
   commitHash: string;
   shortHash: string;
   subject: string | null;
+  annotation: string | null;
   tagger: string | null;
   timestamp: string | null;
   annotated: boolean;
@@ -420,7 +440,7 @@ export interface ConflictContent {
   operationId: string;
   revision: string;
   kind:
-    "text" | "binary" | "symlink" | "submodule" | "oversized" | "unsupported";
+  "text" | "binary" | "symlink" | "submodule" | "oversized" | "unsupported";
   base: ConflictStage;
   ours: ConflictStage;
   theirs: ConflictStage;

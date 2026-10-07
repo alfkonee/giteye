@@ -7,6 +7,8 @@ pub struct GitTag {
     pub commit_hash: String,
     pub short_hash: String,
     pub subject: Option<String>,
+    /// Full annotated tag message; lightweight tags have no annotation.
+    pub annotation: Option<String>,
     pub tagger: Option<String>,
     pub timestamp: Option<String>,
     pub annotated: bool,

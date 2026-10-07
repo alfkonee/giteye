@@ -31,6 +31,8 @@ import type {
   LfsMigrationRequest,
   LfsPruneRequest,
   LfsTransferRequest,
+  StashTarget,
+  StashSection,
 } from "../types/git";
 import { useNoticeStore } from "../stores/notice-store";
 
@@ -365,6 +367,10 @@ export const gitKeys = {
     [...gitKeys.repository(repoPath), "remotes"] as const,
   stashes: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "stashes"] as const,
+  stashFiles: (repoPath: string | null | undefined, commitHash: string | null) =>
+    [...gitKeys.repository(repoPath), "stash-files", commitHash] as const,
+  stashDiff: (repoPath: string | null | undefined, commitHash: string | null, section: StashSection, filePath: string | null) =>
+    [...gitKeys.repository(repoPath), "stash-diff", commitHash, section, filePath] as const,
   tags: (repoPath: string | null | undefined) =>
     [...gitKeys.repository(repoPath), "tags"] as const,
   worktrees: (repoPath: string | null | undefined) =>
@@ -479,6 +485,9 @@ export function invalidateGitStateByReason(
     reason === "reflog" ||
     reason === "bisect"
   ) {
+    invalidations.push(
+      queryClient.invalidateQueries({ queryKey: gitKeys.stashes(repoPath) }),
+    );
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: gitKeys.worktrees(repoPath) }),
       queryClient.invalidateQueries({ queryKey: gitKeys.submodules(repoPath) }),
@@ -995,6 +1004,20 @@ export const gitQueries = {
       queryKey: gitKeys.stashes(repoPath),
       queryFn: () => gitApi.listStashes(repoPath!),
       enabled: enabledRepo(repoPath) && enabled,
+    }),
+
+  stashFiles: (repoPath: string | null, commitHash: string | null) =>
+    queryOptions({
+      queryKey: gitKeys.stashFiles(repoPath, commitHash),
+      queryFn: () => gitApi.stashFiles(repoPath!, commitHash!),
+      enabled: enabledRepo(repoPath) && Boolean(commitHash),
+    }),
+
+  stashDiff: (repoPath: string | null, commitHash: string | null, section: StashSection, filePath: string | null) =>
+    queryOptions({
+      queryKey: gitKeys.stashDiff(repoPath, commitHash, section, filePath),
+      queryFn: () => gitApi.stashDiff(repoPath!, commitHash!, section, filePath!),
+      enabled: enabledRepo(repoPath) && Boolean(commitHash && filePath),
     }),
 
   tags: (repoPath: string | null, enabled = true) =>
@@ -1759,8 +1782,10 @@ export const gitMutations = {
           `${name} created and repository views refreshed.`,
         );
       },
-      onError: (error, _variables, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["refs", "worktree"]);
+      },
     }),
 
   renameBranch: (queryClient: QueryClient, repoPath: string | null) =>
@@ -1894,7 +1919,7 @@ export const gitMutations = {
         startGitActionNotice(
           "Saving Git identity",
           [name, email].filter(Boolean).join(" · ") ||
-            "Clearing local identity",
+          "Clearing local identity",
           repoPath,
         ),
       onSuccess: async (identity, _variables, context) => {
@@ -2224,7 +2249,7 @@ export const gitMutations = {
         startGitActionNotice(
           "Pulling",
           [remote, branch].filter(Boolean).join("/") ||
-            "Pulling current branch…",
+          "Pulling current branch…",
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
@@ -2245,7 +2270,7 @@ export const gitMutations = {
         startGitActionNotice(
           "Pushing",
           [remote, branch].filter(Boolean).join("/") ||
-            "Pushing current branch…",
+          "Pushing current branch…",
           repoPath,
         ),
       onSuccess: (job, _variables, context) => {
@@ -2431,15 +2456,17 @@ export const gitMutations = {
           queryClient,
           repoPath,
           context,
-          "worktree",
+          ["worktree", "refs"],
         );
         finishGitActionNotice(
           context,
           "Stash created and working tree refreshed.",
         );
       },
-      onError: (error, _variables, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["worktree", "refs"]);
+      },
     }),
 
   createStashForPaths: (queryClient: QueryClient, repoPath: string | null) =>
@@ -2461,79 +2488,133 @@ export const gitMutations = {
           queryClient,
           repoPath,
           context,
-          "worktree",
+          ["worktree", "refs"],
         );
         finishGitActionNotice(
           context,
           "Selected paths stashed and working tree refreshed.",
         );
       },
-      onError: (error, _variables, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["worktree", "refs"]);
+      },
     }),
 
   applyStash: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (stashName: string) =>
-        gitApi.applyStash(repoPath!, stashName),
-      onMutate: (stashName) =>
-        startGitActionNotice("Applying stash", stashName, repoPath),
+      mutationFn: (stash: StashTarget) =>
+        gitApi.applyStash(repoPath!, stash),
+      onMutate: (stash) =>
+        startGitActionNotice("Applying stash", stash.name, repoPath),
       onSuccess: async (_data, _stashName, context) => {
         await refreshGitStateAfterAction(
           queryClient,
           repoPath,
           context,
-          "worktree",
+          ["worktree", "refs"],
         );
         finishGitActionNotice(
           context,
           "Stash applied and working tree refreshed.",
         );
       },
-      onError: (error, _stashName, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _stash, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["worktree", "refs"]);
+      },
     }),
 
   popStash: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (stashName: string) => gitApi.popStash(repoPath!, stashName),
-      onMutate: (stashName) =>
-        startGitActionNotice("Popping stash", stashName, repoPath),
+      mutationFn: (stash: StashTarget) => gitApi.popStash(repoPath!, stash),
+      onMutate: (stash) =>
+        startGitActionNotice("Popping stash", stash.name, repoPath),
       onSuccess: async (_data, _stashName, context) => {
         await refreshGitStateAfterAction(
           queryClient,
           repoPath,
           context,
-          "worktree",
+          ["worktree", "refs"],
         );
         finishGitActionNotice(
           context,
           "Stash popped and working tree refreshed.",
         );
       },
-      onError: (error, _stashName, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _stash, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["worktree", "refs"]);
+      },
     }),
 
   dropStash: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
-      mutationFn: (stashName: string) => gitApi.dropStash(repoPath!, stashName),
-      onMutate: (stashName) =>
-        startGitActionNotice("Dropping stash", stashName, repoPath),
+      mutationFn: (stash: StashTarget) => gitApi.dropStash(repoPath!, stash),
+      onMutate: (stash) =>
+        startGitActionNotice("Dropping stash", stash.name, repoPath),
       onSuccess: async (_data, _stashName, context) => {
         await refreshGitStateAfterAction(
           queryClient,
           repoPath,
           context,
-          "worktree",
+          ["worktree", "refs"],
         );
         finishGitActionNotice(
           context,
           "Stash dropped and stash list refreshed.",
         );
       },
-      onError: (error, _stashName, context) =>
-        failGitActionNotice(context, error),
+      onError: async (error, _stash, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["worktree", "refs"]);
+      },
+    }),
+
+  createBranchFromStash: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, stash }: { name: string; stash: StashTarget }) =>
+        gitApi.createBranchFromStash(repoPath!, name, stash),
+      onMutate: ({ name, stash }) =>
+        startGitActionNotice("Creating branch from stash", `${stash.name} → ${name}`, repoPath),
+      onSuccess: async (_data, { name }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `${name} created, saved changes restored, and stash removed.`);
+      },
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["refs", "worktree"]);
+      },
+    }),
+
+  checkoutTag: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, commitHash }: { name: string; commitHash: string }) =>
+        gitApi.checkoutTag(repoPath!, name, commitHash),
+      onMutate: ({ name }) => startGitActionNotice("Checking out tag", name, repoPath),
+      onSuccess: async (_data, { name }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `Checked out ${name} with detached HEAD.`);
+      },
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["refs", "worktree"]);
+      },
+    }),
+
+  branchFromTag: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, commitHash }: { name: string; commitHash: string }) =>
+        gitApi.branchFromTag(repoPath!, name, commitHash),
+      onMutate: ({ name }) => startGitActionNotice("Creating branch from tag", name, repoPath),
+      onSuccess: async (_data, { name }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `${name} created from the tag and checked out.`);
+      },
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["refs", "worktree"]);
+      },
     }),
 
   createTag: (queryClient: QueryClient, repoPath: string | null) =>

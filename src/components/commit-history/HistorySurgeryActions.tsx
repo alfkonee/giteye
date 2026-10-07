@@ -7,48 +7,25 @@ import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatAmendPreview, formatRebasePreview } from "../../lib/git-preview";
 import type {
-  Branch,
   CommitSummary,
   ReflogEntry,
   ResetMode,
   ResetPreview,
   StartRebaseRequest,
 } from "../../types/git";
-import {
-  localNameForRemoteRef,
-  planBranchActivation,
-} from "../../lib/branch-activation";
+import { localNameForRemoteRef } from "../../lib/branch-activation";
+import { integrableRefs, remoteRefEntries } from "./commit-ref-actions";
 import type { DisplayRef } from "./commit-refs";
 import { MoreHorizontal } from "lucide-react";
 import { appDialog } from "../common/AppDialogProvider";
 import { Button } from "../ui";
+import { useGitRefActions } from "../../hooks/useGitRefActions";
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
   body?: string | null;
 };
 
-/**
- * What the menu can offer for a remote branch ref sitting on a right-clicked
- * commit: create-and-check-out a tracking local branch when none exists, or
- * fast-forward the local side that tracks it.
- */
-type RemoteRefEntry =
-  | { kind: "checkout"; refLabel: string; localName: string }
-  | {
-      kind: "fast-forward";
-      refLabel: string;
-      localName: string;
-      behind: number;
-    }
-  | { kind: "synced"; refLabel: string; localName: string }
-  | {
-      kind: "diverged";
-      refLabel: string;
-      localName: string;
-      ahead: number;
-      behind: number;
-    };
 
 interface CommitActionStripProps {
   target: CommitActionTarget;
@@ -174,27 +151,6 @@ async function promptBranchName(defaultName: string, sourceLabel: string) {
   return name || null;
 }
 
-const MAX_INTEGRATION_REFS = 2;
-
-/**
- * Refs sitting on a commit that the current branch can integrate with: the
- * checked-out branch itself and a detached HEAD marker are excluded because
- * merging or rebasing a branch onto itself is a no-op.
- */
-function integrableRefs(refs: DisplayRef[] | undefined): DisplayRef[] {
-  if (!refs?.length) return [];
-  const seen = new Set<string>();
-  const usable: DisplayRef[] = [];
-
-  for (const ref of refs) {
-    if (ref.isHead || ref.label === "HEAD" || seen.has(ref.label)) continue;
-    seen.add(ref.label);
-    usable.push(ref);
-    if (usable.length === MAX_INTEGRATION_REFS) break;
-  }
-
-  return usable;
-}
 
 function useHistorySurgeryActions() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -613,57 +569,6 @@ export function CommitActionStrip({
   );
 }
 
-function remoteRefEntries(
-  refs: DisplayRef[] | undefined,
-  branches: Branch[] | undefined,
-): RemoteRefEntry[] {
-  if (!refs?.length || !branches?.length) return [];
-
-  const entries: RemoteRefEntry[] = [];
-  for (const ref of refs) {
-    if (!ref.isRemote) continue;
-    const remote = branches.find(
-      (branch) => branch.isRemote && branch.shortName === ref.label,
-    );
-    if (!remote) continue;
-
-    const plan = planBranchActivation(remote, branches);
-    switch (plan.kind) {
-      case "create-tracking":
-        entries.push({
-          kind: "checkout",
-          refLabel: ref.label,
-          localName: plan.localName,
-        });
-        break;
-      case "fast-forward":
-        entries.push({
-          kind: "fast-forward",
-          refLabel: ref.label,
-          localName: plan.local.shortName,
-          behind: plan.behind,
-        });
-        break;
-      case "already-synced":
-        entries.push({
-          kind: "synced",
-          refLabel: ref.label,
-          localName: plan.local.shortName,
-        });
-        break;
-      case "diverged":
-        entries.push({
-          kind: "diverged",
-          refLabel: ref.label,
-          localName: plan.local.shortName,
-          ahead: plan.ahead,
-          behind: plan.behind,
-        });
-        break;
-    }
-  }
-  return entries;
-}
 
 export function CommitActionContextMenu({
   target,
@@ -681,6 +586,7 @@ export function CommitActionContextMenu({
   onClose: () => void;
 }) {
   const actions = useHistorySurgeryActions();
+  const gitRefActions = useGitRefActions();
   const integrationRefs = integrableRefs(refs);
   const remoteEntries = remoteRefEntries(refs, actions.branches);
   const head = isHeadCommit ?? actions.isHead(target);
@@ -744,6 +650,13 @@ export function CommitActionContextMenu({
           detail="start a branch here"
           disabled={actions.isBusy}
           onSelect={() => actions.createBranchFromCommit(target)}
+          onClose={onClose}
+        />
+        <CommitMenuItem
+          label="Create tag at this commit…"
+          detail={shortHash(target)}
+          disabled={actions.isBusy || gitRefActions.isBusy}
+          onSelect={() => void gitRefActions.createTag(target.hash)}
           onClose={onClose}
         />
         {integrationRefs.length > 0 ? (
