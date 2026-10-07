@@ -81,12 +81,11 @@ fn stash_parents(repo_path: &Path, oid: &str) -> Result<(String, String, Option<
     Ok((base.to_string(), index.to_string(), untracked))
 }
 
-fn verify_selector(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError> {
+fn verify_listed_selector(entries: &[StashEntry], stash: &StashTarget) -> Result<(), AppError> {
     let expected = validate_oid(&stash.commit_hash)?;
     if parse_stash_index(&stash.name).is_none() {
         return Err(AppError::GitError("Invalid stash selector.".into()));
     }
-    let entries = list_stashes(repo_path)?;
     let mut matches = entries.iter().filter(|entry| entry.commit_hash == expected);
     if !matches!(matches.next(), Some(entry) if entry.name == stash.name) || matches.next().is_some() {
         return Err(AppError::GitError(format!(
@@ -95,6 +94,10 @@ fn verify_selector(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError
         )));
     }
     Ok(())
+}
+
+fn verify_selector(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError> {
+    verify_listed_selector(&list_stashes(repo_path)?, stash)
 }
 
 pub fn list_stashes(repo_path: &Path) -> Result<Vec<StashEntry>, AppError> {
@@ -190,10 +193,64 @@ pub fn preview_stash(repo_path: &Path, stash: &StashTarget) -> Result<Vec<String
     }
 }
 
-pub(crate) fn drop_verified(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError> {
-    verify_selector(repo_path, stash)?;
+/// `git stash drop` only accepts `stash@{n}` selectors, so an external Git
+/// process can renumber entries between verification and deletion. The removal
+/// is therefore confirmed afterwards; a wrongly removed entry is stored back
+/// with `git stash store` so no unrelated saved work is lost.
+pub(crate) fn drop_with_interpose(
+    repo_path: &Path,
+    stash: &StashTarget,
+    interpose: impl FnOnce() -> Result<(), AppError>,
+) -> Result<(), AppError> {
+    let before = list_stashes(repo_path)?;
+    verify_listed_selector(&before, stash)?;
+    interpose()?;
     GitCli::run(repo_path, &["stash", "drop", &stash.name])?;
-    Ok(())
+    reconcile_drop(repo_path, stash, &before)
+}
+
+pub(crate) fn drop_verified(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError> {
+    drop_with_interpose(repo_path, stash, || Ok(()))
+}
+
+fn reconcile_drop(
+    repo_path: &Path,
+    stash: &StashTarget,
+    before: &[StashEntry],
+) -> Result<(), AppError> {
+    let expected = validate_oid(&stash.commit_hash)?;
+    let after = list_stashes(repo_path)?;
+    let removed: Vec<&StashEntry> = before
+        .iter()
+        .filter(|entry| after.iter().all(|kept| kept.commit_hash != entry.commit_hash))
+        .collect();
+    match removed.as_slice() {
+        // Exactly the verified entry disappeared; nothing external intervened.
+        [entry] if entry.commit_hash == expected => Ok(()),
+        [] => Err(AppError::GitError(format!(
+            "{} was already removed or never existed. Refresh stashes before continuing.",
+            stash.name
+        ))),
+        removed => {
+            for entry in removed {
+                let message = format!("restored after external stash change: {}", entry.message);
+                GitCli::run(
+                    repo_path,
+                    &["stash", "store", "-m", &message, &entry.commit_hash],
+                )
+                .map_err(|error| {
+                    AppError::GitError(format!(
+                        "Stash list changed while dropping {}, and {} could not be restored automatically. It is not lost; recover it with: git stash store -m restored {}. Original error: {error}",
+                        stash.name, entry.name, entry.commit_hash
+                    ))
+                })?;
+            }
+            Err(AppError::GitError(format!(
+                "The stash list changed while dropping {}. Removed entries were restored, so nothing was lost. Refresh stashes and try again.",
+                stash.name
+            )))
+        }
+    }
 }
 
 pub fn drop_stash(repo_path: &Path, stash: &StashTarget) -> Result<(), AppError> {
@@ -359,6 +416,9 @@ mod tests {
             run_git(&path, &["init"]);
             run_git(&path, &["config", "user.name", "GitEye Test"]);
             run_git(&path, &["config", "user.email", "giteye@example.test"]);
+            // Runners set core.autocrlf=true globally; worktree assertions
+            // must stay byte-exact on every platform.
+            run_git(&path, &["config", "core.autocrlf", "false"]);
             fs::write(path.join("tracked.txt"), "initial\n").expect("write tracked file");
             run_git(&path, &["add", "tracked.txt"]);
             run_git(&path, &["commit", "-m", "initial"]);
@@ -537,6 +597,73 @@ mod tests {
         assert!(drop_verified(&repo.path, &original).is_err());
         assert!(list_stashes(&repo.path).unwrap()
             .iter().any(|entry| entry.commit_hash == original.commit_hash));
+    }
+
+    #[test]
+    fn external_push_between_verification_and_drop_restores_the_wrongly_removed_entry() {
+        let repo = TestRepo::new("drop-race-push");
+        fs::write(repo.path.join("tracked.txt"), "older\n").unwrap();
+        create_stash(&repo.path, Some("older"), false).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "newer\n").unwrap();
+        create_stash(&repo.path, Some("newer"), false).unwrap();
+        // Target the older entry; a concurrent push shifts it to stash@{2},
+        // so an unguarded drop of stash@{1} would remove the wrong entry.
+        let target = list_stashes(&repo.path).unwrap()
+            .into_iter().find(|entry| entry.message == "older").map(|entry| target(&entry)).unwrap();
+        drop_with_interpose(&repo.path, &target, || {
+            fs::write(repo.path.join("tracked.txt"), "external\n").unwrap();
+            create_stash(&repo.path, Some("external"), false)
+        }).unwrap_err();
+        // The attempted drop removed the wrong entry, which was restored, so
+        // every entry including the untouched target must still exist.
+        let remaining = list_stashes(&repo.path).unwrap();
+        assert!(remaining.iter().any(|entry| entry.commit_hash == target.commit_hash));
+        assert_eq!(remaining.len(), 3, "no unrelated entry may be lost: {remaining:?}");
+        assert!(remaining.iter().any(|entry| entry.message == "newer"));
+        assert!(remaining.iter().any(|entry| entry.message == "external"));
+    }
+
+    #[test]
+    fn external_target_removal_between_verification_and_drop_fails_without_deleting_others() {
+        let repo = TestRepo::new("drop-race-removal");
+        fs::write(repo.path.join("tracked.txt"), "older\n").unwrap();
+        create_stash(&repo.path, Some("older"), false).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "newer\n").unwrap();
+        create_stash(&repo.path, Some("newer"), false).unwrap();
+        let target = list_stashes(&repo.path).unwrap()
+            .into_iter().find(|entry| entry.message == "older").map(|entry| target(&entry)).unwrap();
+        let error = drop_with_interpose(&repo.path, &target, || {
+            GitCli::run(&repo.path, &["stash", "drop", "stash@{1}"])?;
+            Ok(())
+        }).unwrap_err();
+        assert!(!error.to_string().is_empty(), "{error}");
+        let remaining = list_stashes(&repo.path).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].message, "newer");
+    }
+
+    #[test]
+    fn concurrent_external_changes_restore_every_removed_entry() {
+        let repo = TestRepo::new("drop-race-ambiguous");
+        fs::write(repo.path.join("tracked.txt"), "older\n").unwrap();
+        create_stash(&repo.path, Some("older"), false).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "newer\n").unwrap();
+        create_stash(&repo.path, Some("newer"), false).unwrap();
+        let target = list_stashes(&repo.path).unwrap()
+            .into_iter().find(|entry| entry.message == "older").map(|entry| target(&entry)).unwrap();
+        let error = drop_with_interpose(&repo.path, &target, || {
+            fs::write(repo.path.join("tracked.txt"), "external\n").unwrap();
+            create_stash(&repo.path, Some("external"), false)?;
+            // The same external process also removed the verified target.
+            GitCli::run(&repo.path, &["stash", "drop", "stash@{2}"])?;
+            Ok(())
+        }).unwrap_err();
+        assert!(error.to_string().contains("Refresh stashes"), "{error}");
+        let remaining = list_stashes(&repo.path).unwrap();
+        assert_eq!(remaining.len(), 3, "every removed entry must be restored: {remaining:?}");
+        for message in ["older", "newer", "external"] {
+            assert!(remaining.iter().any(|entry| entry.message == message), "{message}");
+        }
     }
 
     #[test]

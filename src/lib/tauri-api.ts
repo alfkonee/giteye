@@ -762,6 +762,9 @@ export const gitApi = {
   checkoutTag: (repoPath: string, name: string, commitHash: string) =>
     invoke<void>("checkout_tag", { repoPath, name, commitHash }),
 
+  branchFromTag: (repoPath: string, name: string, commitHash: string) =>
+    invoke<void>("branch_from_tag", { repoPath, name, commitHash }),
+
   createTag: (
     repoPath: string,
     name: string,

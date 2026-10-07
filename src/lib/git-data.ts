@@ -2602,6 +2602,21 @@ export const gitMutations = {
       },
     }),
 
+  branchFromTag: (queryClient: QueryClient, repoPath: string | null) =>
+    mutationOptions({
+      mutationFn: ({ name, commitHash }: { name: string; commitHash: string }) =>
+        gitApi.branchFromTag(repoPath!, name, commitHash),
+      onMutate: ({ name }) => startGitActionNotice("Creating branch from tag", name, repoPath),
+      onSuccess: async (_data, { name }, context) => {
+        await refreshGitStateAfterAction(queryClient, repoPath, context, ["refs", "worktree"]);
+        finishGitActionNotice(context, `${name} created from the tag and checked out.`);
+      },
+      onError: async (error, _variables, context) => {
+        failGitActionNotice(context, error);
+        await refreshGitStateAfterAction(queryClient, repoPath, undefined, ["refs", "worktree"]);
+      },
+    }),
+
   createTag: (queryClient: QueryClient, repoPath: string | null) =>
     mutationOptions({
       mutationFn: ({ name, target, message }: CreateTagRequest) =>

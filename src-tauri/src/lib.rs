@@ -177,6 +177,7 @@ pub fn run_with_launch(initial_launch: Option<launch::LaunchIntent>) {
             commands::tags::list_tags,
             commands::tags::create_tag,
             commands::tags::checkout_tag,
+            commands::tags::branch_from_tag,
             commands::tags::delete_tag,
             commands::tags::push_tag,
             commands::tags::push_tag_dry_run,

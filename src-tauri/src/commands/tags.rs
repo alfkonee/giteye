@@ -39,6 +39,15 @@ pub async fn checkout_tag(repo_path: String, name: String, commit_hash: String) 
 }
 
 #[tauri::command]
+pub async fn branch_from_tag(repo_path: String, name: String, commit_hash: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        tag_service::branch_from_tag(Path::new(&repo_path), &name, &commit_hash)
+    })
+    .await
+    .map_err(|error| AppError::IoError(error.to_string()))?
+}
+
+#[tauri::command]
 pub async fn delete_tag(repo_path: String, name: String) -> Result<(), AppError> {
     tauri::async_runtime::spawn_blocking(move || tag_service::delete_tag(Path::new(&repo_path), &name))
         .await

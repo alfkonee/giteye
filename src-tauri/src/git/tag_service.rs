@@ -1,4 +1,5 @@
 use crate::errors::AppError;
+use crate::git::branch_service;
 use crate::git::cli::{required_git_arg, GitCli};
 use crate::git::history_service;
 use crate::models::GitTag;
@@ -82,6 +83,23 @@ pub fn checkout_tag(repo_path: &Path, name: &str, commit_hash: &str) -> Result<(
     history_service::preflight_history_operation(repo_path)?;
     GitCli::run(repo_path, &["switch", "--detach", &current])?;
     Ok(())
+}
+
+/// Create and check out a branch only at the still-current peeled commit
+/// target of the named tag; a moved tag must not silently branch elsewhere.
+pub fn branch_from_tag(repo_path: &Path, name: &str, commit_hash: &str) -> Result<(), AppError> {
+    let name = required_tag_name(repo_path, name)?;
+    let expected = required_git_arg(commit_hash, "tag commit hash")?;
+    let reference = format!("refs/tags/{name}");
+    let current = history_service::resolve_commit(repo_path, &reference)
+        .map_err(|_| AppError::GitError(format!("Tag {name} is missing or does not target a commit.")))?;
+    if current != expected {
+        return Err(AppError::GitError(format!(
+            "Tag {name} moved. Refresh tags before creating a branch."
+        )));
+    }
+    history_service::preflight_history_operation(repo_path)?;
+    branch_service::create_branch(repo_path, name, true, Some(&current))
 }
 
 pub fn delete_tag(repo_path: &Path, name: &str) -> Result<(), AppError> {
@@ -451,6 +469,27 @@ mod tests {
         run_git(&repo.path, &["tag", "-f", "release", &tag.commit_hash]);
         checkout_tag(&repo.path, &tag.name, &tag.commit_hash).unwrap();
         assert_eq!(GitCli::run(&repo.path, &["symbolic-ref", "-q", "HEAD"]).is_ok(), false);
+        assert_eq!(GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap().trim(), tag.commit_hash);
+    }
+
+    #[test]
+    fn branch_from_tag_requires_current_tag_target_and_checks_out() {
+        let repo = TestRepo::new("branch-from-tag");
+        create_tag(&repo.path, "release", None, Some("annotated")).unwrap();
+        let tag = list_tags(&repo.path).unwrap().remove(0);
+        fs::write(repo.path.join("dirty.txt"), "not saved\n").unwrap();
+        assert!(branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        fs::remove_file(repo.path.join("dirty.txt")).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "new head\n").unwrap();
+        run_git(&repo.path, &["add", "tracked.txt"]);
+        run_git(&repo.path, &["commit", "-m", "advance"]);
+        run_git(&repo.path, &["tag", "-f", "release", "HEAD"]);
+        assert!(branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        assert!(GitCli::run(&repo.path, &["symbolic-ref", "-q", "HEAD"]).is_ok());
+        assert!(GitCli::run(&repo.path, &["rev-parse", "--verify", "refs/heads/release"]).is_err());
+        run_git(&repo.path, &["tag", "-f", "release", &tag.commit_hash]);
+        branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).unwrap();
+        assert_eq!(GitCli::run(&repo.path, &["branch", "--show-current"]).unwrap().trim(), "release");
         assert_eq!(GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap().trim(), tag.commit_hash);
     }
 }

@@ -26,7 +26,7 @@ export function useGitRefActions() {
   const dropMutation = useMutation(gitMutations.dropStash(queryClient, repoPath));
   const stashBranchMutation = useMutation(gitMutations.createBranchFromStash(queryClient, repoPath));
   const tagCheckoutMutation = useMutation(gitMutations.checkoutTag(queryClient, repoPath));
-  const branchMutation = useMutation(gitMutations.createBranch(queryClient, repoPath));
+  const tagBranchMutation = useMutation(gitMutations.branchFromTag(queryClient, repoPath));
   const pushMutation = useMutation(gitMutations.pushTag(queryClient, repoPath));
   const deleteMutation = useMutation(gitMutations.deleteTag(queryClient, repoPath));
   const deleteRemoteMutation = useMutation(gitMutations.deleteRemoteTag(queryClient, repoPath));
@@ -135,7 +135,7 @@ export function useGitRefActions() {
       await appDialog.alert("Commit or stash your local changes before creating and checking out a branch from a tag.", "Working tree is not clean");
       return;
     }
-    await branchMutation.mutateAsync({ name, checkout: true, startPoint: tag.commitHash });
+    await tagBranchMutation.mutateAsync({ name, commitHash: tag.commitHash });
   });
   const pushTag = (tag: GitTag) => run("Push tag", async (path) => {
     const remote = await chooseRemote(`Push "${tag.name}" to`);
