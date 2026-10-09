@@ -19,6 +19,12 @@ Use `node scripts/seed-qa-repositories.mjs` from the repository root to create d
 
 Capture the mapped design screens at 1490×1024 and at least one wider desktop size. Compare against `design/reference/` for density, gutters, footer/status bar placement, color hierarchy, and responsive behavior.
 
+## Window chrome
+
+1. Drag the window by the GitEye/repository title text and by empty titlebar space. Repeat on the toolchain loading, setup, and detection-error screens.
+2. Double-click non-interactive titlebar space to maximize/restore. Confirm the minimize, maximize/restore, and close buttons work without starting a drag.
+3. Click the command search and other titlebar controls: preserve their actions and focus, and do not move the window. In a short window, scroll setup from its heading to the final controls: no content may lie above scroll position zero. Shorter setup/loading content remains vertically centered below the titlebar.
+
 ## Tags and stashes workflow
 
 1. Open `tags-stashes-repo`. Verify annotated/lightweight tags, full multiline annotations, long Unicode labels, tag-only reachable history, and actionable ref overflow. Inspecting or copying a ref must not change HEAD, the index, or the working tree.
