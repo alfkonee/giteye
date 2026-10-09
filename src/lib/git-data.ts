@@ -525,6 +525,17 @@ export function invalidateGitStateByReason(
     );
     invalidations.push(
       queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "ref-history"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "merge-base"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [...gitKeys.repository(repoPath), "revision"],
+      }),
+    );
+    invalidations.push(
+      queryClient.invalidateQueries({
         queryKey: [...gitKeys.repository(repoPath), "commit-details"],
       }),
     );

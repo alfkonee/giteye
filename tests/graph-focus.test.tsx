@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CommitGraph } from "../src/components/commit-history/CommitListItem";
 import { layoutCommitGraph, type CommitGraphRow } from "../src/components/commit-history/commit-graph";
+import { WorkingTreeRow } from "../src/components/commit-history/WorkingTreeRow";
 
 function graph(commits: [string, string[]][]) {
   return layoutCommitGraph(commits.map(([hash, parents]) => ({
@@ -46,4 +47,15 @@ test("overlapping display lanes preserve each edge's focus identity", () => {
   const edges = edgeOpacities(rows, "parent0", ["tip11", "parent11", "base"]);
   expect(edges.filter((opacity) => opacity === 0.9)).toEqual([0.9]);
   expect(edges.filter((opacity) => opacity !== 0.9).every((opacity) => opacity === 0.16)).toBe(true);
+});
+
+test("working-tree connector follows history focus even when the row is selected", () => {
+  for (const dimmed of [true, false]) {
+    const markup = renderToStaticMarkup(
+      <WorkingTreeRow graphWidth={76} headLane={0} headColor="#38bdf8" connectToHistory
+        stagedCount={1} unstagedCount={0} isSelected dimmed={dimmed} onSelect={() => { }} />,
+    );
+    expect(markup.match(/<line\b[^>]*opacity="([^"]+)"/)?.[1]).toBe(dimmed ? "0.16" : "1");
+    expect(markup.match(/<circle\b[^>]*opacity="([^"]+)"/)?.[1]).toBe(dimmed ? "0.35" : "1");
+  }
 });

@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
-import { gitApi } from "../../lib/tauri-api";
 import { gitQueries } from "../../lib/git-data";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { useGitRefActions } from "../../hooks/useGitRefActions";
@@ -82,16 +81,6 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
   };
 
   const navigation = useHistoryNavigation();
-  const jumpToMergeBase = async (fromRef: string, toRef: string) => {
-    if (!repoPath || !navigation) return;
-    try {
-      const base = await gitApi.getMergeBase(repoPath, fromRef, toRef);
-      if (base) navigation.jumpToHash(base);
-      else setCopyError(`${fromRef} and ${toRef} share no common ancestor.`);
-    } catch (error) {
-      setCopyError(error instanceof Error ? error.message : String(error));
-    }
-  };
 
   type MenuItem = { label: string; action: () => void | Promise<void>; disabled?: boolean; destructive?: boolean };
   const navItems = (rev: string, label: string, hash: string): MenuItem[] => navigation ? [
@@ -121,17 +110,19 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
   ] : target.kind === "branch" ? [
     ...navItems(target.branch.shortName, target.branch.shortName, target.commitHash),
     ...(navigation && target.branch.upstream ? [
+      { label: `Go to ${target.branch.shortName} tip`, action: () => navigation.jumpToRef(target.branch.shortName) },
       { label: `Go to ${target.branch.upstream} tip`, action: () => navigation.jumpToRef(target.branch.upstream!) },
       ...((target.branch.ahead ?? 0) > 0 && (target.branch.behind ?? 0) > 0 ? [
-        { label: "Go to merge base", action: () => jumpToMergeBase(target.branch.shortName, target.branch.upstream!) },
+        { label: "Go to merge base", action: () => navigation.jumpToMergeBase(target.branch.shortName, target.branch.upstream!) },
       ] : []),
     ] : []),
     { label: "Copy branch name", action: () => copy(target.branch.shortName) },
   ] : [
     { label: "Create stash…", action: () => actions.createStash(), disabled: actions.isBusy || operationBlocked },
     ...(navigation && target.divergedFrom ? [
+      { label: "Go to local tip", action: () => navigation.jumpToRef("HEAD") },
       { label: `Go to ${target.divergedFrom.upstream} tip`, action: () => navigation.jumpToRef(target.divergedFrom!.upstream) },
-      { label: "Go to merge base", action: () => navigation.jumpToHash(target.divergedFrom!.mergeBaseHash), disabled: !target.divergedFrom.mergeBaseHash },
+      { label: "Go to merge base", action: () => navigation.jumpToMergeBase("HEAD", target.divergedFrom!.upstream) },
     ] : []),
   ];
 

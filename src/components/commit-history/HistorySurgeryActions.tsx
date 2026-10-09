@@ -778,6 +778,12 @@ export function CommitActionContextMenu({
                       onSelect={() => navigation.jumpToRef(entry.refLabel)}
                       onClose={onClose}
                     />
+                    <CommitMenuItem
+                      label="Go to merge base"
+                      detail={`${entry.localName} and ${entry.refLabel}`}
+                      onSelect={() => navigation.jumpToMergeBase(entry.localName, entry.refLabel)}
+                      onClose={onClose}
+                    />
                   </Fragment>
                 );
               }

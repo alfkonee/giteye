@@ -113,6 +113,7 @@ export function WorkingTreeRow({
        strokeWidth="1.6"
        strokeDasharray="2 2"
        strokeLinecap="round"
+       opacity={dimmed ? 0.16 : 1}
       />
      ) : null}
      <circle
@@ -123,6 +124,7 @@ export function WorkingTreeRow({
       stroke={headColor}
       strokeWidth="1.6"
       strokeDasharray="2 1.5"
+      opacity={dimmed ? 0.35 : 1}
      />
     </svg>
    </span>

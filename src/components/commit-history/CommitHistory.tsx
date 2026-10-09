@@ -74,6 +74,7 @@ export function CommitHistory({
   const { data: tags } = useQuery(gitQueries.tags(activeRepoPath));
   const parentRef = useRef<HTMLDivElement>(null);
   const rangeSelectionAnchor = useRef<string | null>(null);
+  const navigationEpoch = useRef(0);
   const { data: snapshot } = useQuery(
     gitQueries.repositorySnapshot(activeRepoPath),
   );
@@ -162,6 +163,7 @@ export function CommitHistory({
     setCommitLimit(INITIAL_COMMIT_LIMIT);
     setLocateBase(null);
     setLocateError(null);
+    return () => { navigationEpoch.current += 1; };
   }, [activeRepoPath]);
 
   const virtualizer = useVirtualizer({
@@ -231,8 +233,9 @@ export function CommitHistory({
   );
 
   const jumpToRef = useCallback(
-    (refLabel: string) => {
+    async (refLabel: string) => {
       if (!activeRepoPath) return;
+      const epoch = navigationEpoch.current;
       setLocateError(null);
       const loaded = (commits ?? []).find((commit) => commit.refs.includes(refLabel));
       if (loaded) {
@@ -240,25 +243,47 @@ export function CommitHistory({
         return;
       }
       // The tip may sit beyond the loaded window; resolve it, then locate.
-      gitApi
-        .resolveRevision(activeRepoPath, refLabel)
-        .then((hash) => setLocateBase({ repoPath: activeRepoPath, hash }))
-        .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          setLocateError(`Could not locate ${refLabel}: ${message}`);
-        });
+      try {
+        const hash = await gitApi.resolveRevision(activeRepoPath, refLabel);
+        if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
+        setLocateBase({ repoPath: activeRepoPath, hash });
+      } catch (error) {
+        if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setLocateError(`Could not locate ${refLabel}: ${message}`);
+      }
     },
     [activeRepoPath, commits],
+  );
+
+  const jumpToMergeBase = useCallback(
+    async (fromRef: string, toRef: string) => {
+      if (!activeRepoPath) return;
+      const epoch = navigationEpoch.current;
+      setLocateError(null);
+      try {
+        const hash = await gitApi.getMergeBase(activeRepoPath, fromRef, toRef);
+        if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
+        if (hash) setLocateBase({ repoPath: activeRepoPath, hash });
+        else setLocateError(`${fromRef} and ${toRef} share no common ancestor.`);
+      } catch (error) {
+        if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setLocateError(`Could not locate the merge base of ${fromRef} and ${toRef}: ${message}`);
+      }
+    },
+    [activeRepoPath],
   );
 
   const historyNavigation: HistoryNavigation = useMemo(
     () => ({
       jumpToRef,
       jumpToHash,
+      jumpToMergeBase,
       focusHistory: setHistoryFocus,
       openRefHistory: (rev, label) => setRefHistoryDialog({ rev, label }),
     }),
-    [jumpToRef, jumpToHash, setHistoryFocus],
+    [jumpToRef, jumpToHash, jumpToMergeBase, setHistoryFocus],
   );
 
   return (

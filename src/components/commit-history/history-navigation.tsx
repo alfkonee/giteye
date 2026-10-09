@@ -11,6 +11,8 @@ export interface HistoryNavigation {
  jumpToRef: (refLabel: string) => void;
  /** Locate an already-known commit hash in the graph. */
  jumpToHash: (hash: string | null | undefined) => void;
+ /** Resolve and locate the common ancestor of a pair, reporting errors in history. */
+ jumpToMergeBase: (fromRef: string, toRef: string) => void;
  /** Fade every lane outside the given ref's ancestry. */
  focusHistory: (focus: HistoryFocusSelection) => void;
  /** Open the single-history popup for a revision. */

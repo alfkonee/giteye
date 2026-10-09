@@ -33,6 +33,7 @@ export function RefHistoryDialog({
 }) {
  const [limit, setLimit] = useState(PAGE_SIZE);
  const dialog = useRef<HTMLElement>(null);
+ const onCloseRef = useRef(onClose);
  const { data: commits, isLoading, isFetching, error } = useQuery({
   ...gitQueries.refHistory(repoPath, rev, limit),
   placeholderData: (previous) => previous,
@@ -46,21 +47,66 @@ export function RefHistoryDialog({
  const hasMore = (commits?.length ?? 0) >= limit;
 
  useEffect(() => {
+  onCloseRef.current = onClose;
+ }, [onClose]);
+
+ useEffect(() => {
   const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const backdrop = dialog.current?.parentElement;
+  const background = Array.from(document.body.children)
+   .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== backdrop)
+   .map((element) => ({ element, inert: element.inert }));
+  for (const { element } of background) element.inert = true;
   dialog.current?.focus();
+  const isTopDialog = () => {
+   const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+   return dialogs[dialogs.length - 1] === dialog.current;
+  };
+  // Query on each keypress so newly loaded rows and Load more stay in the trap.
+  const focusables = () => Array.from(
+   dialog.current?.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]',
+   ) ?? [],
+  ).filter((element) => element.getClientRects().length > 0);
   // Capture phase: Escape closes only the popup, not an active history focus.
   const onKeyDown = (event: KeyboardEvent) => {
-   if (event.key !== "Escape") return;
-   event.preventDefault();
-   event.stopPropagation();
-   onClose();
+   if (!isTopDialog()) return;
+   if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    onCloseRef.current();
+    return;
+   }
+   if (event.key !== "Tab") return;
+   const nodes = focusables();
+   const first = nodes[0];
+   const last = nodes[nodes.length - 1];
+   const active = document.activeElement;
+   if (!first) {
+    event.preventDefault();
+    dialog.current?.focus();
+   } else if (event.shiftKey && (active === first || active === dialog.current || !dialog.current?.contains(active))) {
+    event.preventDefault();
+    last.focus();
+   } else if (!event.shiftKey && (active === last || active === dialog.current || !dialog.current?.contains(active))) {
+    event.preventDefault();
+    first.focus();
+   }
+  };
+  const onFocus = (event: FocusEvent) => {
+   if (isTopDialog() && event.target instanceof Node && !dialog.current?.contains(event.target)) {
+    (focusables()[0] ?? dialog.current)?.focus();
+   }
   };
   window.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener("focusin", onFocus);
   return () => {
    window.removeEventListener("keydown", onKeyDown, true);
-   restore?.focus();
+   document.removeEventListener("focusin", onFocus);
+   for (const { element, inert } of background) element.inert = inert;
+   if (restore?.isConnected) restore.focus();
   };
- }, [onClose]);
+ }, []);
 
  const gridTemplateColumns = `${graphWidth}px 58px minmax(0,1fr) 110px 62px`;
 
