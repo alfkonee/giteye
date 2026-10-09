@@ -13,6 +13,8 @@ interface StashRowProps {
   graphWidth: number;
   isSelected: boolean;
   isLocatingBase: boolean;
+  /** When set, the row dims unless its base commit is in the focused ancestry. */
+  focusSet?: ReadonlySet<string> | null;
   onSelect: () => void;
   onLocateBase: (hash: string) => void;
 }
@@ -23,6 +25,7 @@ export function StashRow({
   graphWidth,
   isSelected,
   isLocatingBase,
+  focusSet = null,
   onSelect,
   onLocateBase,
 }: StashRowProps) {
@@ -47,6 +50,7 @@ export function StashRow({
     gridTemplateColumns: `${graphWidth}px 58px minmax(0,1fr) 104px 62px 26px`,
     height: `${COMMIT_ROW_HEIGHT}px`,
   };
+  const dimmed = focusSet ? !focusSet.has(stash.baseCommitHash) : false;
 
   return (
     <div
@@ -60,10 +64,11 @@ export function StashRow({
       className={cn(
         "grid cursor-pointer items-center gap-1.5 rounded-md px-2 transition-colors select-none focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]",
         isSelected ? "giteye-selected-row" : "hover:bg-[var(--color-bg-secondary)]",
+        dimmed && !isSelected && "giteye-unfocused-row",
       )}
       style={style}
     >
-      <StashGraph graph={graph} width={graphWidth} selected={isSelected} />
+      <StashGraph graph={graph} width={graphWidth} selected={isSelected} focusSet={focusSet} dimmed={dimmed} />
       <span className="truncate font-mono text-[10.5px] text-[var(--color-warning)]" title={`${stash.name} · ${stash.commitHash}`}>
         {stash.name}
       </span>
@@ -118,21 +123,27 @@ export function StashRow({
   );
 }
 
-function StashGraph({ graph, width, selected }: { graph: StashGraphRow | null; width: number; selected: boolean }) {
+function StashGraph({ graph, width, selected, focusSet, dimmed }: {
+  graph: StashGraphRow | null;
+  width: number;
+  selected: boolean;
+  focusSet: ReadonlySet<string> | null;
+  dimmed: boolean;
+}) {
   const middle = COMMIT_ROW_HEIGHT / 2;
   return (
     <span className="relative h-full overflow-hidden" aria-hidden="true">
       <svg width={width} height={COMMIT_ROW_HEIGHT} viewBox={`0 0 ${width} ${COMMIT_ROW_HEIGHT}`}>
         {graph ? (
           <>
-            {graph.passthrough.map(({ lane, color }) => (
-              <line key={`pass-${lane}`} x1={laneX(lane)} y1="0" x2={laneX(lane)} y2={COMMIT_ROW_HEIGHT} stroke={color} strokeWidth="1.6" opacity="0.9" />
+            {graph.passthrough.map(({ lane, color, sourceHashes }, index) => (
+              <line key={`pass-${index}-${lane}`} x1={laneX(lane)} y1="0" x2={laneX(lane)} y2={COMMIT_ROW_HEIGHT} stroke={color} strokeWidth="1.6" opacity={!focusSet || sourceHashes.some((hash) => focusSet.has(hash)) ? 0.9 : 0.16} />
             ))}
             {graph.earlierStashLanes.map(({ lane, color }) => (
               <path key={`stash-${lane}`} d={graph.lastBeforeBase
                 ? `M ${laneX(lane)} 0 C ${laneX(lane)} ${middle}, ${laneX(graph.baseLane)} ${middle}, ${laneX(graph.baseLane)} ${COMMIT_ROW_HEIGHT}`
                 : `M ${laneX(lane)} 0 L ${laneX(lane)} ${COMMIT_ROW_HEIGHT}`}
-                fill="none" stroke={color} strokeWidth="1.6" strokeDasharray="3 2" />
+                fill="none" stroke={color} strokeWidth="1.6" strokeDasharray="3 2" opacity={dimmed ? 0.16 : 1} />
             ))}
             <path
               d={`M ${laneX(graph.stashLane)} ${middle} C ${laneX(graph.stashLane)} ${middle + 5}, ${laneX(graph.lastBeforeBase ? graph.baseLane : graph.stashLane)} ${COMMIT_ROW_HEIGHT - 5}, ${laneX(graph.lastBeforeBase ? graph.baseLane : graph.stashLane)} ${COMMIT_ROW_HEIGHT}`}
@@ -140,12 +151,13 @@ function StashGraph({ graph, width, selected }: { graph: StashGraphRow | null; w
               stroke={graph.color}
               strokeWidth="1.6"
               strokeDasharray="3 2"
+              opacity={dimmed ? 0.16 : 1}
             />
-            <circle cx={laneX(graph.stashLane)} cy={middle} r="4" fill="var(--color-bg-primary)" stroke={graph.color} strokeWidth="2" />
-            <circle cx={laneX(graph.stashLane)} cy={middle} r={selected ? "1.75" : "1.3"} fill={graph.color} />
+            <circle cx={laneX(graph.stashLane)} cy={middle} r="4" fill="var(--color-bg-primary)" stroke={graph.color} strokeWidth="2" opacity={dimmed ? 0.35 : 1} />
+            <circle cx={laneX(graph.stashLane)} cy={middle} r={selected ? "1.75" : "1.3"} fill={graph.color} opacity={dimmed ? 0.35 : 1} />
           </>
         ) : (
-          <circle cx={laneX(0)} cy={middle} r="4" fill="var(--color-bg-primary)" stroke="var(--color-warning)" strokeDasharray="2 2" strokeWidth="1.6" />
+          <circle cx={laneX(0)} cy={middle} r="4" fill="var(--color-bg-primary)" stroke="var(--color-warning)" strokeDasharray="2 2" strokeWidth="1.6" opacity={dimmed ? 0.35 : 1} />
         )}
       </svg>
     </span>

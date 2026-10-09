@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ArrowRight, CircleDot, GitMerge, MoreHorizontal } from "lucide-react";
 import { GitRefContextMenu } from "./GitRefContextMenu";
 import { cn } from "../../lib/cn";
+import { useHistoryNavigation } from "./history-navigation";
 import {
  COMMIT_ROW_HEIGHT,
  laneX,
@@ -21,6 +22,14 @@ interface WorkingTreeRowProps {
  stagedCount: number;
  unstagedCount: number;
  isSelected: boolean;
+ /** Dims the row when HEAD is outside the focused ref's ancestry. */
+ dimmed?: boolean;
+ /** Upstream of the current branch when the tracking pair has diverged. */
+ divergedUpstream?: string | null;
+ ahead?: number | null;
+ behind?: number | null;
+ /** Precomputed merge base of the diverged pair, when available. */
+ mergeBaseHash?: string | null;
  onSelect: () => void;
 }
 
@@ -37,10 +46,16 @@ export function WorkingTreeRow({
  stagedCount,
  unstagedCount,
  isSelected,
+ dimmed = false,
+ divergedUpstream = null,
+ ahead = null,
+ behind = null,
+ mergeBaseHash = null,
  onSelect,
 }: WorkingTreeRowProps) {
  const total = stagedCount + unstagedCount;
  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+ const navigation = useHistoryNavigation();
  const openMenu = (event: MouseEvent<HTMLElement>) => {
   event.preventDefault();
   event.stopPropagation();
@@ -74,6 +89,7 @@ export function WorkingTreeRow({
     isSelected
      ? "giteye-selected-row"
      : "hover:bg-[var(--color-bg-secondary)]",
+    dimmed && !isSelected && "giteye-unfocused-row",
    )}
    style={{
     gridTemplateColumns: `${graphWidth}px 58px minmax(0,1fr) 104px 62px 26px`,
@@ -97,6 +113,7 @@ export function WorkingTreeRow({
        strokeWidth="1.6"
        strokeDasharray="2 2"
        strokeLinecap="round"
+       opacity={dimmed ? 0.16 : 1}
       />
      ) : null}
      <circle
@@ -107,6 +124,7 @@ export function WorkingTreeRow({
       stroke={headColor}
       strokeWidth="1.6"
       strokeDasharray="2 1.5"
+      opacity={dimmed ? 0.35 : 1}
      />
     </svg>
    </span>
@@ -132,6 +150,43 @@ export function WorkingTreeRow({
     >
      {unstagedCount} unstaged
     </span>
+    {divergedUpstream ? (
+     <>
+      <span
+       className="giteye-chip shrink-0 tabular-nums"
+       data-tone="warning"
+       title={`${divergedUpstream} has diverged from this branch: ${ahead ?? 0} ahead, ${behind ?? 0} behind`}
+      >
+       {ahead ?? 0}↑ {behind ?? 0}↓
+      </span>
+      {navigation ? (
+       <button
+        type="button"
+        title={`Scroll the graph to the ${divergedUpstream} tip commit`}
+        className="giteye-chip shrink-0 cursor-pointer text-[10px] hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+        onClick={(event) => {
+         event.stopPropagation();
+         navigation.jumpToRef(divergedUpstream);
+        }}
+       >
+        {divergedUpstream} tip
+       </button>
+      ) : null}
+      {mergeBaseHash && navigation ? (
+       <button
+        type="button"
+        title="Scroll the graph to the divergence point (merge base)"
+        className="giteye-chip shrink-0 cursor-pointer text-[10px] hover:text-[var(--color-accent)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+        onClick={(event) => {
+         event.stopPropagation();
+         navigation.jumpToHash(mergeBaseHash);
+        }}
+       >
+        Merge base
+       </button>
+      ) : null}
+     </>
+    ) : null}
    </span>
 
    <span className="truncate text-right text-[11px] text-[var(--color-text-secondary)]">
@@ -153,7 +208,12 @@ export function WorkingTreeRow({
    </button>
    {menu && (
     <GitRefContextMenu
-     target={{ kind: "workingTree" }}
+     target={{
+      kind: "workingTree",
+      divergedFrom: divergedUpstream
+       ? { upstream: divergedUpstream, ahead: ahead ?? 0, behind: behind ?? 0, mergeBaseHash }
+       : undefined,
+     }}
      x={menu.x}
      y={menu.y}
      onClose={() => setMenu(null)}

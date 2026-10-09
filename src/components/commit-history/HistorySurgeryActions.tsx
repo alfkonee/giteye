@@ -20,6 +20,7 @@ import { MoreHorizontal } from "lucide-react";
 import { appDialog } from "../common/AppDialogProvider";
 import { Button } from "../ui";
 import { useGitRefActions } from "../../hooks/useGitRefActions";
+import { useHistoryNavigation } from "./history-navigation";
 
 type CommitActionTarget = Pick<CommitSummary, "hash" | "message"> & {
   shortHash?: string | null;
@@ -587,6 +588,7 @@ export function CommitActionContextMenu({
 }) {
   const actions = useHistorySurgeryActions();
   const gitRefActions = useGitRefActions();
+  const navigation = useHistoryNavigation();
   const integrationRefs = integrableRefs(refs);
   const remoteEntries = remoteRefEntries(refs, actions.branches);
   const head = isHeadCommit ?? actions.isHead(target);
@@ -659,6 +661,24 @@ export function CommitActionContextMenu({
           onSelect={() => void gitRefActions.createTag(target.hash)}
           onClose={onClose}
         />
+        {navigation ? (
+          <>
+            <CommitMenuItem
+              label="Focus history from this commit"
+              detail="fade other lanes · Esc clears"
+              onSelect={() =>
+                navigation.focusHistory({ hash: target.hash, label: shortHash(target) })
+              }
+              onClose={onClose}
+            />
+            <CommitMenuItem
+              label="View history from here…"
+              detail="single-history popup"
+              onSelect={() => navigation.openRefHistory(target.hash, shortHash(target))}
+              onClose={onClose}
+            />
+          </>
+        ) : null}
         {integrationRefs.length > 0 ? (
           <>
             <div className="giteye-context-separator" />
@@ -741,6 +761,30 @@ export function CommitActionContextMenu({
                     }
                     onClose={onClose}
                   />
+                );
+              }
+              if (entry.kind === "diverged" && navigation) {
+                return (
+                  <Fragment key={`diverged-${entry.refLabel}`}>
+                    <CommitMenuItem
+                      label={`Go to ${entry.localName} tip`}
+                      detail={`diverged: ${entry.ahead} ahead, ${entry.behind} behind`}
+                      onSelect={() => navigation.jumpToRef(entry.localName)}
+                      onClose={onClose}
+                    />
+                    <CommitMenuItem
+                      label={`Go to ${entry.refLabel} tip`}
+                      detail="upstream side"
+                      onSelect={() => navigation.jumpToRef(entry.refLabel)}
+                      onClose={onClose}
+                    />
+                    <CommitMenuItem
+                      label="Go to merge base"
+                      detail={`${entry.localName} and ${entry.refLabel}`}
+                      onSelect={() => navigation.jumpToMergeBase(entry.localName, entry.refLabel)}
+                      onClose={onClose}
+                    />
+                  </Fragment>
                 );
               }
               return (

@@ -15,7 +15,7 @@ import {
   RefOverflowChooser,
   type DisplayRef,
 } from "./commit-refs";
-import { GitRefContextMenu } from "./GitRefContextMenu";
+import { GitRefContextMenu, type GitRefMenuTarget } from "./GitRefContextMenu";
 import { describeBranchActivation } from "../../lib/branch-activation";
 
 interface CommitListItemProps {
@@ -27,6 +27,10 @@ interface CommitListItemProps {
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
   onActivateBranch: (branch: Branch) => void;
+  /** When set, rows/edges outside the focused ref's ancestry render dimmed. */
+  focusSet?: ReadonlySet<string> | null;
+  /** Brief ring after a navigation jump landed on this row. */
+  highlighted?: boolean;
 }
 
 /**
@@ -43,6 +47,8 @@ export function CommitListItem({
   isSelected,
   onSelect,
   onActivateBranch,
+  focusSet = null,
+  highlighted = false,
 }: CommitListItemProps) {
   const displayRefs = buildDisplayRefs(commit.refs, branches, tags, commit.hash);
   const setSelectedGitRef = useAppStore((state) => state.setSelectedGitRef);
@@ -51,7 +57,7 @@ export function CommitListItem({
     x: number;
     y: number;
   } | null>(null);
-  const [tagMenu, setTagMenu] = useState<{ tag: GitTag; x: number; y: number } | null>(null);
+  const [refMenu, setRefMenu] = useState<{ target: GitRefMenuTarget; x: number; y: number } | null>(null);
   const renderRef = (ref: DisplayRef, menuItem = false) => {
     const branch = !ref.isTag && ref.label !== "HEAD"
       ? branches?.find((candidate) => candidate.shortName === ref.label && candidate.isRemote === ref.isRemote)
@@ -67,7 +73,13 @@ export function CommitListItem({
         onActivate={branch ? () => onActivateBranch(branch) : undefined}
         activationTitle={branch ? describeBranchActivation(branch, branches ?? []) : undefined}
         onInspect={tag ? () => setSelectedGitRef({ kind: "tag", name: tag.name, commitHash: tag.commitHash }) : undefined}
-        onOpenMenu={tag ? (x, y) => setTagMenu({ tag, x, y }) : undefined}
+        onOpenMenu={
+          tag
+            ? (x, y) => setRefMenu({ target: { kind: "tag", tag }, x, y })
+            : branch
+              ? (x, y) => setRefMenu({ target: { kind: "branch", branch, commitHash: commit.hash }, x, y })
+              : undefined
+        }
       />
     );
   };
@@ -98,10 +110,18 @@ export function CommitListItem({
           : isHead
             ? "bg-[var(--color-bg-secondary)]/70 ring-1 ring-inset ring-[var(--color-border-muted)] hover:bg-[var(--color-bg-secondary)]"
             : "hover:bg-[var(--color-bg-secondary)]",
+        highlighted && "giteye-located-row",
+        focusSet && !focusSet.has(commit.hash) && !isSelected && "giteye-unfocused-row",
       )}
       style={style}
     >
-      <CommitGraph graph={graph} selected={isSelected} refs={displayRefs} />
+      <CommitGraph
+        graph={graph}
+        selected={isSelected}
+        refs={displayRefs}
+        hash={commit.hash}
+        focusSet={focusSet}
+      />
 
       <span className="truncate font-mono text-[10.5px] text-[var(--color-accent)]">
         {truncateHash(commit.shortHash)}
@@ -168,31 +188,39 @@ export function CommitListItem({
           onClose={() => setContextMenu(null)}
         />
       ) : null}
-      {tagMenu && (
+      {refMenu && (
         <GitRefContextMenu
-          target={{ kind: "tag", tag: tagMenu.tag }}
-          x={tagMenu.x}
-          y={tagMenu.y}
-          onClose={() => setTagMenu(null)}
+          target={refMenu.target}
+          x={refMenu.x}
+          y={refMenu.y}
+          onClose={() => setRefMenu(null)}
         />
       )}
     </div>
   );
 }
 
-function CommitGraph({
+export function CommitGraph({
   graph,
   selected,
   refs,
+  hash,
+  focusSet = null,
 }: {
   graph: CommitGraphRow;
   selected: boolean;
   refs: DisplayRef[];
+  hash: string;
+  /** Rows/edges outside the focused ancestry draw at reduced opacity. */
+  focusSet?: ReadonlySet<string> | null;
 }) {
   const rowHeight = COMMIT_ROW_HEIGHT;
   const centerY = rowHeight / 2;
   const strokeWidth = 1.6;
   const nodeRadius = refs.length > 0 ? 4 : 3.25;
+  const rowDimmed = focusSet ? !focusSet.has(hash) : false;
+  const sourcesFocused = (sourceHashes: readonly string[]) =>
+    !focusSet || sourceHashes.some((sourceHash) => focusSet.has(sourceHash));
 
   return (
     <span className="relative h-full overflow-hidden" aria-hidden="true">
@@ -206,6 +234,7 @@ function CommitGraph({
           const fromX = laneX(connection.fromLane);
           const toX = laneX(connection.toLane);
           const key = `pass-${connection.fromLane}-${connection.toLane}`;
+          const opacity = sourcesFocused(connection.sourceHashes) ? 0.9 : 0.16;
 
           if (fromX === toX) {
             return (
@@ -218,7 +247,7 @@ function CommitGraph({
                 stroke={connection.color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
-                opacity="0.9"
+                opacity={opacity}
               />
             );
           }
@@ -231,7 +260,7 @@ function CommitGraph({
               stroke={connection.color}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
-              opacity="0.9"
+              opacity={opacity}
             />
           );
         })}
@@ -240,6 +269,7 @@ function CommitGraph({
           const fromX = laneX(connection.fromLane);
           const toX = laneX(connection.toLane);
           const key = `parent-${index}-${connection.toLane}`;
+          const opacity = sourcesFocused(connection.sourceHashes) ? 1 : 0.16;
 
           if (fromX === toX) {
             return (
@@ -252,6 +282,7 @@ function CommitGraph({
                 stroke={connection.color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
+                opacity={opacity}
               />
             );
           }
@@ -265,6 +296,7 @@ function CommitGraph({
               stroke={connection.color}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
+              opacity={opacity}
             />
           );
         })}
@@ -278,6 +310,7 @@ function CommitGraph({
             stroke={graph.color}
             strokeWidth={strokeWidth}
             strokeLinecap="round"
+            opacity={sourcesFocused(graph.incomingSourceHashes) ? 1 : 0.16}
           />
         )}
 
@@ -288,6 +321,7 @@ function CommitGraph({
           fill={graph.color}
           stroke="var(--color-bg-primary)"
           strokeWidth="1.75"
+          opacity={rowDimmed ? 0.35 : 1}
         />
         <circle
           cx={laneX(graph.commitLane)}

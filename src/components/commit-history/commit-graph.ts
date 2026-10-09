@@ -23,22 +23,26 @@ const LANE_COLORS = [
 interface LaneState {
   hash: string;
   color: string;
+  sourceHashes: readonly string[];
 }
 
 export interface CommitGraphConnection {
   fromLane: number;
   toLane: number;
   color: string;
+  /** Child commits whose edges feed this segment, independent of lane geometry. */
+  sourceHashes: readonly string[];
 }
 
 export interface CommitGraphRow {
   commitLane: number;
   hasCommitLineBefore: boolean;
+  incomingSourceHashes: readonly string[];
   passthroughConnections: CommitGraphConnection[];
   parentConnections: CommitGraphConnection[];
   color: string;
   /** Lanes that continue below this commit, before any inserted snapshot rows. */
-  outgoingLanes: ReadonlyArray<{ hash: string; lane: number; color: string }>;
+  outgoingLanes: ReadonlyArray<{ hash: string; lane: number; color: string; sourceHashes: readonly string[] }>;
   width: number;
 }
 
@@ -58,6 +62,7 @@ export function layoutCommitGraph(
       lanes.push({
         hash: commit.hash,
         color: colorForLane(nextColorIndex),
+        sourceHashes: [],
       });
       nextColorIndex += 1;
     }
@@ -81,10 +86,16 @@ export function layoutCommitGraph(
         nextLanes[commitLane] = {
           hash: firstParent,
           color: commitColor,
+          sourceHashes: [commit.hash],
         };
       } else {
         nextLanes.splice(commitLane, 1);
         insertionLane = commitLane;
+        const parentLane = nextLanes.findIndex((lane) => lane.hash === firstParent);
+        nextLanes[parentLane] = {
+          ...nextLanes[parentLane],
+          sourceHashes: [...nextLanes[parentLane].sourceHashes, commit.hash],
+        };
       }
 
       for (
@@ -99,9 +110,16 @@ export function layoutCommitGraph(
           nextLanes.splice(parentLane, 0, {
             hash: parentHash,
             color: colorForLane(nextColorIndex),
+            sourceHashes: [commit.hash],
           });
           nextColorIndex += 1;
           insertionLane += 1;
+        } else {
+          const parentLane = nextLanes.findIndex((lane) => lane.hash === parentHash);
+          nextLanes[parentLane] = {
+            ...nextLanes[parentLane],
+            sourceHashes: [...nextLanes[parentLane].sourceHashes, commit.hash],
+          };
         }
       }
     }
@@ -115,25 +133,27 @@ export function layoutCommitGraph(
         }))
         .filter((parent) => parent.lane >= 0)
         .map((parent) =>
-          connection(commitLane, parent.lane, lanesAfter[parent.lane].color),
+          connection(commitLane, parent.lane, lanesAfter[parent.lane].color, [commit.hash]),
         ),
     );
     const passthroughConnections = compactConnections(
       lanesBefore
         .map((lane, index) => ({
           color: lane.color,
+          sourceHashes: lane.sourceHashes,
           lane: index,
           nextLane: lanesAfter.findIndex(
             (nextLane) => nextLane.hash === lane.hash,
           ),
         }))
         .filter((lane) => lane.lane !== commitLane && lane.nextLane >= 0)
-        .map((lane) => connection(lane.lane, lane.nextLane, lane.color)),
+        .map((lane) => connection(lane.lane, lane.nextLane, lane.color, lane.sourceHashes)),
     );
 
     rows.set(commit.hash, {
       commitLane: visibleLane(commitLane),
       hasCommitLineBefore: continuesFromPreviousRow,
+      incomingSourceHashes: lanesBefore[commitLane].sourceHashes,
       passthroughConnections,
       parentConnections,
       color: commitColor,
@@ -141,6 +161,7 @@ export function layoutCommitGraph(
         hash: lane.hash,
         lane: visibleLane(index),
         color: lane.color,
+        sourceHashes: lane.sourceHashes,
       })),
       width: MIN_WIDTH,
     });
@@ -157,7 +178,7 @@ export function layoutCommitGraph(
   const graphWidth = Math.max(
     MIN_WIDTH,
     HORIZONTAL_PADDING * 2 +
-      Math.min(maxLaneCount, MAX_VISIBLE_LANES) * LANE_SPACING,
+    Math.min(maxLaneCount, MAX_VISIBLE_LANES) * LANE_SPACING,
   );
 
   for (const row of rows.values()) {
@@ -171,18 +192,20 @@ function connection(
   fromLane: number,
   toLane: number,
   color: string,
+  sourceHashes: readonly string[],
 ): CommitGraphConnection {
   return {
     fromLane: visibleLane(fromLane),
     toLane: visibleLane(toLane),
     color,
+    sourceHashes,
   };
 }
 
 function compactConnections(connections: CommitGraphConnection[]) {
   const seen = new Set<string>();
   return connections.filter((connection) => {
-    const key = `${connection.fromLane}:${connection.toLane}:${connection.color}`;
+    const key = `${connection.fromLane}:${connection.toLane}:${connection.color}:${connection.sourceHashes.join(",")}`;
     if (seen.has(key)) {
       return false;
     }

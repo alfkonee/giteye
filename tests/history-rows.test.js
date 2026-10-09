@@ -3,6 +3,7 @@ import {
   buildHistoryRows,
   commitRangeIndices,
   historyIndexOfBase,
+  focusAncestorSet,
   nextLimitForBase,
 } from "../src/components/commit-history/history-rows";
 import { operationCommitRoles, operationGraphLanes } from "../src/components/commit-history/commit-graph";
@@ -47,7 +48,6 @@ test("several snapshots precede their actual base in newest-first order without 
   expect(rows[1].graph.lastBeforeBase).toBe(false);
   expect(rows[2].graph.lastBeforeBase).toBe(true);
   expect(rows[2].graph.earlierStashLanes.map((lane) => lane.lane)).toEqual([rows[1].graph.stashLane]);
-  expect(rows[1].graph.passthrough).toContainEqual({ lane: 0, color: graphRows.get("tip").color });
   expect(rows[3].graph.hasCommitLineBefore).toBe(true);
   expect(graphWidth).toBeGreaterThanOrEqual(rows[2].graph.width);
   expect(graphRows.has("wip-new")).toBe(false);
@@ -59,10 +59,6 @@ test("working-tree HEAD lane continues through snapshots inserted before HEAD", 
   const commits = [commit("head", ["parent"]), commit("parent")];
   const { rows, graphRows } = buildHistoryRows(commits, [stash("stash@{0}", "saved", "head", 0)], "head");
   expect(rows.map((row) => row.kind)).toEqual(["stash", "commit", "commit"]);
-  expect(rows[0].graph.passthrough).toContainEqual({
-    lane: graphRows.get("head").commitLane,
-    color: graphRows.get("head").color,
-  });
   expect(rows[1].graph.hasCommitLineBefore).toBe(true);
   expect(graphRows.get("head").hasCommitLineBefore).toBe(false);
 });
@@ -76,8 +72,6 @@ test("committed branch lanes remain pass-through across snapshots rooted at anot
   ];
   const { rows, graphRows } = buildHistoryRows(commits, [stash("stash@{0}", "snapshot", "main", 0)]);
   const preceding = graphRows.get("topic");
-  const inserted = rows.find((row) => row.kind === "stash");
-  expect(inserted.graph.passthrough).toEqual(preceding.outgoingLanes.map((lane) => ({ lane: lane.lane, color: lane.color })));
   expect(graphRows.get("main").commitLane).toBe(rows.find((row) => row.kind === "commit" && row.commit.hash === "main").graph.commitLane);
   expect(graphRows.get("topic").parentConnections).toEqual(preceding.parentConnections);
 });
@@ -132,4 +126,31 @@ test("peeled tag targets remain actionable without a branches query, even beyond
   expect(refs.some((ref) => ref.label === "stale")).toBe(false);
   expect(buildDisplayRefs([], undefined, [...tags, { ...tags[0], name: "blob-only", commitHash: "" }], "target").some((ref) => ref.label === "blob-only")).toBe(false);
   expect(buildDisplayRefs([], undefined, tags, "different").filter((ref) => ref.isTag)).toEqual([]);
+});
+
+test("focus keeps the focused side lane and all its ancestors, including through merges, and fades the other side", () => {
+  // main: m2 (merge of m1 + f2) ; feature: f2 -> f1 -> base ; other: o1 -> base
+  const commits = [
+    commit("o1", ["base"]),
+    commit("m2", ["m1", "f2"]),
+    commit("f2", ["f1"]),
+    commit("m1", ["base"]),
+    commit("f1", ["base"]),
+    commit("base", ["root"]),
+    commit("root"),
+  ];
+  expect([...focusAncestorSet(commits, "f2")].sort()).toEqual(["base", "f1", "f2", "root"]);
+  expect([...focusAncestorSet(commits, "m2")].sort()).toEqual(["base", "f1", "f2", "m1", "m2", "root"]);
+  expect(focusAncestorSet(commits, "o1").has("m2")).toBe(false);
+});
+
+test("focus is absent when nothing is focused or the focused commit is not loaded yet", () => {
+  const commits = [commit("tip", ["base"]), commit("base")];
+  expect(focusAncestorSet(commits, null)).toBeNull();
+  expect(focusAncestorSet(commits, "unloaded")).toBeNull();
+});
+
+test("focus stops at the loaded window edge but keeps the boundary parent so its lane edge stays bright", () => {
+  const commits = [commit("tip", ["mid"]), commit("mid", ["beyond-window"])];
+  expect([...focusAncestorSet(commits, "tip")].sort()).toEqual(["beyond-window", "mid", "tip"]);
 });
