@@ -18,6 +18,8 @@ import {
 import { IgnorePathDialog } from "./IgnorePathDialog";
 import type { IgnoreScope } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
+import { WorkingTreeColumnPicker } from "./WorkingTreeColumnPicker";
+import { listGridTemplate, STATUS_TEXT, useWorkingTreeColumns } from "./working-tree-columns";
 
 interface FileStatusListProps {
   title: string;
@@ -96,6 +98,8 @@ function statusTone(status: FileStatus): string {
 export function FileStatusList({ title, files, isLoading, repoPath, staged }: FileStatusListProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
+  const columns = useWorkingTreeColumns();
+  const listColumns = listGridTemplate(columns);
   const [contextTarget, setContextTarget] = useState<WorkingTreePathTarget | null>(null);
   const [ignoreTarget, setIgnoreTarget] = useState<{
     target: WorkingTreePathTarget;
@@ -348,6 +352,7 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
           {files.length}
         </span>
         <div className="flex-1" />
+        {viewMode === "list" && <WorkingTreeColumnPicker />}
         <SegmentedControl
           items={[
             { id: "tree", label: "Tree" },
@@ -473,35 +478,55 @@ export function FileStatusList({ title, files, isLoading, repoPath, staged }: Fi
                           <div
                             key={file.path}
                             className={cn(
-                              "group grid min-h-[24px] cursor-pointer grid-cols-[16px_minmax(0,1fr)_64px] items-center gap-1.5 px-1.5 transition-colors",
+                              "group grid min-h-[24px] cursor-pointer items-center gap-1.5 px-1.5 transition-colors",
                               isSelected
                                 ? "giteye-selected-row"
                                 : "hover:bg-[var(--color-bg-hover)]",
                             )}
+                            style={{ gridTemplateColumns: listColumns }}
                             onClick={() => handleFileClick(file)}
                             onContextMenu={(event) => openFileContextMenu(event, file)}
                           >
                             <StatusBadge status={status} className="h-3.5 w-3.5 text-[8.5px]" />
                             <div className="min-w-0">
-                              <div
-                                className={cn(
-                                  "truncate text-[11.5px] font-medium leading-4",
-                                  isSelected ? "text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
-                                )}
-                              >
-                                {directory && (
+                              <div className="truncate text-[11.5px] font-medium leading-4 text-[var(--color-text-primary)]">
+                                {directory && !columns.includes("directory") && (
                                   <span className="font-normal text-[var(--color-text-muted)]">
                                     {directory}
                                   </span>
                                 )}
                                 <span>{name}</span>
                               </div>
-                              {file.oldPath && (
+                              {file.oldPath && !columns.includes("oldPath") && (
                                 <div className="truncate text-[10px] leading-3 text-[var(--color-text-muted)]">
                                   renamed from {file.oldPath}
                                 </div>
                               )}
                             </div>
+                            {columns.includes("statusLabel") && (
+                              <span className={cn("truncate text-[10.5px]", statusTone(status))}>
+                                {STATUS_TEXT[status]}
+                              </span>
+                            )}
+                            {columns.includes("directory") && (
+                              <span className="truncate text-[10.5px] text-[var(--color-text-muted)]" title={directory || "(repository root)"}>
+                                {directory || "/"}
+                              </span>
+                            )}
+                            {columns.includes("oldPath") && (
+                              <span className="truncate text-[10.5px] text-[var(--color-text-muted)]" title={file.oldPath ?? undefined}>
+                                {file.oldPath ?? "—"}
+                              </span>
+                            )}
+                            {columns.includes("partial") && (
+                              <span className="truncate text-[10px]">
+                                {file.staged && file.unstaged ? (
+                                  <span className="giteye-chip" data-tone="warning" title="This file has both staged and unstaged changes">
+                                    {staged ? "also unstaged" : "also staged"}
+                                  </span>
+                                ) : null}
+                              </span>
+                            )}
                             <PathActions
                               staged={staged}
                               kind="file"

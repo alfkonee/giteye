@@ -273,6 +273,61 @@ function seedTagsStashesRepo() {
   return repo;
 }
 
+/**
+ * Diverged main/origin-main pair (2 ahead, 3 behind) on top of 110 shared
+ * commits (oldest history lies beyond the first page), plus a tagged side branch for focus/popup
+ * checks and a dirty tree with a rename and a partially staged file for the
+ * working-tree column picker.
+ */
+function seedDivergedTrackingRepo() {
+  const repo = initRepo("diverged-tracking-repo");
+  for (let index = 1; index <= 110; index += 1) {
+    writeFileSync(join(repo, "history.txt"), `Shared history ${index}\n`);
+    git(repo, ["add", "history.txt"]);
+    git(repo, ["commit", "-m", `Shared history ${index}`]);
+  }
+  git(repo, ["tag", "-a", "v0.9.0", "-m", "Release before divergence"]);
+  const remote = join(root, "diverged-tracking-remote.git");
+  git(root, ["init", "--bare", remote]);
+  git(repo, ["remote", "add", "origin", remote]);
+  git(repo, ["push", "-u", "origin", "main"]);
+
+  const other = join(root, "diverged-tracking-other-clone");
+  git(root, ["clone", "-b", "main", remote, other]);
+  git(other, ["config", "user.name", "GitEye QA Teammate"]);
+  git(other, ["config", "user.email", "teammate@giteye.local"]);
+  for (let index = 1; index <= 3; index += 1) {
+    writeFileSync(join(other, "upstream.txt"), `Upstream-only work ${index}\n`);
+    git(other, ["add", "upstream.txt"]);
+    git(other, ["commit", "-m", `Upstream-only work ${index}`]);
+  }
+  git(other, ["push", "origin", "main"]);
+  rmSync(other, { recursive: true, force: true });
+
+  for (let index = 1; index <= 2; index += 1) {
+    writeFileSync(join(repo, "local.txt"), `Local-only work ${index}\n`);
+    git(repo, ["add", "local.txt"]);
+    git(repo, ["commit", "-m", `Local-only work ${index}`]);
+  }
+  git(repo, ["fetch", "origin"]);
+
+  git(repo, ["switch", "-c", "feature/side-lane", "v0.9.0"]);
+  for (let index = 1; index <= 2; index += 1) {
+    writeFileSync(join(repo, "side.txt"), `Side lane ${index}\n`);
+    git(repo, ["add", "side.txt"]);
+    git(repo, ["commit", "-m", `Side lane ${index}`]);
+  }
+  git(repo, ["tag", "side-milestone"]);
+  git(repo, ["switch", "main"]);
+
+  git(repo, ["mv", "local.txt", "renamed-local.txt"]);
+  writeFileSync(join(repo, "history.txt"), "staged edit\n");
+  git(repo, ["add", "history.txt"]);
+  writeFileSync(join(repo, "history.txt"), "staged edit\nplus unstaged edit\n");
+  writeFileSync(join(repo, "notes-α.txt"), "untracked note\n");
+  return repo;
+}
+
 function assertRepoExists(label, repo) {
   if (!existsSync(join(repo, ".git"))) {
     throw new Error(`${label} repository was not seeded at ${repo}`);
@@ -302,6 +357,11 @@ function verifySeededRepos(repos) {
     "MM same-file.txt",
   );
   assertStatusIncludes("conflict", repos.conflict, "UU conflict.txt");
+  const divergence = git(repos.diverged, ["rev-list", "--left-right", "--count", "main...origin/main"]).trim();
+  if (divergence !== "2\t3") {
+    throw new Error(`diverged repository expected 2 ahead / 3 behind, got ${JSON.stringify(divergence)}`);
+  }
+  assertStatusIncludes("diverged", repos.diverged, "MM history.txt");
 }
 
 const repos = {
@@ -317,6 +377,7 @@ const repos = {
   revert: seedOperationConflict("revert"),
   gitlink: seedGitlinkConflict(),
   tagsStashes: seedTagsStashesRepo(),
+  diverged: seedDivergedTrackingRepo(),
 };
 
 verifySeededRepos(repos);

@@ -11,7 +11,7 @@ Thank you for improving GitEye. Contributions of code, documentation, design fee
 
 ## Development setup
 
-Install [Bun](https://bun.sh/), stable [Rust](https://www.rust-lang.org/tools/install), Git, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
+Install [Bun](https://bun.sh/), [Node.js](https://nodejs.org/) LTS, stable [Rust](https://www.rust-lang.org/tools/install), Git, and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform.
 
 ```sh
 git clone https://github.com/alfkonee/giteye.git
@@ -19,6 +19,10 @@ cd giteye
 bun install --frozen-lockfile
 bun run tauri
 ```
+
+On Windows, install Visual Studio C++ Build Tools with the **Desktop development with C++** workload and a Windows SDK; use the `x86_64-pc-windows-msvc` Rust toolchain. WebView2 is also required. Verify both `bun --version` and `bunx --version` work; if a package-manager installation omits Bunx, use the [official Bun installer](https://bun.sh/docs/installation). Open a new terminal after installing tools so the updated `PATH` takes effect.
+
+Close other GitEye instances before running the development app; GitEye's single-instance behavior otherwise forwards to the already-running application.
 
 Useful commands:
 

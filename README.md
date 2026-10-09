@@ -15,6 +15,7 @@
 
 - **Repository workspace** — stage and unstage files, commit and amend, inspect history and diffs, manage remotes, tags, stashes, Git LFS, and multiple repositories.
 - **Tags and stashes in history** — inspect actionable tag labels and saved-work nodes at their base commits, browse staged/unstaged/untracked stash diffs, and manage refs from context menus. The resizable details sidebar disappears when nothing is selected.
+- **History navigation** — jump to the upstream tip, local tip, or merge base of diverged branches; fade commits and connectors outside a tag/branch/commit's ancestry, including unrelated connectors into shared ancestors and lanes passing through stash rows; open a single-history popup for any ref; and choose extra columns for the working-tree List view.
 - **Safer branch switching** — move, stash, or explicitly discard working-copy changes; ignored paths and unsafe nested repositories are protected.
 - **Merge and rebase workflows** — preview operations, resolve conflicts, edit rebase plans, use autosquash, and recover interrupted Git jobs.
 - **Worktrees and submodules** — background loading, metadata watching, management actions, and linked-worktree awareness.
@@ -70,6 +71,7 @@ For normal use:
 For development:
 
 - [Bun](https://bun.sh/) 1.x or later
+- [Node.js](https://nodejs.org/) LTS (used by Vite and the TypeScript tooling)
 - Stable [Rust](https://www.rust-lang.org/tools/install)
 - [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform
 - Git
@@ -84,6 +86,8 @@ bun run tauri
 ```
 
 The development command starts Vite on an available local port and launches the Tauri application. GitEye is single-instance: later launches forward repository paths to the existing process.
+
+Close any installed GitEye instance before launching development, otherwise the new process forwards to that instance rather than showing your local changes. The launcher accepts Vite's colored output and automatically selects another port when the default port is occupied.
 
 ### Checks
 

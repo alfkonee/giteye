@@ -8,6 +8,7 @@ Use `node scripts/seed-qa-repositories.mjs` from the repository root to create d
 | Dirty | `.giteye-qa/dirty-repo` | Staged/unstaged file panels, commit form, diff viewer, status bar summaries. |
 | Worktree | `.giteye-qa/worktree-repo` | Worktrees/Submodules screen, worktree list/detail/actions, dirty linked worktree state. |
 | Tags/stashes | `.giteye-qa/tags-stashes-repo` | Actionable tag labels/overflow, stash base connections and pagination, saved-file inspection, ref actions, and conditional details sidebar. Uses a disposable local bare remote. |
+| Diverged tracking | `.giteye-qa/diverged-tracking-repo` | Diverged-branch jumps, history focus fading, single-history popup, and working-tree List columns. `main` is 2 ahead / 3 behind `origin/main`; `feature/side-lane` carries tag `side-milestone`; the tree has a rename and a partially staged file. |
 | Submodule | `.giteye-qa/submodule-parent` | Submodule list/detail/actions, pinned/current commit, update/sync/bump controls. |
 | Rebase conflict | `.giteye-qa/conflict-repo` | Updated-target/replayed-commit labels, progress/todo, skip/continue/abort, persistent resolver. |
 | Merge conflict | `.giteye-qa/merge-conflict` | Active-operation graph overlay; add/add, text, binary, and deletion conflicts; guarded draft/stage/continue. |
@@ -17,6 +18,12 @@ Use `node scripts/seed-qa-repositories.mjs` from the repository root to create d
 | Nested gitlink conflicts | `.giteye-qa/gitlink-conflict` | Divergent pointer cards; open `libs/child`, then `nested`; resolve inside-out, stage each child HEAD in its parent. No pointer action may modify child files. |
 
 Capture the mapped design screens at 1490×1024 and at least one wider desktop size. Compare against `design/reference/` for density, gutters, footer/status bar placement, color hierarchy, and responsive behavior.
+
+## Window chrome
+
+1. Drag the window by the GitEye/repository title text and by empty titlebar space. Repeat on the toolchain loading, setup, and detection-error screens.
+2. Double-click non-interactive titlebar space to maximize/restore. Confirm the minimize, maximize/restore, and close buttons work without starting a drag.
+3. Click the command search and other titlebar controls: preserve their actions and focus, and do not move the window. In a short window, scroll setup from its heading to the final controls: no content may lie above scroll position zero. Shorter setup/loading content remains vertically centered below the titlebar.
 
 ## Tags and stashes workflow
 
@@ -28,6 +35,14 @@ Capture the mapped design screens at 1490×1024 and at least one wider desktop s
 6. While a drop confirmation is open, create another stash externally: refuse the stale selector and refresh without deleting another entry. Selection should follow the same saved OID after ordinary renumbering. On clean `main`, pop the deleted-branch stash: its modify/delete conflict must retain the stash and open the existing conflict resolver.
 7. Use keyboard menu navigation, Escape/focus restoration, copy actions, and menus near viewport edges. External ref changes must refresh; removed refs and repository/view switches must not leave stale details.
 8. Open the workspace with no selection: only the main panel appears, without a layout error. Drag and keyboard-resize the details sidebar. On desktop it cannot shrink below 320 px; narrow windows stack vertically without horizontal overflow. Clear selection: no panel, divider, placeholder, or reserved width may remain. Reselect a commit/file/tag/stash: restore the remembered, clamped size without resetting the main view. Resize in both orientations, then switch back: each orientation retains its own split.
+
+## History navigation workflow
+
+1. Open `diverged-tracking-repo`. The History header shows `main ↕ origin/main · 2↑ 3↓`; the dirty working-tree row shows the same counts with `origin/main tip` and `Merge base` chips. Each jump scrolls to and briefly rings the right commit (upstream tip `Upstream-only work 3`, merge base `Shared history 110`). The working-tree row menu offers the same jumps.
+2. Right-click a commit carrying a diverged remote branch, or a local branch pill: verify `Go to … tip` / `Go to merge base` items. Branch pills open a menu on right-click; double-click activation is unchanged.
+3. Tag pill → `Show only side-milestone's history`: lanes and rows outside that ancestry fade, including the working-tree connector and lanes crossing stash rows. The focused lane (including edges passing through faded rows) stays bright, and the header shows `Focusing side-milestone`. Escape or the header chip clears it. Commits offer `Focus history from this commit`. Focus never changes selection, HEAD, or row order.
+4. `View … history…` (commit, tag, or branch menu) opens a popup with only that ref's reachable history and its own lanes; `Load more` extends it. Tab and Shift-Tab remain inside the popup and background controls cannot receive focus. Clicking a row closes the popup and locates the commit in the main graph, loading past the first 100 commits if needed (try `Initial commit`). Escape, ✕, and the backdrop close the popup; Escape inside it must not clear an active focus. Move its branch externally while open: the popup refreshes. A failed merge-base jump reports a persistent history error after its menu closes. Request a merge base, then jump to a tip before it resolves: the newer destination must win, without a stale destination or error replacing it.
+5. Select the working-tree row, switch Unstaged/Staged to List, and open `Columns`. Toggle Status, Folder, Renamed from, and Partial: both sections update together; badge, path, actions, and the section lanes always remain. Choices survive a reload. Tree view is unaffected.
 
 ## Resolver workflow
 

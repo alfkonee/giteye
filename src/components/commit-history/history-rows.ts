@@ -19,7 +19,7 @@ export interface StashGraphRow {
   baseLane: number;
   color: string;
   /** The real committed DAG passes unchanged through every inserted row. */
-  passthrough: ReadonlyArray<{ lane: number; color: string }>;
+  passthrough: ReadonlyArray<{ lane: number; color: string; sourceHashes: readonly string[] }>;
   /** Lines from earlier stash nodes continue to this row's base, not to this stash. */
   earlierStashLanes: ReadonlyArray<{ lane: number; color: string }>;
   lastBeforeBase: boolean;
@@ -45,6 +45,31 @@ export function commitRangeIndices(
   const first = commits.findIndex((commit) => commit.hash === anchor);
   const second = commits.findIndex((commit) => commit.hash === selected);
   return first < 0 || second < 0 ? null : [first, second];
+}
+
+/**
+ * Hashes belonging to the focused ref's own history: the focus commit plus
+ * every ancestor reachable through recorded parents within the loaded window.
+ * A parent that lies beyond the window is kept in the set (its lane edge is
+ * genuinely focused) but traversal stops there. Returns null when nothing is
+ * focused, so callers skip fade logic entirely.
+ */
+export function focusAncestorSet(
+  commits: ReadonlyArray<CommitSummary>,
+  focusHash: string | null | undefined,
+): Set<string> | null {
+  if (!focusHash) return null;
+  const byHash = new Map(commits.map((commit) => [commit.hash, commit]));
+  if (!byHash.has(focusHash)) return null;
+  const inFocus = new Set<string>();
+  const stack = [focusHash];
+  while (stack.length > 0) {
+    const hash = stack.pop()!;
+    if (inFocus.has(hash)) continue;
+    inFocus.add(hash);
+    stack.push(...(byHash.get(hash)?.parents ?? []));
+  }
+  return inFocus;
 }
 
 export function historyIndexOfBase(rows: ReadonlyArray<HistoryRow>, hash: string) {
@@ -119,9 +144,10 @@ export function buildHistoryRows(
       const passthrough = (preceding?.outgoingLanes ?? []).map((lane) => ({
         lane: lane.lane,
         color: lane.color,
+        sourceHashes: lane.sourceHashes,
       }));
       if (index === 0 && commit.hash === headHash) {
-        passthrough.push({ lane: base.commitLane, color: base.color });
+        passthrough.push({ lane: base.commitLane, color: base.color, sourceHashes: [commit.hash] });
       }
       const precedingLanes = preceding?.outgoingLanes;
       const highestLane = Math.max(base.commitLane, precedingLanes?.[precedingLanes.length - 1]?.lane ?? -1);

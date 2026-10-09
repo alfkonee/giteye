@@ -620,6 +620,32 @@ a {
   color: var(--color-selection-fg);
 }
 
+/* History focus: fade the row's text cells; its graph cell fades per-lane */
+.giteye-unfocused-row > :not(:first-child) {
+  opacity: 0.35;
+}
+
+/* Brief ring after a history jump lands on a row */
+.giteye-located-row {
+  animation: giteye-located-flash 1.6s ease-out;
+  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+}
+
+@keyframes giteye-located-flash {
+  0% {
+    background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .giteye-located-row {
+    animation: none;
+  }
+}
+
 /* Soft selected row/nav (preferred over solid blue fills) */
 .giteye-selected-row {
   background: var(--color-bg-selected-muted);
