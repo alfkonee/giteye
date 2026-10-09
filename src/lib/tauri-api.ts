@@ -338,6 +338,20 @@ export const gitApi = {
       limit: limit ?? null,
     }),
 
+  /** History reachable from one revision only (branch/upstream/tag/hash). */
+  getRefHistory: (repoPath: string, rev: string, limit?: number) =>
+    invoke<CommitSummary[]>("get_commit_history", {
+      repoPath,
+      rev,
+      limit: limit ?? null,
+    }),
+
+  getMergeBase: (repoPath: string, fromRef: string, toRef: string) =>
+    invoke<string | null>("get_merge_base", { repoPath, fromRef, toRef }),
+
+  resolveRevision: (repoPath: string, rev: string) =>
+    invoke<string>("resolve_revision", { repoPath, rev }),
+
   getCommitDetails: (repoPath: string, commitHash: string) =>
     invoke<CommitDetails>("get_commit_details", { repoPath, commitHash }),
 

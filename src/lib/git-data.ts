@@ -275,6 +275,27 @@ export const gitKeys = {
     [...gitKeys.repository(repoPath), "unstaged-files"] as const,
   commits: (repoPath: string | null | undefined, limit?: number) =>
     [...gitKeys.repository(repoPath), "commits", limit ?? null] as const,
+  refHistory: (
+    repoPath: string | null | undefined,
+    rev: string | null | undefined,
+    limit?: number,
+  ) =>
+    [...gitKeys.repository(repoPath), "ref-history", rev, limit ?? null] as const,
+  mergeBase: (
+    repoPath: string | null | undefined,
+    fromRef: string | null | undefined,
+    toRef: string | null | undefined,
+  ) =>
+    [
+      ...gitKeys.repository(repoPath),
+      "merge-base",
+      fromRef,
+      toRef,
+    ] as const,
+  revision: (
+    repoPath: string | null | undefined,
+    rev: string | null | undefined,
+  ) => [...gitKeys.repository(repoPath), "revision", rev] as const,
   commitDetails: (
     repoPath: string | null | undefined,
     commitHash: string | null | undefined,
@@ -849,6 +870,34 @@ export const gitQueries = {
       queryKey: gitKeys.commits(repoPath, limit),
       queryFn: () => gitApi.getCommitHistory(repoPath!, limit),
       enabled: enabledRepo(repoPath),
+    }),
+
+  refHistory: (repoPath: string | null, rev: string | null, limit?: number) =>
+    queryOptions({
+      queryKey: gitKeys.refHistory(repoPath, rev, limit),
+      queryFn: () => gitApi.getRefHistory(repoPath!, rev!, limit),
+      enabled: enabledRepo(repoPath) && Boolean(rev),
+    }),
+
+  /** `null` result means the pair shares no common ancestor. */
+  mergeBase: (
+    repoPath: string | null,
+    fromRef: string | null,
+    toRef: string | null,
+  ) =>
+    queryOptions({
+      queryKey: gitKeys.mergeBase(repoPath, fromRef, toRef),
+      queryFn: () => gitApi.getMergeBase(repoPath!, fromRef!, toRef!),
+      enabled: enabledRepo(repoPath) && Boolean(fromRef) && Boolean(toRef),
+      retry: false,
+    }),
+
+  revision: (repoPath: string | null, rev: string | null) =>
+    queryOptions({
+      queryKey: gitKeys.revision(repoPath, rev),
+      queryFn: () => gitApi.resolveRevision(repoPath!, rev!),
+      enabled: enabledRepo(repoPath) && Boolean(rev),
+      retry: false,
     }),
 
   commitDetails: (repoPath: string | null, commitHash: string | null) =>

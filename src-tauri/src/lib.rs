@@ -98,6 +98,8 @@ pub fn run_with_launch(initial_launch: Option<launch::LaunchIntent>) {
             commands::ignore::add_ignore_rules,
             commands::commits::get_commit_history,
             commands::commits::get_commit_details,
+            commands::commits::get_merge_base,
+            commands::commits::resolve_revision,
             commands::archaeology::commit_search,
             commands::archaeology::file_history,
             commands::archaeology::blame_file,

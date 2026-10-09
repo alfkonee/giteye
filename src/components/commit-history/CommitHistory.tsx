@@ -8,14 +8,15 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowDownUp, History, X } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { useConflictStore } from "../../stores/conflict-store";
 import { gitQueries } from "../../lib/git-data";
+import { gitApi } from "../../lib/tauri-api";
 import { CommitListItem } from "./CommitListItem";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
-import { History } from "lucide-react";
 import {
   COMMIT_ROW_HEIGHT,
   colorForLane,
@@ -24,9 +25,12 @@ import {
 import {
   buildHistoryRows,
   commitRangeIndices,
+  focusAncestorSet,
   historyIndexOfBase,
   nextLimitForBase,
 } from "./history-rows";
+import { HistoryNavigationContext, type HistoryNavigation } from "./history-navigation";
+import { RefHistoryDialog } from "./RefHistoryDialog";
 import { StashRow } from "./StashRow";
 import { ReflogRecoveryPanel } from "./HistorySurgeryActions";
 import { ActiveOperationRow, WorkingTreeRow } from "./WorkingTreeRow";
@@ -46,10 +50,14 @@ export function CommitHistory({
   const setSelectedCommitRange = useAppStore((s) => s.setSelectedCommitRange);
   const selectedGitRef = useAppStore((s) => s.selectedGitRef);
   const setSelectedGitRef = useAppStore((s) => s.setSelectedGitRef);
+  const historyFocus = useAppStore((s) => s.historyFocus);
+  const setHistoryFocus = useAppStore((s) => s.setHistoryFocus);
   const [commitLimit, setCommitLimit] = useState(INITIAL_COMMIT_LIMIT);
   const [showReflog, setShowReflog] = useState(false);
   const [locateBase, setLocateBase] = useState<{ repoPath: string; hash: string } | null>(null);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [locatedHash, setLocatedHash] = useState<string | null>(null);
+  const [refHistoryDialog, setRefHistoryDialog] = useState<{ rev: string; label: string } | null>(null);
   const {
     data: commits,
     isLoading,
@@ -91,6 +99,29 @@ export function CommitHistory({
   const stagedCount = snapshot?.summary.stagedCount ?? 0;
   const unstagedCount = snapshot?.summary.unstagedCount ?? 0;
   const hasWorkingTreeChanges = stagedCount + unstagedCount > 0;
+
+  const currentBranch = useMemo(
+    () => branches?.find((branch) => branch.isCurrent && !branch.isRemote) ?? null,
+    [branches],
+  );
+  const divergedFrom =
+    currentBranch?.upstream &&
+      (currentBranch.ahead ?? 0) > 0 &&
+      (currentBranch.behind ?? 0) > 0
+      ? currentBranch
+      : null;
+  const { data: mergeBaseHash } = useQuery(
+    gitQueries.mergeBase(
+      activeRepoPath,
+      divergedFrom?.shortName ?? null,
+      divergedFrom?.upstream ?? null,
+    ),
+  );
+
+  const focusSet = useMemo(
+    () => focusAncestorSet(commits ?? [], historyFocus?.hash ?? null),
+    [commits, historyFocus],
+  );
 
   const selectCommit = useCallback(
     (hash: string, event: MouseEvent<HTMLDivElement>) => {
@@ -147,6 +178,7 @@ export function CommitHistory({
     const index = historyIndexOfBase(historyRows, locateBase.hash);
     if (index >= 0) {
       virtualizer.scrollToIndex(index, { align: "center" });
+      setLocatedHash(locateBase.hash);
       setLocateBase(null);
       return;
     }
@@ -158,6 +190,22 @@ export function CommitHistory({
       setLocateBase(null);
     }
   }, [activeRepoPath, commitLimit, commits, historyRows, isFetching, isPlaceholderData, locateBase, virtualizer]);
+
+  /** The located row keeps a brief ring so jumps are visually confirmed. */
+  useEffect(() => {
+    if (!locatedHash) return;
+    const timer = window.setTimeout(() => setLocatedHash(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [locatedHash]);
+
+  useEffect(() => {
+    if (!historyFocus) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setHistoryFocus(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [historyFocus, setHistoryFocus]);
 
   useEffect(() => {
     if (!commits || !hasMoreCommits || isFetching || locateBase || virtualItems.length === 0) return;
@@ -173,7 +221,48 @@ export function CommitHistory({
     setLocateBase({ repoPath: activeRepoPath, hash });
   };
 
+  const jumpToHash = useCallback(
+    (hash: string | null | undefined) => {
+      if (!hash) return;
+      requestBase(hash);
+    },
+    // requestBase closes over activeRepoPath; re-creating per repo is enough.
+    [activeRepoPath],
+  );
+
+  const jumpToRef = useCallback(
+    (refLabel: string) => {
+      if (!activeRepoPath) return;
+      setLocateError(null);
+      const loaded = (commits ?? []).find((commit) => commit.refs.includes(refLabel));
+      if (loaded) {
+        setLocateBase({ repoPath: activeRepoPath, hash: loaded.hash });
+        return;
+      }
+      // The tip may sit beyond the loaded window; resolve it, then locate.
+      gitApi
+        .resolveRevision(activeRepoPath, refLabel)
+        .then((hash) => setLocateBase({ repoPath: activeRepoPath, hash }))
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          setLocateError(`Could not locate ${refLabel}: ${message}`);
+        });
+    },
+    [activeRepoPath, commits],
+  );
+
+  const historyNavigation: HistoryNavigation = useMemo(
+    () => ({
+      jumpToRef,
+      jumpToHash,
+      focusHistory: setHistoryFocus,
+      openRefHistory: (rev, label) => setRefHistoryDialog({ rev, label }),
+    }),
+    [jumpToRef, jumpToHash, setHistoryFocus],
+  );
+
   return (
+    <HistoryNavigationContext.Provider value={historyNavigation}>
     <div
       className="flex h-full flex-col bg-[var(--color-bg-primary)]"
       onContextMenu={(event) => event.preventDefault()}
@@ -188,6 +277,49 @@ export function CommitHistory({
             ? `Comparing ${selectedCommitRange[0].slice(0, 8)} → ${selectedCommitRange[1].slice(0, 8)}`
             : `${commits?.length ?? 0} commits · Ctrl/⌘ or Shift-select to compare`}
         </p>
+        {divergedFrom?.upstream ? (
+          <div
+            className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--color-warning)]"
+            title={`${divergedFrom.shortName} and ${divergedFrom.upstream} have diverged: ${(divergedFrom.ahead ?? 0)} commits ahead, ${(divergedFrom.behind ?? 0)} behind. Jump to the diverged sides.`}
+          >
+            <ArrowDownUp className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="max-w-[180px] truncate">
+              {divergedFrom.shortName} ↕ {divergedFrom.upstream} ·{" "}
+              {divergedFrom.ahead ?? 0}↑ {divergedFrom.behind ?? 0}↓
+            </span>
+            <button
+              type="button"
+              className="rounded px-1 hover:bg-[var(--color-bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+              title={`Scroll the graph to the ${divergedFrom.upstream} tip commit`}
+              onClick={() => jumpToRef(divergedFrom.upstream!)}
+            >
+              Upstream tip
+            </button>
+            {mergeBaseHash ? (
+              <button
+                type="button"
+                className="rounded px-1 hover:bg-[var(--color-bg-hover)] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+                title="Scroll the graph to the divergence point (merge base)"
+                onClick={() => jumpToHash(mergeBaseHash)}
+              >
+                Merge base
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {historyFocus ? (
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 rounded-md border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 px-1.5 py-0.5 text-[10px] text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+            title="Other lanes are dimmed. Click or press Escape to show all history again."
+            onClick={() => setHistoryFocus(null)}
+          >
+            Focusing {historyFocus.label}
+            <X className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only"> — Escape to clear</span>
+            <span aria-hidden="true" className="opacity-70">Esc</span>
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setShowReflog((value) => !value)}
@@ -263,6 +395,15 @@ export function CommitHistory({
                 isSelected={selectedCommitRange.includes(
                   WORKING_TREE_COMMIT_HASH,
                 )}
+                dimmed={
+                  Boolean(focusSet) &&
+                  Boolean(headHash) &&
+                  !focusSet!.has(headHash!)
+                }
+                divergedUpstream={divergedFrom?.upstream ?? null}
+                ahead={divergedFrom?.ahead ?? null}
+                behind={divergedFrom?.behind ?? null}
+                mergeBaseHash={mergeBaseHash ?? null}
                 onSelect={() =>
                   setSelectedCommitRange([WORKING_TREE_COMMIT_HASH])
                 }
@@ -328,6 +469,8 @@ export function CommitHistory({
                         operationRoles={operationRoles.get(row.commit.hash)}
                         onActivateBranch={onActivateBranch}
                         isSelected={selectedCommitRange.includes(row.commit.hash)}
+                        focusSet={focusSet}
+                        highlighted={locatedHash === row.commit.hash}
                         onSelect={(selectedCommit, event) =>
                           selectCommit(selectedCommit.hash, event)
                         }
@@ -339,6 +482,7 @@ export function CommitHistory({
                         graphWidth={graphWidth}
                         isLocatingBase={locateBase?.hash === row.stash.baseCommitHash}
                         isSelected={selectedGitRef?.kind === "stash" && selectedGitRef.commitHash === row.stash.commitHash}
+                        focusSet={focusSet}
                         onSelect={() => setSelectedGitRef({ kind: "stash", name: row.stash.name, commitHash: row.stash.commitHash })}
                         onLocateBase={requestBase}
                       />
@@ -350,6 +494,16 @@ export function CommitHistory({
           </div>
         </>
       )}
+      {refHistoryDialog && activeRepoPath ? (
+        <RefHistoryDialog
+          repoPath={activeRepoPath}
+          rev={refHistoryDialog.rev}
+          label={refHistoryDialog.label}
+          onJumpToHash={jumpToHash}
+          onClose={() => setRefHistoryDialog(null)}
+        />
+      ) : null}
     </div>
+    </HistoryNavigationContext.Provider>
   );
 }

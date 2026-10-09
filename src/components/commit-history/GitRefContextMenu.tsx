@@ -1,17 +1,29 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
+import { gitApi } from "../../lib/tauri-api";
 import { gitQueries } from "../../lib/git-data";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { useGitRefActions } from "../../hooks/useGitRefActions";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
-import type { GitTag, StashEntry } from "../../types/git";
+import { useHistoryNavigation } from "./history-navigation";
+import type { Branch, GitTag, StashEntry } from "../../types/git";
 
 export type GitRefMenuTarget =
   | { kind: "tag"; tag: GitTag }
   | { kind: "stash"; stash: StashEntry }
-  | { kind: "workingTree" };
+  | { kind: "branch"; branch: Branch; commitHash: string }
+  | {
+    kind: "workingTree";
+    /** Divergence of the current branch pair, enabling jump items. */
+    divergedFrom?: {
+      upstream: string;
+      ahead: number;
+      behind: number;
+      mergeBaseHash: string | null;
+    };
+  };
 
 export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
   target: GitRefMenuTarget;
@@ -69,8 +81,27 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
     }
   };
 
-  const items: { label: string; action: () => void | Promise<void>; disabled?: boolean; destructive?: boolean }[] = target.kind === "tag" ? [
+  const navigation = useHistoryNavigation();
+  const jumpToMergeBase = async (fromRef: string, toRef: string) => {
+    if (!repoPath || !navigation) return;
+    try {
+      const base = await gitApi.getMergeBase(repoPath, fromRef, toRef);
+      if (base) navigation.jumpToHash(base);
+      else setCopyError(`${fromRef} and ${toRef} share no common ancestor.`);
+    } catch (error) {
+      setCopyError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  type MenuItem = { label: string; action: () => void | Promise<void>; disabled?: boolean; destructive?: boolean };
+  const navItems = (rev: string, label: string, hash: string): MenuItem[] => navigation ? [
+    { label: `Show only ${label}'s history`, action: () => navigation.focusHistory({ hash, label }), disabled: !hash },
+    { label: `View ${label} history…`, action: () => navigation.openRefHistory(rev, label) },
+  ] : [];
+
+  const items: MenuItem[] = target.kind === "tag" ? [
     { label: "Inspect tag and target", action: inspect },
+    ...navItems(target.tag.name, target.tag.name, target.tag.commitHash),
     { label: "Checkout detached…", action: () => actions.checkoutTag(target.tag), disabled: actions.isBusy || operationBlocked || !target.tag.commitHash },
     { label: "Create branch here…", action: () => actions.branchFromTag(target.tag), disabled: actions.isBusy || operationBlocked || !target.tag.commitHash },
     { label: "Push to remote…", action: () => actions.pushTag(target.tag), disabled: actions.isBusy },
@@ -87,8 +118,21 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
     { label: "Copy selector", action: () => copy(target.stash.name) },
     { label: "Copy stash hash", action: () => copy(target.stash.commitHash) },
     { label: "Locate base commit", action: () => onLocateBase?.(target.stash.baseCommitHash), disabled: !onLocateBase },
+  ] : target.kind === "branch" ? [
+    ...navItems(target.branch.shortName, target.branch.shortName, target.commitHash),
+    ...(navigation && target.branch.upstream ? [
+      { label: `Go to ${target.branch.upstream} tip`, action: () => navigation.jumpToRef(target.branch.upstream!) },
+      ...((target.branch.ahead ?? 0) > 0 && (target.branch.behind ?? 0) > 0 ? [
+        { label: "Go to merge base", action: () => jumpToMergeBase(target.branch.shortName, target.branch.upstream!) },
+      ] : []),
+    ] : []),
+    { label: "Copy branch name", action: () => copy(target.branch.shortName) },
   ] : [
     { label: "Create stash…", action: () => actions.createStash(), disabled: actions.isBusy || operationBlocked },
+    ...(navigation && target.divergedFrom ? [
+      { label: `Go to ${target.divergedFrom.upstream} tip`, action: () => navigation.jumpToRef(target.divergedFrom!.upstream) },
+      { label: "Go to merge base", action: () => navigation.jumpToHash(target.divergedFrom!.mergeBaseHash), disabled: !target.divergedFrom.mergeBaseHash },
+    ] : []),
   ];
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -108,7 +152,7 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
   };
 
   if (typeof document === "undefined" || !document.body) return null;
-  const title = target.kind === "tag" ? `Tag ${target.tag.name}` : target.kind === "stash" ? `Stash ${target.stash.name}` : "Working tree";
+  const title = target.kind === "tag" ? `Tag ${target.tag.name}` : target.kind === "stash" ? `Stash ${target.stash.name}` : target.kind === "branch" ? `Branch ${target.branch.shortName}` : "Working tree";
   return createPortal(
     <div className="fixed inset-0 z-[115]" role="presentation"
       onClick={(event) => event.stopPropagation()}

@@ -1,11 +1,45 @@
 use crate::errors::AppError;
-use crate::git::cli::GitCli;
+use crate::git::cli::{required_git_arg, GitCli};
 use crate::git::history_service;
 use crate::git::stash_service;
 use crate::models::{CommitDetails, CommitSummary};
 use std::path::Path;
 
 pub fn get_commit_history(
+    repo_path: &Path,
+    limit: Option<u32>,
+    rev: Option<&str>,
+) -> Result<Vec<CommitSummary>, AppError> {
+    match rev {
+        Some(rev) => get_ref_commit_history(repo_path, limit, rev),
+        None => get_multi_root_commit_history(repo_path, limit),
+    }
+}
+
+/// History reachable from one revision only: the basis for a ref's own history view.
+fn get_ref_commit_history(
+    repo_path: &Path,
+    limit: Option<u32>,
+    rev: &str,
+) -> Result<Vec<CommitSummary>, AppError> {
+    let commit = history_service::resolve_commit(repo_path, rev)?;
+    let limit_str = limit.unwrap_or(50).to_string();
+    let output = GitCli::run(
+        repo_path,
+        &[
+            "log",
+            "--date-order",
+            "--decorate=short",
+            "--max-count",
+            &limit_str,
+            "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D%x00%P",
+            commit.as_str(),
+        ],
+    )?;
+    Ok(parse_commit_log(&output))
+}
+
+fn get_multi_root_commit_history(
     repo_path: &Path,
     limit: Option<u32>,
 ) -> Result<Vec<CommitSummary>, AppError> {
@@ -54,8 +88,11 @@ pub fn get_commit_history(
     ];
     args.extend(roots.iter().map(String::as_str));
     let output = GitCli::run(repo_path, &args)?;
+    Ok(parse_commit_log(&output))
+}
 
-    let commits: Vec<CommitSummary> = output
+fn parse_commit_log(output: &str) -> Vec<CommitSummary> {
+    output
         .lines()
         .filter(|l| !l.is_empty())
         .filter_map(|line| {
@@ -92,9 +129,38 @@ pub fn get_commit_history(
                 parents,
             })
         })
-        .collect();
+        .collect()
+}
 
-    Ok(commits)
+/// Best common ancestor of two revisions, or `None` when they share none.
+///
+/// Exit code 1 is Git's documented "no merge base found" outcome; any other
+/// failure (unknown revision, unborn repository) surfaces as an error.
+pub fn merge_base(
+    repo_path: &Path,
+    from_ref: &str,
+    to_ref: &str,
+) -> Result<Option<String>, AppError> {
+    let from_ref = required_git_arg(from_ref, "reference")?;
+    let to_ref = required_git_arg(to_ref, "reference")?;
+    let (status_code, stdout) = GitCli::run_allowing_statuses(
+        repo_path,
+        &["merge-base", from_ref, to_ref],
+        &[1],
+    )?;
+    if status_code != 0 {
+        return Ok(None);
+    }
+    let base = stdout.trim().to_string();
+    if base.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(base))
+}
+
+/// Full commit hash for any revision (branch, `origin/…` upstream, tag, hash).
+pub fn resolve_revision(repo_path: &Path, rev: &str) -> Result<String, AppError> {
+    history_service::resolve_commit(repo_path, rev)
 }
 
 /// Subject lines of the commits that `head` introduces over `base`, newest first.
@@ -285,6 +351,21 @@ mod tests {
         );
     }
 
+    fn git_output(cwd: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("utf-8 git output")
+    }
+
     fn git_at(cwd: &Path, args: &[&str], iso_date: &str) {
         let output = Command::new("git")
             .args(args)
@@ -312,7 +393,7 @@ mod tests {
         let temp = TestDir::new("empty");
         init_repo(&temp.path);
 
-        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let history = get_commit_history(&temp.path, Some(10), None).expect("history");
 
         assert!(history.is_empty());
     }
@@ -336,7 +417,7 @@ mod tests {
             ],
         );
 
-        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let history = get_commit_history(&temp.path, Some(10), None).expect("history");
         let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
 
         assert_eq!(details.message, "Initial fixture");
@@ -359,7 +440,7 @@ mod tests {
         git(&temp.path, &["branch", "feature,comma"]);
         git(&temp.path, &["tag", "v1,0"]);
 
-        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let history = get_commit_history(&temp.path, Some(10), None).expect("history");
         let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
 
         assert!(
@@ -397,7 +478,7 @@ mod tests {
         git(&temp.path, &["add", "README.md"]);
         git(&temp.path, &["commit", "-m", "Second fixture"]);
 
-        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let history = get_commit_history(&temp.path, Some(10), None).expect("history");
 
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].message, "Second fixture");
@@ -423,7 +504,7 @@ mod tests {
         git(&temp.path, &["add", "main.txt"]);
         git(&temp.path, &["commit", "-m", "Main work"]);
 
-        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10), None)
             .expect("history")
             .into_iter()
             .map(|commit| commit.message)
@@ -456,7 +537,7 @@ mod tests {
         git(&temp.path, &["checkout", "main"]);
         git(&temp.path, &["branch", "-D", "remote-work"]);
 
-        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10), None)
             .expect("history")
             .into_iter()
             .map(|commit| commit.message)
@@ -479,7 +560,7 @@ mod tests {
         fs::write(temp.path.join("README.md"), "# fixture\n\nstashed\n").expect("stash change");
         git(&temp.path, &["stash", "push", "-m", "Temporary stash"]);
 
-        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10), None)
             .expect("history")
             .into_iter()
             .map(|commit| commit.message)
@@ -531,7 +612,7 @@ mod tests {
             "2026-01-05T00:00:00Z",
         );
 
-        let messages: Vec<String> = get_commit_history(&temp.path, Some(10))
+        let messages: Vec<String> = get_commit_history(&temp.path, Some(10), None)
             .expect("history")
             .into_iter()
             .map(|commit| commit.message)
@@ -582,7 +663,7 @@ mod tests {
             "2026-01-03T00:00:00Z",
         );
 
-        let history = get_commit_history(&temp.path, Some(10)).expect("history");
+        let history = get_commit_history(&temp.path, Some(10), None).expect("history");
         assert_eq!(history[0].message, "Merge feature");
 
         let details = get_commit_details(&temp.path, &history[0].hash).expect("details");
@@ -610,7 +691,7 @@ mod tests {
         git(&temp.path, &["checkout", "main"]);
         git(&temp.path, &["branch", "-D", "ephemeral"]);
 
-        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        let commits = get_commit_history(&temp.path, Some(10), None).unwrap();
         let tagged = commits.iter().find(|commit| commit.message == "Tagged-only work").unwrap();
         assert!(tagged.refs.iter().any(|name| name == "tag: release"), "{:?}", tagged.refs);
         assert_eq!(commits.len(), 2);
@@ -628,7 +709,7 @@ mod tests {
         git(&temp.path, &["add", "README.md"]);
         git(&temp.path, &["commit", "-m", "Detached-only work"]);
 
-        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        let commits = get_commit_history(&temp.path, Some(10), None).unwrap();
         assert!(commits.iter().any(|commit| commit.message == "Detached-only work"));
     }
 
@@ -652,11 +733,117 @@ mod tests {
         git(&temp.path, &["checkout", "main"]);
         git(&temp.path, &["branch", "-D", "temporary"]);
 
-        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        let commits = get_commit_history(&temp.path, Some(10), None).unwrap();
         let hashes: Vec<&str> = commits.iter().map(|commit| commit.hash.as_str()).collect();
         assert!(hashes.contains(&stash.base_commit_hash.as_str()));
         assert!(!hashes.contains(&stash.commit_hash.as_str()));
         assert!(!hashes.contains(&stash.index_commit_hash.as_deref().unwrap()));
         assert!(!hashes.contains(&stash.untracked_commit_hash.as_deref().unwrap()));
+    }
+
+    fn diverged_fixture() -> (TestDir, String, String) {
+        let temp = TestDir::new("ref-history");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "base\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git_at(&temp.path, &["commit", "-m", "Shared base"], "2026-01-01T00:00:00Z");
+
+        fs::write(temp.path.join("main.txt"), "main\n").unwrap();
+        git(&temp.path, &["add", "main.txt"]);
+        git_at(&temp.path, &["commit", "-m", "Main-only work"], "2026-01-02T00:00:00Z");
+
+        let remote_head = git_output(&temp.path, &["rev-parse", "HEAD"]);
+        git(&temp.path, &["update-ref", "refs/remotes/origin/main", remote_head.trim()]);
+        git(&temp.path, &["reset", "--hard", "HEAD~1"]);
+        git(&temp.path, &["branch", "topic", "HEAD"]);
+        git(&temp.path, &["checkout", "topic"]);
+        fs::write(temp.path.join("topic.txt"), "topic\n").unwrap();
+        git(&temp.path, &["add", "topic.txt"]);
+        git_at(&temp.path, &["commit", "-m", "Topic-only work"], "2026-01-03T00:00:00Z");
+        (temp, remote_head.trim().to_string(), "topic".to_string())
+    }
+
+    #[test]
+    fn ref_history_walks_only_the_requested_revision() {
+        let (temp, remote_head, _) = diverged_fixture();
+
+        let commits = get_commit_history(&temp.path, Some(10), Some("origin/main")).unwrap();
+        let messages: Vec<&str> = commits.iter().map(|c| c.message.as_str()).collect();
+        assert_eq!(messages, vec!["Main-only work", "Shared base"]);
+
+        let hashes: Vec<&str> = commits.iter().map(|c| c.hash.as_str()).collect();
+        assert!(hashes.contains(&remote_head.as_str()));
+
+        let topic = get_commit_history(&temp.path, Some(10), Some("topic")).unwrap();
+        let messages: Vec<&str> = topic.iter().map(|c| c.message.as_str()).collect();
+        assert_eq!(messages, vec!["Topic-only work", "Shared base"]);
+    }
+
+    #[test]
+    fn ref_history_resolves_remote_names_and_limits() {
+        let (temp, remote_head, _) = diverged_fixture();
+
+        let commits = get_commit_history(&temp.path, Some(1), Some("origin/main")).unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].hash, remote_head);
+    }
+
+    #[test]
+    fn ref_history_rejects_unknown_revision() {
+        let (temp, _, _) = diverged_fixture();
+        let result = get_commit_history(&temp.path, Some(10), Some("no/such/ref"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn merge_base_finds_shared_ancestor_of_diverged_pair() {
+        let (temp, remote_head, _) = diverged_fixture();
+
+        let base = merge_base(&temp.path, "topic", "origin/main").unwrap().unwrap();
+        let all = get_commit_history(&temp.path, Some(10), None).unwrap();
+        let shared = all.iter().find(|c| c.message == "Shared base").unwrap();
+        assert_eq!(base, shared.hash);
+
+        // The pair really has diverged: neither side is an ancestor of the other.
+        let topic_tip = get_commit_history(&temp.path, Some(10), Some("topic")).unwrap()[0].hash.clone();
+        assert_ne!(base, topic_tip);
+        assert_ne!(base, remote_head);
+    }
+
+    #[test]
+    fn merge_base_returns_none_without_common_ancestor() {
+        let temp = TestDir::new("no-merge-base");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("a.txt"), "a\n").unwrap();
+        git(&temp.path, &["add", "a.txt"]);
+        git(&temp.path, &["commit", "-m", "Root A"]);
+        let root_a = git_output(&temp.path, &["rev-parse", "HEAD"]);
+
+        git(&temp.path, &["checkout", "--orphan", "lonely"]);
+        fs::write(temp.path.join("b.txt"), "b\n").unwrap();
+        git(&temp.path, &["add", "b.txt"]);
+        git(&temp.path, &["commit", "-m", "Root B"]);
+
+        assert_eq!(merge_base(&temp.path, "main", "lonely").unwrap(), None);
+        let _ = root_a;
+    }
+
+    #[test]
+    fn merge_base_errors_on_unknown_revision() {
+        let (temp, _, _) = diverged_fixture();
+        assert!(merge_base(&temp.path, "topic", "no/such/ref").is_err());
+    }
+
+    #[test]
+    fn resolve_revision_returns_commit_hash_for_names() {
+        let (temp, remote_head, _) = diverged_fixture();
+
+        assert_eq!(resolve_revision(&temp.path, "origin/main").unwrap(), remote_head);
+        let topic_tip = resolve_revision(&temp.path, "topic").unwrap();
+        let expected = get_commit_history(&temp.path, Some(10), Some("topic")).unwrap()[0]
+            .hash
+            .clone();
+        assert_eq!(topic_tip, expected);
+        assert!(resolve_revision(&temp.path, "no/such/ref").is_err());
     }
 }

@@ -312,6 +312,15 @@ export type GitRefSelection =
   | { kind: "tag"; name: string; commitHash: string }
   | { kind: "stash"; name: string; commitHash: string };
 
+/**
+ * The ref a user is focusing in the history graph: rows and lanes outside its
+ * ancestry fade so the focused lane stands out. Purely visual, never mutates.
+ */
+export interface HistoryFocusSelection {
+  hash: string;
+  label: string;
+}
+
 export interface GitTag {
   name: string;
   commitHash: string;
