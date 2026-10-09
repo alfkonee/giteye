@@ -163,7 +163,7 @@ function ToolCard({ icon, title, ready, detail, children }: { icon: React.ReactN
 function ToolchainShell({ children }: { children: React.ReactNode }) {
   return (
     <AppChrome title="GitEye · Setup">
-      <main className="flex h-full items-center justify-center overflow-y-auto bg-[radial-gradient(circle_at_top,var(--color-bg-surface),var(--color-bg-primary)_55%)] px-5 py-10 text-[var(--color-text-primary)]">{children}</main>
+      <main className="flex h-full flex-col overflow-y-auto bg-[radial-gradient(circle_at_top,var(--color-bg-surface),var(--color-bg-primary)_55%)] px-5 py-10 text-[var(--color-text-primary)]"><div className="my-auto w-full shrink-0">{children}</div></main>
     </AppChrome>
   );
 }
