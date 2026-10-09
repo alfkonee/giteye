@@ -3,6 +3,7 @@ import type {
   AppRoute,
   DiffMode,
   Theme,
+  GitRefSelection,
   GlobalViewType,
   RepositorySessionState,
   SelectedEntityState,
@@ -76,6 +77,8 @@ export interface AppStore {
   setSelectedCommitRange: (hashes: string[]) => void;
   selectedCommitFilePath: string | null;
   setSelectedCommitFilePath: (path: string | null) => void;
+  selectedGitRef: GitRefSelection | null;
+  setSelectedGitRef: (selection: GitRefSelection | null) => void;
 
   selectedFilePath: string | null;
   selectedFileStaged: boolean;
@@ -131,6 +134,7 @@ type ActiveSessionState = Pick<
   | "selectedCommitHash"
   | "selectedCommitRange"
   | "selectedCommitFilePath"
+  | "selectedGitRef"
   | "selectedFilePath"
   | "selectedFileStaged"
   | "selectedPullRequestId"
@@ -156,6 +160,7 @@ function activeStateFromSession(
     selected,
     selectedBranchName: selected.branchName,
     pendingAdvancedBranchName: null,
+    selectedGitRef: null,
     selectedCommitHash: selected.commitHash,
     selectedCommitRange: selected.commitRange,
     selectedCommitFilePath: selected.commitFilePath,
@@ -179,6 +184,7 @@ function emptyActiveState(): ActiveSessionState {
     selected,
     selectedBranchName: null,
     pendingAdvancedBranchName: null,
+    selectedGitRef: null,
     selectedCommitHash: null,
     selectedCommitRange: [],
     selectedCommitFilePath: null,
@@ -320,6 +326,31 @@ export const useAppStore = create<AppStore>((set) => ({
   setPendingAdvancedBranchName: (name) =>
     set({ pendingAdvancedBranchName: name }),
 
+  setSelectedGitRef: (selection) =>
+    set((state) => {
+      const selected = {
+        ...state.selected,
+        commitHash: null,
+        commitRange: [],
+        commitFilePath: null,
+        filePath: null,
+        fileStaged: false,
+      };
+      return syncActiveSession(
+        state,
+        {
+          selectedGitRef: selection,
+          selectedCommitHash: null,
+          selectedCommitRange: [],
+          selectedCommitFilePath: null,
+          selectedFilePath: null,
+          selectedFileStaged: false,
+          selected,
+        },
+        { selected },
+      );
+    }),
+
   setSelectedCommitHash: (hash) =>
     set((state) => {
       const commitRange = hash ? [hash] : [];
@@ -336,6 +367,7 @@ export const useAppStore = create<AppStore>((set) => ({
         state,
         {
           selectedCommitHash: hash,
+          selectedGitRef: null,
           selectedCommitRange: commitRange,
           selectedCommitFilePath: null,
           selectedFilePath: null,
@@ -362,6 +394,7 @@ export const useAppStore = create<AppStore>((set) => ({
         state,
         {
           selectedCommitHash: selected.commitHash,
+          selectedGitRef: null,
           selectedCommitRange: commitRange,
           selectedCommitFilePath: null,
           selectedFilePath: null,
@@ -383,6 +416,7 @@ export const useAppStore = create<AppStore>((set) => ({
         state,
         {
           selectedCommitFilePath: path,
+          selectedGitRef: null,
           selected,
         },
         { selected },
@@ -404,6 +438,7 @@ export const useAppStore = create<AppStore>((set) => ({
         state,
         {
           selectedCommitHash: null,
+          selectedGitRef: null,
           selectedCommitRange: [],
           selectedFilePath: path,
           selectedFileStaged: staged,
@@ -520,6 +555,7 @@ export const useAppStore = create<AppStore>((set) => ({
           activeView: view,
           route,
           selectedCommitHash: null,
+          selectedGitRef: null,
           selectedCommitRange: [],
           selectedCommitFilePath: null,
           selectedFilePath: null,

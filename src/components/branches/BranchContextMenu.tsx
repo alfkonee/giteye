@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { formatRebasePreview } from "../../lib/git-preview";
+import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { gitActionErrorMessage, gitMutations } from "../../lib/git-data";
 import { useBranchPullRequests } from "../../lib/branch-pull-requests";
 import { appDialog } from "../common/AppDialogProvider";
@@ -54,6 +55,7 @@ export function BranchContextMenu({
   const { query: pullRequestsQuery, openPullRequest, isCurrentSelection } =
     useBranchPullRequests(repoPath, branch);
   const pullRequests = pullRequestsQuery.data ?? [];
+  useExclusiveMenu(Boolean(branch), onClose);
 
   useLayoutEffect(() => {
     if (!branch || !menuRef.current) return;

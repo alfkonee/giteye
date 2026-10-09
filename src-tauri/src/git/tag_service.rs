@@ -1,5 +1,7 @@
 use crate::errors::AppError;
+use crate::git::branch_service;
 use crate::git::cli::{required_git_arg, GitCli};
+use crate::git::history_service;
 use crate::models::GitTag;
 use std::path::Path;
 
@@ -10,15 +12,26 @@ pub fn list_tags(repo_path: &Path) -> Result<Vec<GitTag>, AppError> {
             "for-each-ref",
             "refs/tags",
             "--sort=-creatordate",
-            "--format=%(refname:short)%00%(objectname)%00%(objectname:short)%00%(*objectname)%00%(*objectname:short)%00%(subject)%00%(taggername)%00%(creatordate:iso-strict)%00%(objecttype)",
+            "--format=%(refname:short)%00%(objectname)%00%(objectname:short)%00%(*objectname)%00%(*objectname:short)%00%(subject)%00%(taggername)%00%(creatordate:iso-strict)%00%(objecttype)%00%(*objecttype)%00%(contents)%00",
         ],
     )?;
 
-    Ok(output
-        .lines()
-        .filter(|line| !line.is_empty())
+    // Each formatted record ends with NUL + Git's record newline. The
+    // annotated message itself may contain any number of ordinary newlines.
+    let mut tags: Vec<GitTag> = output
+        .split("\0\n")
+        .filter(|record| !record.is_empty())
         .filter_map(parse_tag_line)
-        .collect())
+        .collect();
+    // for-each-ref peels one layer; handle annotated tags of annotated tags.
+    for tag in tags.iter_mut().filter(|tag| tag.annotated && tag.commit_hash.is_empty()) {
+        let reference = format!("refs/tags/{}", tag.name);
+        if let Ok(commit) = history_service::resolve_commit(repo_path, &reference) {
+            tag.short_hash = commit.chars().take(7).collect();
+            tag.commit_hash = commit;
+        }
+    }
+    Ok(tags)
 }
 
 pub fn create_tag(
@@ -53,6 +66,40 @@ pub fn create_tag(
 
     GitCli::run(repo_path, &args)?;
     Ok(())
+}
+
+/// Detach only at the still-current peeled commit target of the named tag.
+pub fn checkout_tag(repo_path: &Path, name: &str, commit_hash: &str) -> Result<(), AppError> {
+    let name = required_tag_name(repo_path, name)?;
+    let expected = required_git_arg(commit_hash, "tag commit hash")?;
+    let reference = format!("refs/tags/{name}");
+    let current = history_service::resolve_commit(repo_path, &reference)
+        .map_err(|_| AppError::GitError(format!("Tag {name} is missing or does not target a commit.")))?;
+    if current != expected {
+        return Err(AppError::GitError(format!(
+            "Tag {name} moved. Refresh tags before checkout."
+        )));
+    }
+    history_service::preflight_history_operation(repo_path)?;
+    GitCli::run(repo_path, &["switch", "--detach", &current])?;
+    Ok(())
+}
+
+/// Create and check out a branch only at the still-current peeled commit
+/// target of the named tag; a moved tag must not silently branch elsewhere.
+pub fn branch_from_tag(repo_path: &Path, name: &str, commit_hash: &str) -> Result<(), AppError> {
+    let name = required_tag_name(repo_path, name)?;
+    let expected = required_git_arg(commit_hash, "tag commit hash")?;
+    let reference = format!("refs/tags/{name}");
+    let current = history_service::resolve_commit(repo_path, &reference)
+        .map_err(|_| AppError::GitError(format!("Tag {name} is missing or does not target a commit.")))?;
+    if current != expected {
+        return Err(AppError::GitError(format!(
+            "Tag {name} moved. Refresh tags before creating a branch."
+        )));
+    }
+    history_service::preflight_history_operation(repo_path)?;
+    branch_service::create_branch(repo_path, name, true, Some(&current))
 }
 
 pub fn delete_tag(repo_path: &Path, name: &str) -> Result<(), AppError> {
@@ -182,17 +229,19 @@ fn parse_tag_line(line: &str) -> Option<GitTag> {
         .filter(|value| !value.is_empty())
         .map(str::to_string);
     let object_type = parts.next().unwrap_or_default();
+    let peeled_type = parts.next().unwrap_or_default();
     let annotated = object_type == "tag";
-
-    let commit_hash = if peeled_hash.is_empty() {
-        object_hash
+    let annotation = if annotated {
+        parts.next().filter(|value| !value.is_empty()).map(str::to_string)
     } else {
-        peeled_hash.to_string()
+        None
     };
-    let short_hash = if peeled_short_hash.is_empty() {
-        object_short_hash
+    let (commit_hash, short_hash) = if !annotated && object_type == "commit" {
+        (object_hash, object_short_hash)
+    } else if annotated && peeled_type == "commit" {
+        (peeled_hash.to_string(), peeled_short_hash.to_string())
     } else {
-        peeled_short_hash.to_string()
+        (String::new(), String::new())
     };
 
     Some(GitTag {
@@ -200,6 +249,7 @@ fn parse_tag_line(line: &str) -> Option<GitTag> {
         commit_hash,
         short_hash,
         subject,
+        annotation,
         tagger,
         timestamp,
         annotated,
@@ -258,7 +308,7 @@ mod tests {
 
     #[test]
     fn parses_lightweight_tag() {
-        let tag = parse_tag_line("v1.0\0abcdef123\0abcdef1\0\0\0release commit\0\0\0commit")
+        let tag = parse_tag_line("v1.0\0abcdef123\0abcdef1\0\0\0release commit\0\0\0commit\0")
             .expect("tag");
 
         assert_eq!(tag.name, "v1.0");
@@ -271,7 +321,7 @@ mod tests {
     #[test]
     fn parses_annotated_tag_target() {
         let tag = parse_tag_line(
-            "v2.0\0tagobject\0tagobj\0commit123\0commit1\0release notes\0Ada Lovelace\02026-06-13T20:00:00+00:00\0tag",
+            "v2.0\0tagobject\0tagobj\0commit123\0commit1\0release notes\0Ada Lovelace\02026-06-13T20:00:00+00:00\0tag\0commit",
         )
         .expect("tag");
 
@@ -300,6 +350,23 @@ mod tests {
             .expect("list tags")
             .iter()
             .all(|tag| tag.name != "v-test"));
+    }
+
+    #[test]
+    fn multiline_annotations_survive_record_parsing_without_consuming_next_tag() {
+        let repo = TestRepo::new("annotation");
+        let message = "Release notes\n\n- First change\n- 第二项\n";
+        run_git(&repo.path, &["tag", "-a", "-m", message, "multi"]);
+        run_git(&repo.path, &["tag", "lightweight"]);
+        run_git(&repo.path, &["tag", "-a", "-m", "Other release", "other"]);
+        let tags = list_tags(&repo.path).unwrap();
+        assert_eq!(tags.len(), 3);
+        let multi = tags.iter().find(|tag| tag.name == "multi").unwrap();
+        assert_eq!(multi.subject.as_deref(), Some("Release notes"));
+        assert!(multi.annotation.as_deref().unwrap().contains("- First change\n- 第二项"));
+        let other = tags.iter().find(|tag| tag.name == "other").unwrap();
+        assert!(other.annotation.as_deref().unwrap().contains("Other release"));
+        assert_eq!(tags.iter().find(|tag| tag.name == "lightweight").unwrap().annotation, None);
     }
 
     #[test]
@@ -365,5 +432,64 @@ mod tests {
             .expect("verify deleted remote tag")
             .status
             .success());
+    }
+
+    #[test]
+    fn noncommit_tags_have_no_checkout_target_and_cannot_detach() {
+        let repo = TestRepo::new("noncommit");
+        let head = GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap();
+        let blob = GitCli::run(&repo.path, &["rev-parse", "HEAD:tracked.txt"]).unwrap();
+        let blob = blob.trim();
+        run_git(&repo.path, &["tag", "blob-light", blob]);
+        run_git(&repo.path, &["tag", "-a", "-m", "points to blob", "blob-annotated", blob]);
+        for tag in list_tags(&repo.path).unwrap() {
+            if tag.name.starts_with("blob-") {
+                assert!(tag.commit_hash.is_empty());
+                assert!(tag.short_hash.is_empty());
+                assert!(checkout_tag(&repo.path, &tag.name, blob).is_err());
+            }
+        }
+        assert_eq!(GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap(), head);
+    }
+
+    #[test]
+    fn detached_checkout_requires_clean_worktree_and_still_current_commit_tag() {
+        let repo = TestRepo::new("checkout");
+        create_tag(&repo.path, "release", None, Some("annotated")).unwrap();
+        let tag = list_tags(&repo.path).unwrap().remove(0);
+        fs::write(repo.path.join("dirty.txt"), "not saved\n").unwrap();
+        assert!(checkout_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        fs::remove_file(repo.path.join("dirty.txt")).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "new head\n").unwrap();
+        run_git(&repo.path, &["add", "tracked.txt"]);
+        run_git(&repo.path, &["commit", "-m", "advance"]);
+        run_git(&repo.path, &["tag", "-f", "release", "HEAD"]);
+        assert!(checkout_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        assert!(GitCli::run(&repo.path, &["symbolic-ref", "-q", "HEAD"]).is_ok());
+        run_git(&repo.path, &["tag", "-f", "release", &tag.commit_hash]);
+        checkout_tag(&repo.path, &tag.name, &tag.commit_hash).unwrap();
+        assert_eq!(GitCli::run(&repo.path, &["symbolic-ref", "-q", "HEAD"]).is_ok(), false);
+        assert_eq!(GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap().trim(), tag.commit_hash);
+    }
+
+    #[test]
+    fn branch_from_tag_requires_current_tag_target_and_checks_out() {
+        let repo = TestRepo::new("branch-from-tag");
+        create_tag(&repo.path, "release", None, Some("annotated")).unwrap();
+        let tag = list_tags(&repo.path).unwrap().remove(0);
+        fs::write(repo.path.join("dirty.txt"), "not saved\n").unwrap();
+        assert!(branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        fs::remove_file(repo.path.join("dirty.txt")).unwrap();
+        fs::write(repo.path.join("tracked.txt"), "new head\n").unwrap();
+        run_git(&repo.path, &["add", "tracked.txt"]);
+        run_git(&repo.path, &["commit", "-m", "advance"]);
+        run_git(&repo.path, &["tag", "-f", "release", "HEAD"]);
+        assert!(branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).is_err());
+        assert!(GitCli::run(&repo.path, &["symbolic-ref", "-q", "HEAD"]).is_ok());
+        assert!(GitCli::run(&repo.path, &["rev-parse", "--verify", "refs/heads/release"]).is_err());
+        run_git(&repo.path, &["tag", "-f", "release", &tag.commit_hash]);
+        branch_from_tag(&repo.path, &tag.name, &tag.commit_hash).unwrap();
+        assert_eq!(GitCli::run(&repo.path, &["branch", "--show-current"]).unwrap().trim(), "release");
+        assert_eq!(GitCli::run(&repo.path, &["rev-parse", "HEAD"]).unwrap().trim(), tag.commit_hash);
     }
 }

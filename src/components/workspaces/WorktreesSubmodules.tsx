@@ -627,7 +627,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 xl:grid-cols-[minmax(0,1fr)_340px] xl:overflow-hidden">
-        <main className="min-h-0 overflow-hidden">
+        <main className="min-h-[420px] overflow-hidden xl:min-h-0">
           {activeWorkspaceSection === "worktrees" ? (
             <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] shadow-[var(--shadow-panel)]">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-muted)] px-4 py-3">
@@ -646,7 +646,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
                   </label>
                   <Button variant="primary" disabled={!activeRepoPath || isWorktreeMutating} onClick={openCreateWorktreeDialog}>{createWorktree.isPending ? "Creating…" : "Create Worktree"}</Button>
                   <Button variant="secondary" disabled={!activeRepoPath || pruneWorktreesDryRun.isPending} onClick={handlePreviewPrune}>Preview prune</Button>
-                  <Button variant="secondary" iconOnly disabled={!activeRepoPath || pruneWorktrees.isPending} onClick={handlePruneWorktrees} title="Prune stale worktrees"><RefreshCw className={`h-4 w-4 ${pruneWorktrees.isPending ? "animate-spin" : ""}`} /></Button>
+                  <Button variant="secondary" iconOnly icon={<RefreshCw className={`h-4 w-4 ${pruneWorktrees.isPending ? "animate-spin" : ""}`} />} disabled={!activeRepoPath || pruneWorktrees.isPending} onClick={handlePruneWorktrees} title="Prune stale worktrees">Prune stale worktrees</Button>
                 </div>
               </div>
               {prunePreviewPaths.length > 0 ? (

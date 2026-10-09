@@ -35,6 +35,18 @@ impl GitCli {
             .unwrap_or_else(|| PathBuf::from("git"));
         let mut command = Command::new(executable);
         Self::configure_command_environment(&mut command);
+        // GitEye parses and re-applies diff output, which requires canonical `a/` `b/`
+        // prefixes; user settings like diff.mnemonicPrefix (`i/` `w/` `c/`) break that.
+        command.args([
+            "-c",
+            "diff.mnemonicPrefix=false",
+            "-c",
+            "diff.noprefix=false",
+            "-c",
+            "diff.srcPrefix=a/",
+            "-c",
+            "diff.dstPrefix=b/",
+        ]);
         command
     }
 

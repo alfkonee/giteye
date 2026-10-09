@@ -244,7 +244,6 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -319,6 +318,47 @@ mod tests {
         assert!(repo.git_output(&["status", "--porcelain"]).is_empty());
     }
 
+    #[test]
+    fn discards_hunks_regardless_of_user_diff_prefix_config() {
+        let prefix_configs: &[&[(&str, &str)]] = &[
+            &[("diff.mnemonicPrefix", "true")],
+            &[("diff.noprefix", "true")],
+            &[("diff.srcPrefix", "old/"), ("diff.dstPrefix", "new/")],
+        ];
+
+        for config in prefix_configs {
+            let repo = TestRepo::new();
+            repo.write("file.txt", "one\ntwo\nthree\n");
+            repo.git(&["init"]);
+            repo.git(&["config", "user.email", "test@example.com"]);
+            repo.git(&["config", "user.name", "Test User"]);
+            repo.git(&["config", "core.autocrlf", "false"]);
+            repo.git(&["config", "core.eol", "lf"]);
+            for (key, value) in *config {
+                repo.git(&["config", key, value]);
+            }
+            repo.git(&["add", "file.txt"]);
+            repo.git(&["commit", "-m", "initial"]);
+
+            repo.write("file.txt", "one\nTWO\nthree\n");
+            let unstaged_patch = GitCli::run(&repo.path, &["diff", "--", "file.txt"]).unwrap();
+            assert!(
+                unstaged_patch.starts_with("diff --git a/file.txt b/file.txt\n"),
+                "{config:?} produced non-canonical header: {unstaged_patch}"
+            );
+            discard_hunk(&repo.path, "file.txt", false, &unstaged_patch).unwrap();
+            assert_eq!(repo.read("file.txt"), "one\ntwo\nthree\n", "{config:?}");
+
+            repo.write("file.txt", "one\nTWO\nthree\n");
+            repo.git(&["add", "file.txt"]);
+            let staged_patch =
+                GitCli::run(&repo.path, &["diff", "--cached", "--", "file.txt"]).unwrap();
+            discard_hunk(&repo.path, "file.txt", true, &staged_patch).unwrap();
+            assert_eq!(repo.read("file.txt"), "one\ntwo\nthree\n", "{config:?}");
+            assert!(repo.git_output(&["status", "--porcelain"]).is_empty(), "{config:?}");
+        }
+    }
+
     struct TestRepo {
         path: PathBuf,
     }
@@ -343,7 +383,7 @@ mod tests {
         }
 
         fn git(&self, args: &[&str]) {
-            let output = Command::new("git")
+            let output = GitCli::command()
                 .args(args)
                 .current_dir(&self.path)
                 .output()
@@ -357,7 +397,7 @@ mod tests {
         }
 
         fn git_output(&self, args: &[&str]) -> String {
-            let output = Command::new("git")
+            let output = GitCli::command()
                 .args(args)
                 .current_dir(&self.path)
                 .output()

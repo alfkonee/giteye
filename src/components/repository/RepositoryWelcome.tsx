@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   CheckCircle2,
@@ -20,6 +21,7 @@ import { gitMutations, gitQueries } from "../../lib/git-data";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
+import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { formatRelativeTime } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { appDialog } from "../common/AppDialogProvider";
@@ -638,6 +640,43 @@ function RecentRow({
   onRemoveRecent: (path: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  useExclusiveMenu(menuOpen, () => setMenuOpen(false));
+
+  // The recents list clips overflow, so the menu renders in a portal and is
+  // placed against the viewport: below the trigger, or above it near the bottom.
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPosition(null);
+      return;
+    }
+    const updatePosition = () => {
+      const anchor = menuButtonRef.current?.getBoundingClientRect();
+      const menu = menuRef.current?.getBoundingClientRect();
+      if (!anchor || !menu) return;
+      const below = anchor.bottom + 4;
+      const top = below + menu.height + 8 <= window.innerHeight ? below : anchor.top - menu.height - 4;
+      setMenuPosition({
+        left: Math.max(8, Math.min(anchor.right - menu.width, window.innerWidth - menu.width - 8)),
+        top: Math.max(8, top),
+      });
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <div className="group relative flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-bg-hover)]">
       <button type="button" onClick={() => onOpen(repo.path)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -676,6 +715,7 @@ function RecentRow({
           <Star className={cn("h-4 w-4", isFavorite && "fill-current text-[var(--color-star)]")} />
         </button>
         <button
+          ref={menuButtonRef}
           type="button"
           aria-label={`More actions for ${repo.name}`}
           title="More actions"
@@ -685,35 +725,43 @@ function RecentRow({
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-            <div role="menu" aria-label={`Actions for ${repo.name}`} className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] py-1 shadow-[var(--shadow-elevated)]">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  void navigator.clipboard.writeText(repo.path);
-                }}
-                className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+        {menuOpen &&
+          createPortal(
+            <div className="fixed inset-0 z-[120]" role="presentation" onMouseDown={() => setMenuOpen(false)}>
+              <div
+                ref={menuRef}
+                role="menu"
+                aria-label={`Actions for ${repo.name}`}
+                className="giteye-context-menu fixed w-52 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-elevated)] shadow-[var(--shadow-elevated)]"
+                style={menuPosition ?? { left: 0, top: 0, visibility: "hidden" }}
+                onMouseDown={(event) => event.stopPropagation()}
               >
-                Copy Path
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onRemoveRecent(repo.path);
-                }}
-                className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
-              >
-                Remove from Recents
-              </button>
-            </div>
-          </>
-        )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void navigator.clipboard.writeText(repo.path);
+                  }}
+                  className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)]"
+                >
+                  Copy Path
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRemoveRecent(repo.path);
+                  }}
+                  className="giteye-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-danger)] hover:bg-[var(--color-bg-hover)]"
+                >
+                  Remove from Recents
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )}
       </span>
     </div>
   );

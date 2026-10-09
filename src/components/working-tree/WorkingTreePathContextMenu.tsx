@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Archive,
@@ -56,6 +57,7 @@ export function WorkingTreePathContextMenu({
 }: WorkingTreePathContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: target?.x ?? 0, top: target?.y ?? 0 });
+  useExclusiveMenu(Boolean(target), onClose);
 
   useLayoutEffect(() => {
     if (!target || !menuRef.current) return;

@@ -14,6 +14,7 @@
 ## Highlights
 
 - **Repository workspace** — stage and unstage files, commit and amend, inspect history and diffs, manage remotes, tags, stashes, Git LFS, and multiple repositories.
+- **Tags and stashes in history** — inspect actionable tag labels and saved-work nodes at their base commits, browse staged/unstaged/untracked stash diffs, and manage refs from context menus. The resizable details sidebar disappears when nothing is selected.
 - **Safer branch switching** — move, stash, or explicitly discard working-copy changes; ignored paths and unsafe nested repositories are protected.
 - **Merge and rebase workflows** — preview operations, resolve conflicts, edit rebase plans, use autosquash, and recover interrupted Git jobs.
 - **Worktrees and submodules** — background loading, metadata watching, management actions, and linked-worktree awareness.
@@ -48,7 +49,7 @@ giteye --help
 giteye --version
 ```
 
-Nested directories resolve to their Git root; linked worktrees open as separate workspaces. To manage the launcher directly:
+Launching from a terminal starts GitEye in the background and returns the prompt immediately; closing the terminal does not close the app. Nested directories resolve to their Git root; linked worktrees open as separate workspaces. To manage the launcher directly:
 
 ```sh
 /path/to/giteye --install-cli
@@ -102,6 +103,8 @@ bun run qa:seed
 ```
 
 See [docs/manual-qa.md](docs/manual-qa.md) for the manual verification matrix.
+
+For a scripted product demo, `bun run demo:seed` builds `~/giteye-demo`; see [docs/demo.md](docs/demo.md).
 
 ### Desktop builds
 

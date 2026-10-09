@@ -224,6 +224,55 @@ function seedGitlinkConflict() {
   return parent;
 }
 
+function seedTagsStashesRepo() {
+  const repo = initRepo("tags-stashes-repo");
+  writeFileSync(join(repo, "source.txt"), "base\n");
+  writeFileSync(join(repo, "delete-me.txt"), "saved before deletion\n");
+  writeFileSync(join(repo, "binary.bin"), Buffer.from([0, 1, 2]));
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-m", "Tag and stash base"]);
+  git(repo, ["tag", "v1.0.0"]);
+  git(repo, ["tag", "-a", "v1.0.1", "-m", "Annotated release\n\nRelease notes for inspection."]);
+  git(repo, ["tag", "release/long-name-for-overflow-α"]);
+  writeFileSync(join(repo, "source.txt"), "staged version\n");
+  git(repo, ["add", "source.txt"]);
+  writeFileSync(join(repo, "source.txt"), "unstaged version\n");
+  rmSync(join(repo, "delete-me.txt"));
+  writeFileSync(join(repo, "binary.bin"), Buffer.from([0, 3, 4]));
+  writeFileSync(join(repo, "untracked-α.txt"), "saved untracked content\n");
+  git(repo, ["stash", "push", "-u", "-m", "Staged, unstaged, binary, deleted and untracked"]);
+  writeFileSync(join(repo, "source.txt"), "second saved version\n");
+  git(repo, ["stash", "push", "-m", "Second stash at the same base"]);
+  for (let index = 1; index <= 110; index += 1) {
+    writeFileSync(join(repo, "history.txt"), `History page ${index}\n`);
+    git(repo, ["add", "history.txt"]);
+    git(repo, ["commit", "-m", `Pagination fixture ${index}`]);
+  }
+  git(repo, ["switch", "-c", "feature/deleted-stash-origin"]);
+  writeFileSync(join(repo, "feature.txt"), "feature base\n");
+  git(repo, ["add", "feature.txt"]);
+  git(repo, ["commit", "-m", "Base reachable only through a stash"]);
+  writeFileSync(join(repo, "feature.txt"), "saved feature work\n");
+  git(repo, ["stash", "push", "-m", "Stash from a deleted branch"]);
+  git(repo, ["switch", "main"]);
+  git(repo, ["branch", "-D", "feature/deleted-stash-origin"]);
+  git(repo, ["switch", "--orphan", "tag-only-origin"]);
+  writeFileSync(join(repo, "release.txt"), "tag-only root\n");
+  git(repo, ["add", "release.txt"]);
+  git(repo, ["commit", "-m", "History reachable only through a tag"]);
+  git(repo, ["tag", "-a", "tag-only-release", "-m", "Tag-only history"]);
+  git(repo, ["switch", "main"]);
+  git(repo, ["branch", "-D", "tag-only-origin"]);
+  const remote = join(root, "tags-stashes-remote.git");
+  git(root, ["init", "--bare", remote]);
+  git(repo, ["remote", "add", "origin", remote]);
+  git(repo, ["push", "-u", "origin", "main"]);
+  git(repo, ["push", "origin", "--tags"]);
+  writeFileSync(join(repo, "source.txt"), "live working tree\n");
+  writeFileSync(join(repo, "live-untracked.txt"), "live unsaved work\n");
+  return repo;
+}
+
 function assertRepoExists(label, repo) {
   if (!existsSync(join(repo, ".git"))) {
     throw new Error(`${label} repository was not seeded at ${repo}`);
@@ -267,6 +316,7 @@ const repos = {
   cherryPick: seedOperationConflict("cherry-pick"),
   revert: seedOperationConflict("revert"),
   gitlink: seedGitlinkConflict(),
+  tagsStashes: seedTagsStashesRepo(),
 };
 
 verifySeededRepos(repos);

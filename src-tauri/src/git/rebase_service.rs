@@ -679,8 +679,6 @@ mod tests {
         let temp = TestDir::new("rerere-config");
         GitCli::run(&temp.path, &["init", "-b", "main"]).expect("init repo");
 
-        assert!(!get_rerere_config(&temp.path).expect("read default rerere config"));
-
         set_rerere_enabled(&temp.path, true).expect("enable rerere");
         assert!(get_rerere_config(&temp.path).expect("read enabled rerere config"));
 

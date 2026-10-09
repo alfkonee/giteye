@@ -2,16 +2,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() -> std::process::ExitCode {
+    // Release builds remain GUI apps; attaching lets CLI commands write
+    // help/errors to the terminal that launched them, without creating one.
     #[cfg(windows)]
-    if std::env::args_os().len() > 1 {
-        // Release builds remain GUI apps; explicit CLI commands can still write
-        // help/errors to the terminal that launched them, without creating one.
-        unsafe {
-            windows_sys::Win32::System::Console::AttachConsole(
-                windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
-            );
-        }
-    }
+    let from_terminal = unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(
+            windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        )
+    } != 0;
+    #[cfg(not(windows))]
+    let from_terminal = {
+        use std::io::IsTerminal;
+        std::io::stdin().is_terminal()
+            || std::io::stdout().is_terminal()
+            || std::io::stderr().is_terminal()
+    };
     match giteye_lib::launch::parse_arguments(std::env::args_os().skip(1)) {
         Ok(giteye_lib::launch::LaunchArguments::Help) => {
             println!("{}", giteye_lib::launch::HELP);
@@ -41,6 +46,17 @@ fn main() -> std::process::ExitCode {
             }
         }
         Ok(giteye_lib::launch::LaunchArguments::Open(path)) => {
+            // Terminal launches must return the prompt immediately. Debug builds stay
+            // attached so `tauri dev` keeps supervising the process and its logs.
+            if from_terminal && !cfg!(debug_assertions) {
+                if let Err(error) =
+                    giteye_lib::launch::spawn_detached(std::env::args_os().skip(1))
+                {
+                    eprintln!("giteye: cannot start GitEye in the background: {error}");
+                    return std::process::ExitCode::FAILURE;
+                }
+                return std::process::ExitCode::SUCCESS;
+            }
             let intent = path.map(|path| {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 giteye_lib::launch::LaunchIntent::repository(&path, &cwd)

@@ -1,6 +1,29 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Copy, FileText, GitBranch, GitPullRequest, KeyRound, Monitor, Moon, Palette, Save, ShieldCheck, SlidersHorizontal, Sun, Undo2, User, Trash2, Radio, Download, Upload, Wrench, type LucideIcon, Info } from "lucide-react";
+import {
+  Bot,
+  Copy,
+  FileText,
+  GitBranch,
+  GitPullRequest,
+  KeyRound,
+  Monitor,
+  Moon,
+  Palette,
+  Save,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sun,
+  Undo2,
+  User,
+  Trash2,
+  Radio,
+  Download,
+  Upload,
+  Wrench,
+  type LucideIcon,
+  Info,
+} from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import {
@@ -19,7 +42,8 @@ import { useNoticeStore } from "../../stores/notice-store";
 import { Button, Select } from "../ui";
 import { AboutSettings } from "./AboutSettings";
 
-type SettingsTab = "general" | "appearance" | "toolchain" | "ai" | "security" | "about";
+type SettingsTab =
+  "general" | "appearance" | "toolchain" | "ai" | "security" | "about";
 
 export function SettingsPlaceholder() {
   const theme = useAppStore((s) => s.theme);
@@ -472,7 +496,11 @@ export function SettingsPlaceholder() {
             </Button>
           </div>
         </div>
-        <nav className="mt-4 flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Settings sections">
+        <nav
+          className="mt-4 flex items-center gap-1 overflow-x-auto"
+          role="tablist"
+          aria-label="Settings sections"
+        >
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
