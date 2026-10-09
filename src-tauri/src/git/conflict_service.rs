@@ -425,7 +425,7 @@ pub fn get_conflict_content(
         file_path: file_path.into(),
         absolute_path: path.absolute.to_string_lossy().into(),
         operation_id,
-        revision: format!("{:x}", revision.finalize()),
+        revision: hex::encode(revision.finalize()),
         kind: kind.into(),
         base,
         ours,
@@ -1073,6 +1073,11 @@ mod tests {
     fn draft_save_is_unstaged_and_stale_write_preserves_external_edit() {
         let repo = Repo::conflict(b"base\n", b"ours\n", b"theirs\n");
         let content = get_conflict_content(&repo.0, "file.txt").unwrap();
+        assert_eq!(content.revision.len(), 64);
+        assert!(content
+            .revision
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
         save_conflict_result(
             &repo.0,
             &request(
