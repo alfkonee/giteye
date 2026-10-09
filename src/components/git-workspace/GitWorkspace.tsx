@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import {
   AlertTriangle,
   ArrowDown,
@@ -275,8 +275,8 @@ export function GitWorkspace() {
         </div>
       ) : null}
 
-      <PanelGroup direction="vertical" className="min-h-0 flex-1">
-        <Panel id="workspace-main" order={1} minSize={30}>
+      <Group orientation="vertical" className="min-h-0 flex-1">
+        <Panel id="workspace-main" minSize="30%">
           <div className="h-full overflow-hidden">
             <CommitHistory onActivateBranch={branchActivation.activateBranch} />
           </div>
@@ -284,15 +284,10 @@ export function GitWorkspace() {
 
         {drawerTab ? (
           <>
-            <PanelResizeHandle className="group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
+            <Separator className="group relative h-px cursor-row-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]">
               <div className="absolute -inset-y-1.5 inset-x-0" />
-            </PanelResizeHandle>
-            <Panel
-              id="workspace-drawer"
-              order={2}
-              defaultSize={42}
-              minSize={18}
-            >
+            </Separator>
+            <Panel id="workspace-drawer" defaultSize="42%" minSize="18%">
               <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)]">
                 <div className="flex shrink-0 items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-2 py-1">
                   <div className="giteye-segmented">
@@ -326,7 +321,7 @@ export function GitWorkspace() {
             </Panel>
           </>
         ) : null}
-      </PanelGroup>
+      </Group>
       {activeRepoPath && (
         <ConflictResolverDialog
           key={activeRepoPath}

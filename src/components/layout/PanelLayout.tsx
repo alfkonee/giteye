@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { getViewDefinition } from "../../lib/view-registry";
@@ -33,7 +33,6 @@ export function PanelLayout() {
   const isNarrowLayout = useMediaQuery("(max-width: 820px)");
   const activeViewDefinition = getViewDefinition(activeView);
   const layoutRef = useRef<HTMLDivElement>(null);
-  const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
   const [layoutWidth, setLayoutWidth] = useState(0);
   const rememberedSizes = useRef({ horizontal: 40, vertical: 40 });
   useLayoutEffect(() => {
@@ -250,23 +249,35 @@ export function PanelLayout() {
     activeRepoPath && activeViewDefinition.detailPane &&
     (selectedGitRef || selectedCommitHash || selectedCommitRange.length > 0 || selectedFilePath),
   );
-  // Adding a panel normalizes both defaults; explicitly restore the saved split.
+  // v4 registers conditional panels after rendering; supply a matching default
+  // layout rather than applying an imperative split to the previous panel set.
   const desiredDetailSize = Math.min(70, Math.max(detailMinSize, rememberedSizes.current[direction]));
-  useLayoutEffect(() => {
-    panelGroupRef.current?.setLayout(showDetailPane
-      ? [100 - desiredDetailSize, desiredDetailSize]
-      : [100]);
-  }, [showDetailPane, direction, desiredDetailSize]);
+  const defaultLayout: Record<string, number> = showDetailPane
+    ? { "repository-main": 100 - desiredDetailSize, "repository-details": desiredDetailSize }
+    : { "repository-main": 100 };
 
   return (
     <div ref={layoutRef} className="h-full min-w-0 overflow-hidden bg-[var(--color-bg-primary)]">
-      <PanelGroup ref={panelGroupRef} direction={direction} className="h-full">
-        <Panel id="repository-main" order={1} defaultSize={100 - desiredDetailSize} minSize={30}>
+      <Group
+        key={direction}
+        defaultLayout={defaultLayout}
+        orientation={direction}
+        className="h-full"
+        onLayoutChanged={(layout, { isUserInteraction }) => {
+          // Ignore initialization/constraint updates and the main-only layout.
+          // Each orientation keeps its own user-selected split.
+          const detailSize = layout["repository-details"];
+          if (showDetailPane && isUserInteraction && detailSize !== undefined) {
+            rememberedSizes.current[direction] = Math.min(70, Math.max(detailMinSize, detailSize));
+          }
+        }}
+      >
+        <Panel id="repository-main" defaultSize={showDetailPane ? `${100 - desiredDetailSize}%` : "100%"} minSize="30%">
           <div className="h-full overflow-hidden">{mainContent}</div>
         </Panel>
         {showDetailPane ? (
           <>
-            <PanelResizeHandle
+            <Separator
               id="repository-details-resize"
               aria-label="Resize details sidebar"
               className={stacked
@@ -274,16 +285,12 @@ export function PanelLayout() {
                 : "group relative w-px cursor-col-resize bg-[var(--color-border-muted)] transition-colors hover:bg-[var(--color-accent)] active:bg-[var(--color-accent)]"}
             >
               <div className={stacked ? "absolute -inset-y-1.5 inset-x-0" : "absolute inset-y-0 -inset-x-1.5"} />
-            </PanelResizeHandle>
+            </Separator>
             <Panel
               id="repository-details"
-              order={2}
-              defaultSize={desiredDetailSize}
-              minSize={detailMinSize}
-              maxSize={70}
-              onResize={(size) => {
-                rememberedSizes.current[direction] = size;
-              }}
+              defaultSize={`${desiredDetailSize}%`}
+              minSize={`${detailMinSize}%`}
+              maxSize="70%"
             >
               <div className="h-full min-w-0 overflow-auto bg-[var(--color-bg-primary)]">
                 {renderDetailPane()}
@@ -291,7 +298,7 @@ export function PanelLayout() {
             </Panel>
           </>
         ) : null}
-      </PanelGroup>
+      </Group>
     </div>
   );
 }
