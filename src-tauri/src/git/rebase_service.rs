@@ -241,7 +241,7 @@ pub fn get_operation_summary(repo_path: &Path) -> Result<OperationSnapshot, AppE
                 hash.update(modified.as_nanos().to_le_bytes());
             }
         }
-        Some(format!("{:x}", hash.finalize()))
+        Some(hex::encode(hash.finalize()))
     } else {
         None
     };
@@ -718,6 +718,11 @@ mod tests {
             );
             let snapshot = super::get_operation_summary(&temp.path).unwrap();
             assert_eq!(snapshot.operation.as_deref(), Some(operation));
+            let id = snapshot.id.as_deref().unwrap();
+            assert_eq!(id.len(), 64);
+            assert!(id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
             assert_eq!(snapshot.phase, "conflicted");
             assert_eq!(snapshot.source.as_ref().unwrap().hash, incoming);
             assert!(super::preflight_operation_action(

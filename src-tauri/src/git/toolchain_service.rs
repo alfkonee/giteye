@@ -371,7 +371,7 @@ fn verify_asset_digest(asset: &GithubAsset, bytes: &[u8]) -> Result<(), AppError
         .ok_or_else(|| {
             AppError::GitError("Git LFS release is missing a SHA-256 digest".to_string())
         })?;
-    let actual = format!("{:x}", Sha256::digest(bytes));
+    let actual = hex::encode(Sha256::digest(bytes));
     if actual != expected {
         return Err(AppError::GitError(
             "Downloaded Git LFS archive failed SHA-256 verification".to_string(),
@@ -580,7 +580,7 @@ fn ensure_micromamba(
         &format!("https://micro.mamba.pm/api/micromamba/{platform}/{MICROMAMBA_VERSION}"),
     )?;
     ensure_not_canceled(cancellation)?;
-    let actual_digest = format!("{:x}", Sha256::digest(&bytes));
+    let actual_digest = hex::encode(Sha256::digest(&bytes));
     if actual_digest != expected_digest {
         return Err(AppError::GitError(
             "Micromamba bootstrap archive failed SHA-256 verification".to_string(),
@@ -745,6 +745,24 @@ mod tests {
         assert!(clean_version(Some("2.50; rm -rf /")).is_err());
         assert!(clean_version(Some("../../git")).is_err());
         assert!(clean_version(Some("2.50:1")).is_err());
+    }
+
+    #[test]
+    fn lfs_checksum_accepts_release_digest_and_rejects_changed_download() {
+        let asset = GithubAsset {
+            name: "git-lfs.tar.gz".to_string(),
+            browser_download_url: "https://example.test/lfs".to_string(),
+            digest: Some(
+                "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    .to_string(),
+            ),
+        };
+        assert!(verify_asset_digest(&asset, b"abc").is_ok());
+        assert!(matches!(
+            verify_asset_digest(&asset, b"abd"),
+            Err(AppError::GitError(message))
+                if message == "Downloaded Git LFS archive failed SHA-256 verification"
+        ));
     }
 
     #[test]
