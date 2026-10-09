@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type MouseEvent } from "react";
-import type { Branch, CommitSummary } from "../../types/git";
+import type { Branch, CommitSummary, GitTag } from "../../types/git";
+import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
 import type { CommitGraphRow, OperationRoleBadge } from "./commit-graph";
@@ -10,16 +11,18 @@ import {
 } from "./HistorySurgeryActions";
 import {
   buildDisplayRefs,
-  describeRef,
   RefPill,
+  RefOverflowChooser,
   type DisplayRef,
 } from "./commit-refs";
+import { GitRefContextMenu } from "./GitRefContextMenu";
 import { describeBranchActivation } from "../../lib/branch-activation";
 
 interface CommitListItemProps {
   commit: CommitSummary;
   graph: CommitGraphRow;
   branches: Branch[] | undefined;
+  tags: GitTag[] | undefined;
   operationRoles?: OperationRoleBadge[];
   isSelected: boolean;
   onSelect: (commit: CommitSummary, event: MouseEvent<HTMLDivElement>) => void;
@@ -35,17 +38,39 @@ export function CommitListItem({
   commit,
   graph,
   branches,
+  tags,
   operationRoles,
   isSelected,
   onSelect,
   onActivateBranch,
 }: CommitListItemProps) {
-  const displayRefs = buildDisplayRefs(commit.refs, branches);
+  const displayRefs = buildDisplayRefs(commit.refs, branches, tags, commit.hash);
+  const setSelectedGitRef = useAppStore((state) => state.setSelectedGitRef);
   const isHead = displayRefs.some((ref) => ref.isHead);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
   } | null>(null);
+  const [tagMenu, setTagMenu] = useState<{ tag: GitTag; x: number; y: number } | null>(null);
+  const renderRef = (ref: DisplayRef, menuItem = false) => {
+    const branch = !ref.isTag && ref.label !== "HEAD"
+      ? branches?.find((candidate) => candidate.shortName === ref.label && candidate.isRemote === ref.isRemote)
+      : undefined;
+    const tag = ref.tag;
+    return (
+      <RefPill
+        key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
+        displayRef={ref}
+        onSelectedRow={isSelected}
+        className={menuItem ? "w-full min-w-0" : "max-w-[110px]"}
+        menuItem={menuItem}
+        onActivate={branch ? () => onActivateBranch(branch) : undefined}
+        activationTitle={branch ? describeBranchActivation(branch, branches ?? []) : undefined}
+        onInspect={tag ? () => setSelectedGitRef({ kind: "tag", name: tag.name, commitHash: tag.commitHash }) : undefined}
+        onOpenMenu={tag ? (x, y) => setTagMenu({ tag, x, y }) : undefined}
+      />
+    );
+  };
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -104,39 +129,12 @@ export function CommitListItem({
         </span>
         {displayRefs.length > 0 && (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
-            {displayRefs.slice(0, 2).map((ref) => {
-              const branch =
-                !ref.isTag && ref.label !== "HEAD"
-                  ? branches?.find(
-                      (candidate) =>
-                        candidate.shortName === ref.label &&
-                        candidate.isRemote === ref.isRemote,
-                    )
-                  : undefined;
-              return (
-                <RefPill
-                  key={`${ref.label}-${ref.isTag ? "tag" : ref.isHead ? "head" : "ref"}`}
-                  displayRef={ref}
-                  onSelectedRow={isSelected}
-                  className="max-w-[110px]"
-                  onActivate={
-                    branch ? () => onActivateBranch(branch) : undefined
-                  }
-                  activationTitle={
-                    branch
-                      ? describeBranchActivation(branch, branches ?? [])
-                      : undefined
-                  }
-                />
-              );
-            })}
+            {displayRefs.slice(0, 2).map((ref) => renderRef(ref))}
             {displayRefs.length > 2 && (
-              <span
-                className="text-[10px] text-[var(--color-text-muted)]"
-                title={displayRefs.slice(2).map(describeRef).join("\n")}
-              >
-                +{displayRefs.length - 2}
-              </span>
+              <RefOverflowChooser
+                refs={displayRefs.slice(2)}
+                renderRef={(ref) => renderRef(ref, true)}
+              />
             )}
           </span>
         )}
@@ -170,6 +168,14 @@ export function CommitListItem({
           onClose={() => setContextMenu(null)}
         />
       ) : null}
+      {tagMenu && (
+        <GitRefContextMenu
+          target={{ kind: "tag", tag: tagMenu.tag }}
+          x={tagMenu.x}
+          y={tagMenu.y}
+          onClose={() => setTagMenu(null)}
+        />
+      )}
     </div>
   );
 }

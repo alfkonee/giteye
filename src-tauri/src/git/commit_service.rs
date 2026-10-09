@@ -1,5 +1,7 @@
 use crate::errors::AppError;
 use crate::git::cli::GitCli;
+use crate::git::history_service;
+use crate::git::stash_service;
 use crate::models::{CommitDetails, CommitSummary};
 use std::path::Path;
 
@@ -7,26 +9,51 @@ pub fn get_commit_history(
     repo_path: &Path,
     limit: Option<u32>,
 ) -> Result<Vec<CommitSummary>, AppError> {
-    if GitCli::run(repo_path, &["rev-parse", "--verify", "HEAD"]).is_err() {
+    let limit_str = limit.unwrap_or(50).to_string();
+    let mut roots = Vec::new();
+    if let Ok(head) = GitCli::run(repo_path, &["rev-parse", "--verify", "HEAD^{commit}"]) {
+        roots.push(head.trim().to_string());
+    }
+    let refs = GitCli::run(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--format=%(objectname)%00%(objecttype)%00%(*objectname)%00%(*objecttype)%00%(refname)",
+            "refs/heads", "refs/remotes", "refs/tags",
+        ],
+    )?;
+    for line in refs.lines() {
+        let mut fields = line.split('\0');
+        let oid = fields.next().unwrap_or_default();
+        let kind = fields.next().unwrap_or_default();
+        let peeled = fields.next().unwrap_or_default();
+        let peeled_kind = fields.next().unwrap_or_default();
+        let name = fields.next().unwrap_or_default();
+        if kind == "commit" {
+            roots.push(oid.to_string());
+        } else if peeled_kind == "commit" {
+            roots.push(peeled.to_string());
+        } else if peeled_kind == "tag" {
+            // Nested annotated tags need recursive peeling; ordinary tags
+            // share the batched ref walk instead of spawning Git per tag.
+            if let Ok(commit) = history_service::resolve_commit(repo_path, name) {
+                roots.push(commit);
+            }
+        }
+    }
+    roots.extend(stash_service::list_stashes(repo_path)?.into_iter().map(|stash| stash.base_commit_hash));
+    roots.sort_unstable();
+    roots.dedup();
+    if roots.is_empty() {
         return Ok(Vec::new());
     }
 
-    let limit_str = limit
-        .map(|l| l.to_string())
-        .unwrap_or_else(|| "50".to_string());
-
-    let output = GitCli::run(
-        repo_path,
-        &[
-            "log",
-            "--date-order",
-            "--max-count",
-            &limit_str,
-            "--branches",
-            "--remotes",
-            "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D%x00%P",
-        ],
-    )?;
+    let mut args = vec![
+        "log", "--date-order", "--decorate=short", "--max-count", &limit_str,
+        "--format=%H%x00%h%x00%s%x00%an%x00%ae%x00%aI%x00%D%x00%P",
+    ];
+    args.extend(roots.iter().map(String::as_str));
+    let output = GitCli::run(repo_path, &args)?;
 
     let commits: Vec<CommitSummary> = output
         .lines()
@@ -44,7 +71,7 @@ pub fn get_commit_history(
                 refs_str
                     .split(',')
                     .map(|r| r.trim())
-                    .filter(|r| !r.is_empty() && !r.starts_with("tag: "))
+                    .filter(|r| !r.is_empty())
                     .map(|r| r.to_string())
                     .collect()
             };
@@ -564,5 +591,72 @@ mod tests {
             "clean merge must list merged files, got {:?}",
             details.changed_files
         );
+    }
+
+    #[test]
+    fn history_includes_tag_only_commit_and_ignores_noncommit_tag() {
+        let temp = TestDir::new("tag-only");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "initial\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial"]);
+        git(&temp.path, &["checkout", "-b", "ephemeral"]);
+        fs::write(temp.path.join("README.md"), "tagged\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Tagged-only work"]);
+        git(&temp.path, &["tag", "-a", "-m", "Release note", "release"]);
+        let blob = GitCli::run(&temp.path, &["rev-parse", "HEAD:README.md"]).unwrap();
+        git(&temp.path, &["tag", "blob-tag", blob.trim()]);
+        git(&temp.path, &["checkout", "main"]);
+        git(&temp.path, &["branch", "-D", "ephemeral"]);
+
+        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        let tagged = commits.iter().find(|commit| commit.message == "Tagged-only work").unwrap();
+        assert!(tagged.refs.iter().any(|name| name == "tag: release"), "{:?}", tagged.refs);
+        assert_eq!(commits.len(), 2);
+    }
+
+    #[test]
+    fn history_includes_detached_head_not_shared_with_any_branch() {
+        let temp = TestDir::new("detached");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "initial\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial"]);
+        git(&temp.path, &["switch", "--detach"]);
+        fs::write(temp.path.join("README.md"), "detached\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Detached-only work"]);
+
+        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        assert!(commits.iter().any(|commit| commit.message == "Detached-only work"));
+    }
+
+    #[test]
+    fn orphaned_stash_base_is_visible_without_wip_or_helper_commits() {
+        let temp = TestDir::new("stash-base");
+        init_repo(&temp.path);
+        fs::write(temp.path.join("README.md"), "initial\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Initial"]);
+        git(&temp.path, &["checkout", "-b", "temporary"]);
+        fs::write(temp.path.join("README.md"), "base\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        git(&temp.path, &["commit", "-m", "Stash base only"]);
+        fs::write(temp.path.join("README.md"), "staged\n").unwrap();
+        git(&temp.path, &["add", "README.md"]);
+        fs::write(temp.path.join("README.md"), "unstaged\n").unwrap();
+        fs::write(temp.path.join("untracked.txt"), "new\n").unwrap();
+        git(&temp.path, &["stash", "push", "-u", "-m", "saved"]);
+        let stash = stash_service::list_stashes(&temp.path).unwrap().remove(0);
+        git(&temp.path, &["checkout", "main"]);
+        git(&temp.path, &["branch", "-D", "temporary"]);
+
+        let commits = get_commit_history(&temp.path, Some(10)).unwrap();
+        let hashes: Vec<&str> = commits.iter().map(|commit| commit.hash.as_str()).collect();
+        assert!(hashes.contains(&stash.base_commit_hash.as_str()));
+        assert!(!hashes.contains(&stash.commit_hash.as_str()));
+        assert!(!hashes.contains(&stash.index_commit_hash.as_deref().unwrap()));
+        assert!(!hashes.contains(&stash.untracked_commit_hash.as_deref().unwrap()));
     }
 }
