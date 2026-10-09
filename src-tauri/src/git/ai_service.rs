@@ -1389,7 +1389,7 @@ fn conflict_preview_revision(config: &AiConfig, system: &str, context: &str) -> 
         hash.update((value.len() as u64).to_le_bytes());
         hash.update(value.as_bytes());
     }
-    format!("{:x}", hash.finalize())
+    hex::encode(hash.finalize())
 }
 
 fn validate_conflict_preview(
@@ -1934,6 +1934,11 @@ mod tests {
         let config = resolve_effective_config_from(None, AiEnv::default(), None).unwrap();
         let (preview, _) =
             assemble_conflict_context(&repo.0, &request, &config, "original prompt").unwrap();
+        assert_eq!(preview.preview_revision.len(), 64);
+        assert!(preview
+            .preview_revision
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)));
         assert!(validate_conflict_preview(&request, &preview).is_err());
         request.preview_revision = Some(preview.preview_revision.clone());
         assert!(validate_conflict_preview(&request, &preview).is_ok());

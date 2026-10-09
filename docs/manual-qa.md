@@ -35,3 +35,9 @@ Capture the mapped design screens at 1490×1024 and at least one wider desktop s
 - Preview selected/all eligible files. Check every disclosed file, provider/model, bounded history, and truncation before sending. Binary/gitlink conflicts are ineligible.
 - Change provider/model/prompt or file content after preview: the old consent token/proposal must be rejected.
 - With provider credentials configured, generate proposals, reject without side effects, or accept into the buffer and explicitly save/stage. Verify missing credentials, malformed responses, cancellation, and stale responses remain actionable without changing files.
+
+## Native dependency upgrades
+
+- Run `bunx tauri info`: the frontend API and native Tauri crate must share a major/minor release, as must the dialog and opener bindings. Launch the app, open a fixture, and verify repository history through the native IPC bridge.
+- Run the locked Rust suite, including LFS checksum acceptance/rejection and stale resolver/AI consent checks. SHA-256 revisions and release checksums remain 64-character lowercase hexadecimal values.
+- Require Linux, Windows, and macOS smoke builds. The MCP bridge patch in `Cargo.toml` pins the upstream Windows dependency-alignment change; retain it until a published bridge release includes that fix.
