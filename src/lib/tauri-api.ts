@@ -16,6 +16,9 @@ import type {
   Branch,
   Remote,
   StashEntry,
+  StashTarget,
+  StashFile,
+  StashSection,
   GitTag,
   DiffResult,
   ResetMode,
@@ -732,20 +735,35 @@ export const gitApi = {
       paths,
     }),
 
-  applyStash: (repoPath: string, stashName: string) =>
-    invoke<void>("apply_stash", { repoPath, stashName }),
+  applyStash: (repoPath: string, stash: StashTarget) =>
+    invoke<void>("apply_stash", { repoPath, stash }),
 
-  popStash: (repoPath: string, stashName: string) =>
-    invoke<void>("pop_stash", { repoPath, stashName }),
+  popStash: (repoPath: string, stash: StashTarget) =>
+    invoke<void>("pop_stash", { repoPath, stash }),
 
-  previewStash: (repoPath: string, stashName: string) =>
-    invoke<string[]>("preview_stash", { repoPath, stashName }),
+  previewStash: (repoPath: string, stash: StashTarget) =>
+    invoke<string[]>("preview_stash", { repoPath, stash }),
 
-  dropStash: (repoPath: string, stashName: string) =>
-    invoke<void>("drop_stash", { repoPath, stashName }),
+  dropStash: (repoPath: string, stash: StashTarget) =>
+    invoke<void>("drop_stash", { repoPath, stash }),
+
+  stashFiles: (repoPath: string, commitHash: string) =>
+    invoke<StashFile[]>("get_stash_files", { repoPath, commitHash }),
+
+  stashDiff: (repoPath: string, commitHash: string, section: StashSection, filePath: string) =>
+    invoke<DiffResult>("get_stash_diff", { repoPath, commitHash, section, filePath }),
+
+  createBranchFromStash: (repoPath: string, name: string, stash: StashTarget) =>
+    invoke<void>("create_branch_from_stash", { repoPath, name, stash }),
 
   // Tags
   listTags: (repoPath: string) => invoke<GitTag[]>("list_tags", { repoPath }),
+
+  checkoutTag: (repoPath: string, name: string, commitHash: string) =>
+    invoke<void>("checkout_tag", { repoPath, name, commitHash }),
+
+  branchFromTag: (repoPath: string, name: string, commitHash: string) =>
+    invoke<void>("branch_from_tag", { repoPath, name, commitHash }),
 
   createTag: (
     repoPath: string,

@@ -333,6 +333,39 @@ fn is_untracked(repo_path: &Path, file_path: &str) -> Result<bool, AppError> {
     Ok(!output.status.success())
 }
 
+/// Diff two immutable stash trees without reading the current index or worktree.
+/// The untracked parent is a root commit: `--root` compares it to an empty tree.
+pub(crate) fn get_stash_snapshot_diff(
+    repo_path: &Path,
+    from: Option<&str>,
+    to: &str,
+    file_path: Option<&str>,
+) -> Result<DiffResult, AppError> {
+    if let Some(path) = file_path {
+        validate_repo_relative_file_path(path)?;
+    }
+    let mut args = if let Some(from) = from {
+        vec!["diff", "--no-ext-diff", "--no-renames", from, to]
+    } else {
+        vec!["diff-tree", "--root", "--no-commit-id", "-p", "--no-ext-diff", "--no-renames", to]
+    };
+    if let Some(path) = file_path {
+        args.extend(["--", path]);
+    }
+    let bounded = run_bounded_diff(repo_path, &args, &[0])?;
+    let is_binary = bounded.text.contains("Binary files") || bounded.text.contains("GIT binary patch");
+    let (additions, deletions) = count_diff_stats(&bounded.text);
+    Ok(DiffResult {
+        file_path: file_path.unwrap_or_default().to_string(),
+        old_file_path: None,
+        diff_text: bounded.text,
+        additions,
+        deletions,
+        is_binary,
+        truncated: bounded.truncated,
+    })
+}
+
 pub fn get_commit_diff(repo_path: &Path, hash: &str) -> Result<DiffResult, AppError> {
     let bounded = run_bounded_diff(
         repo_path,

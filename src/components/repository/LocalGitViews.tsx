@@ -9,6 +9,7 @@ import type { Branch, GitTag, LfsCommandPreview, LfsMigrationMode, LfsMigrationR
 import { appDialog } from "../common/AppDialogProvider";
 import { EmptyState } from "../common/EmptyState";
 import { Button, Select } from "../ui";
+import { useGitRefActions } from "../../hooks/useGitRefActions";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "—";
@@ -66,18 +67,6 @@ function Header({ icon, title, detail, action }: { icon: ReactNode; title: strin
 
 
 
-async function promptRemoteName(remotes: Remote[], action: string) {
-  if (remotes.length === 0) {
-    await appDialog.alert("Add a remote before using this action.", "No remote configured");
-    return null;
-  }
-  const remote = (await appDialog.prompt(
-    `${action} remote:`,
-    remotes[0]?.name ?? "origin",
-    "Choose remote",
-  ))?.trim();
-  return remote || null;
-}
 
 function currentOrFirstBranch(branches: Branch[], currentBranch?: string) {
   return currentBranch || branches.find((branch) => branch.isCurrent)?.shortName || branches[0]?.shortName || "";
@@ -361,18 +350,13 @@ export function StashesView() {
   const queryClient = useQueryClient();
   const stashesQuery = useQuery(gitQueries.stashes(activeRepoPath));
   const createStash = useMutation(gitMutations.createStash(queryClient, activeRepoPath));
-  const applyStash = useMutation(gitMutations.applyStash(queryClient, activeRepoPath));
-  const popStash = useMutation(gitMutations.popStash(queryClient, activeRepoPath));
-  const dropStash = useMutation(gitMutations.dropStash(queryClient, activeRepoPath));
-  const previewStash = useMutation({
-    mutationFn: (stashName: string) => gitApi.previewStash(activeRepoPath!, stashName),
-  });
+  const actions = useGitRefActions();
   const [message, setMessage] = useState("");
   const [includeUntracked, setIncludeUntracked] = useState(true);
 
   const stashes = stashesQuery.data ?? [];
-  const isMutating = createStash.isPending || previewStash.isPending || applyStash.isPending || popStash.isPending || dropStash.isPending;
-  const error = errorMessage(stashesQuery.error ?? createStash.error ?? previewStash.error ?? applyStash.error ?? popStash.error ?? dropStash.error);
+  const isMutating = createStash.isPending || actions.isBusy;
+  const error = errorMessage(stashesQuery.error ?? createStash.error ?? actions.error);
 
   const create = () => {
     createStash.mutate(
@@ -381,51 +365,6 @@ export function StashesView() {
     );
   };
 
-  const previewAndConfirmStash = async (stash: StashEntry, action: "apply" | "pop") => {
-    if (!activeRepoPath) return;
-
-    let preview: string[];
-    try {
-      previewStash.reset();
-      preview = await previewStash.mutateAsync(stash.name);
-    } catch (error) {
-      await appDialog.alert(
-        `Unable to preview ${stash.name}: ${errorMessage(error) ?? "Unknown error"}`,
-        "Stash preview failed",
-      );
-      previewStash.reset();
-      return;
-    }
-
-    const actionLabel = action === "apply" ? "Apply" : "Pop";
-    const removalWarning = action === "pop" ? "\n\nPop removes the stash entry after a successful application." : "";
-    const previewText = formatPreviewForDialog(preview);
-    if (!(await appDialog.confirm(
-      `${actionLabel} ${stash.name}?\n\n${stash.message || "Stashed changes"}${removalWarning}\n\nPreview:\n${previewText}`,
-      `${actionLabel} stash?`,
-      action === "pop" ? "danger" : "warning",
-    ))) {
-      return;
-    }
-
-    if (action === "apply") {
-      applyStash.mutate(stash.name);
-    } else {
-      popStash.mutate(stash.name);
-    }
-  };
-
-  const confirmDropStash = async (stash: StashEntry) => {
-    if (!(await appDialog.confirm(
-      `Drop ${stash.name}?\n\n${stash.message || "Stashed changes"}\n\nThis removes the stash entry. Recovery may require reflog/manual Git recovery if this was accidental.`,
-      "Drop stash?",
-      "danger",
-    ))) {
-      return;
-    }
-
-    dropStash.mutate(stash.name);
-  };
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
@@ -449,7 +388,7 @@ export function StashesView() {
         {error ? <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">{error}</div> : null}
         {stashesQuery.isLoading ? <EmptyState title="Loading stashes…" /> : stashes.length === 0 ? <EmptyState title="No stashes in this repository." /> : (
           <div className="grid gap-3">
-            {stashes.map((stash) => <StashCard key={stash.name} stash={stash} disabled={isMutating} onApply={() => void previewAndConfirmStash(stash, "apply")} onPop={() => void previewAndConfirmStash(stash, "pop")} onDrop={() => confirmDropStash(stash)} />)}
+            {stashes.map((stash) => <StashCard key={`${stash.name}-${stash.commitHash}`} stash={stash} disabled={isMutating} onApply={() => void actions.applyStash(stash)} onPop={() => void actions.popStash(stash)} onDrop={() => void actions.dropStash(stash)} onBranch={() => void actions.branchFromStash(stash)} />)}
           </div>
         )}
       </main>
@@ -457,7 +396,7 @@ export function StashesView() {
   );
 }
 
-function StashCard({ stash, disabled, onApply, onPop, onDrop }: { stash: StashEntry; disabled: boolean; onApply: () => void; onPop: () => void; onDrop: () => void }) {
+function StashCard({ stash, disabled, onApply, onPop, onDrop, onBranch }: { stash: StashEntry; disabled: boolean; onApply: () => void; onPop: () => void; onDrop: () => void; onBranch: () => void }) {
   return (
     <article className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 shadow-[var(--shadow-panel)]">
       <div className="flex items-start justify-between gap-4">
@@ -469,6 +408,7 @@ function StashCard({ stash, disabled, onApply, onPop, onDrop }: { stash: StashEn
         <div className="flex shrink-0 gap-2">
           <Button variant="secondary" size="sm" disabled={disabled} onClick={onApply}>Apply</Button>
           <Button variant="secondary" size="sm" disabled={disabled} onClick={onPop}>Pop</Button>
+          <Button variant="secondary" size="sm" disabled={disabled} onClick={onBranch}><GitBranch className="h-3.5 w-3.5" />Branch</Button>
           <Button variant="danger" size="sm" disabled={disabled} onClick={onDrop}><Trash2 className="h-3.5 w-3.5" />Drop</Button>
         </div>
       </div>
@@ -480,36 +420,15 @@ export function TagsView() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
   const queryClient = useQueryClient();
   const tagsQuery = useQuery(gitQueries.tags(activeRepoPath));
-  const remotesQuery = useQuery(gitQueries.remotes(activeRepoPath));
   const createTag = useMutation(gitMutations.createTag(queryClient, activeRepoPath));
-  const deleteTag = useMutation(gitMutations.deleteTag(queryClient, activeRepoPath));
-  const pushTag = useMutation(gitMutations.pushTag(queryClient, activeRepoPath));
-  const deleteRemoteTag = useMutation(gitMutations.deleteRemoteTag(queryClient, activeRepoPath));
-  const pushTagDryRun = useMutation(gitMutations.pushTagDryRun(activeRepoPath));
-  const deleteRemoteTagDryRun = useMutation(gitMutations.deleteRemoteTagDryRun(activeRepoPath));
+  const actions = useGitRefActions();
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
   const [message, setMessage] = useState("");
 
   const tags = tagsQuery.data ?? [];
-  const remotes = remotesQuery.data ?? [];
-  const isMutating =
-    createTag.isPending ||
-    deleteTag.isPending ||
-    pushTag.isPending ||
-    pushTagDryRun.isPending ||
-    deleteRemoteTag.isPending ||
-    deleteRemoteTagDryRun.isPending;
-  const error = errorMessage(
-    tagsQuery.error ??
-      remotesQuery.error ??
-      createTag.error ??
-      deleteTag.error ??
-      pushTag.error ??
-      pushTagDryRun.error ??
-      deleteRemoteTag.error ??
-      deleteRemoteTagDryRun.error,
-  );
+  const isMutating = createTag.isPending || actions.isBusy;
+  const error = errorMessage(tagsQuery.error ?? createTag.error ?? actions.error);
   const sortedTags = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), [tags]);
 
   const create = () => {
@@ -528,57 +447,6 @@ export function TagsView() {
     );
   };
 
-  const pushTagToRemote = async (tag: GitTag) => {
-    const remote = await promptRemoteName(remotes, `Push "${tag.name}" to`);
-    if (!remote) return;
-    let previewText: string;
-    try {
-      previewText = formatDryRunPreview(
-        await pushTagDryRun.mutateAsync({ remote, name: tag.name }),
-        "Git did not report any ref updates for this tag push dry run.",
-      );
-    } catch (error) {
-      await appDialog.alert(`Unable to preview tag push for "${tag.name}": ${errorMessage(error)}`, "Tag push preview failed");
-      return;
-    }
-    if (!(await appDialog.confirm(
-      `Push tag "${tag.name}" to ${remote}?\n\nPreview:\n${previewText}`,
-      "Push tag?",
-    ))) return;
-    pushTag.mutate({ remote, name: tag.name });
-  };
-
-  const deleteTagFromRemote = async (tag: GitTag) => {
-    const remote = await promptRemoteName(remotes, `Delete "${tag.name}" from`);
-    if (!remote) return;
-    let previewText: string;
-    try {
-      previewText = formatDryRunPreview(
-        await deleteRemoteTagDryRun.mutateAsync({ remote, name: tag.name }),
-        "Git did not report a ref deletion for this remote tag dry run.",
-      );
-    } catch (error) {
-      await appDialog.alert(
-        `Unable to preview remote tag deletion for "${tag.name}": ${errorMessage(error)}`,
-        "Remote tag deletion preview failed",
-      );
-      return;
-    }
-    if (!(await appDialog.confirm(
-      `Delete remote tag "${tag.name}" from ${remote}?\n\nPreview:\n${previewText}\n\nThis does not delete the local tag. Recovery: push the local tag again, or recreate it at the intended commit before pushing.`,
-      "Delete remote tag?",
-      "danger",
-    ))) return;
-    deleteRemoteTag.mutate({ remote, name: tag.name });
-  };
-  const deleteLocalTag = async (tag: GitTag) => {
-    if (!(await appDialog.confirm(
-      `Delete local tag "${tag.name}"?`,
-      "Delete local tag?",
-      "danger",
-    ))) return;
-    deleteTag.mutate(tag.name);
-  };
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
@@ -600,9 +468,9 @@ export function TagsView() {
                 key={tag.name}
                 tag={tag}
                 disabled={isMutating}
-                onPush={() => pushTagToRemote(tag)}
-                onDeleteRemote={() => deleteTagFromRemote(tag)}
-                onDelete={() => void deleteLocalTag(tag)}
+                onPush={() => void actions.pushTag(tag)}
+                onDeleteRemote={() => void actions.deleteRemoteTag(tag)}
+                onDelete={() => void actions.deleteLocalTag(tag)}
               />
             ))}
           </div>

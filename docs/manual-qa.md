@@ -7,6 +7,7 @@ Use `node scripts/seed-qa-repositories.mjs` from the repository root to create d
 | Clean | `.giteye-qa/clean-repo` | Repo Hub recent/open, Repository Workspace clean status, history graph. |
 | Dirty | `.giteye-qa/dirty-repo` | Staged/unstaged file panels, commit form, diff viewer, status bar summaries. |
 | Worktree | `.giteye-qa/worktree-repo` | Worktrees/Submodules screen, worktree list/detail/actions, dirty linked worktree state. |
+| Tags/stashes | `.giteye-qa/tags-stashes-repo` | Actionable tag labels/overflow, stash base connections and pagination, saved-file inspection, ref actions, and conditional details sidebar. Uses a disposable local bare remote. |
 | Submodule | `.giteye-qa/submodule-parent` | Submodule list/detail/actions, pinned/current commit, update/sync/bump controls. |
 | Rebase conflict | `.giteye-qa/conflict-repo` | Updated-target/replayed-commit labels, progress/todo, skip/continue/abort, persistent resolver. |
 | Merge conflict | `.giteye-qa/merge-conflict` | Active-operation graph overlay; add/add, text, binary, and deletion conflicts; guarded draft/stage/continue. |
@@ -22,6 +23,17 @@ Capture the mapped design screens at 1490×1024 and at least one wider desktop s
 1. Drag the window by the GitEye/repository title text and by empty titlebar space. Repeat on the toolchain loading, setup, and detection-error screens.
 2. Double-click non-interactive titlebar space to maximize/restore. Confirm the minimize, maximize/restore, and close buttons work without starting a drag.
 3. Click the command search and other titlebar controls: preserve their actions and focus, and do not move the window. Check setup content remains scrollable below the titlebar in a short window.
+
+## Tags and stashes workflow
+
+1. Open `tags-stashes-repo`. Verify annotated/lightweight tags, full multiline annotations, long Unicode labels, tag-only reachable history, and actionable ref overflow. Inspecting or copying a ref must not change HEAD, the index, or the working tree.
+2. Inspect stashes sharing a base and the stash from a deleted branch. Load past 100 commits or use Locate base commit: stash nodes must connect to the real base, not expose their index/untracked helper commits as history. Commit-range selection must exclude stash rows.
+3. Inspect staged, unstaged, and untracked groups, including binary and deleted files. Select individual files and check their saved diffs rather than the current worktree contents.
+4. Create a tag from a commit menu; inspect its target, check out detached, and create a branch. Push and delete remotely only against the fixture's local `origin`; remote deletion must leave the local tag until explicitly deleted. Cancel confirmations and check dirty-worktree/active-operation protections.
+5. Create a stash from the live working-tree menu, including untracked files. Apply must retain it; successful pop must consume only the selected entry. Create branch from stash must start at its saved base and restore index/worktree state. Verify drop cancellation and explicit confirmation.
+6. While a drop confirmation is open, create another stash externally: refuse the stale selector and refresh without deleting another entry. Selection should follow the same saved OID after ordinary renumbering. On clean `main`, pop the deleted-branch stash: its modify/delete conflict must retain the stash and open the existing conflict resolver.
+7. Use keyboard menu navigation, Escape/focus restoration, copy actions, and menus near viewport edges. External ref changes must refresh; removed refs and repository/view switches must not leave stale details.
+8. Drag and keyboard-resize the details sidebar. On desktop it cannot shrink below 320 px; narrow windows stack vertically without horizontal overflow. Clear selection: no panel, divider, placeholder, or reserved width may remain. Reselect a commit/file/tag/stash: restore the remembered, clamped size without resetting the main view.
 
 ## Resolver workflow
 
