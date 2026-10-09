@@ -219,6 +219,7 @@ export function CommitHistory({
 
   const requestBase = (hash: string) => {
     if (!activeRepoPath) return;
+    navigationEpoch.current += 1;
     setLocateError(null);
     setLocateBase({ repoPath: activeRepoPath, hash });
   };
@@ -235,7 +236,8 @@ export function CommitHistory({
   const jumpToRef = useCallback(
     async (refLabel: string) => {
       if (!activeRepoPath) return;
-      const epoch = navigationEpoch.current;
+      const epoch = ++navigationEpoch.current;
+      setLocateBase(null);
       setLocateError(null);
       const loaded = (commits ?? []).find((commit) => commit.refs.includes(refLabel));
       if (loaded) {
@@ -259,7 +261,8 @@ export function CommitHistory({
   const jumpToMergeBase = useCallback(
     async (fromRef: string, toRef: string) => {
       if (!activeRepoPath) return;
-      const epoch = navigationEpoch.current;
+      const epoch = ++navigationEpoch.current;
+      setLocateBase(null);
       setLocateError(null);
       try {
         const hash = await gitApi.getMergeBase(activeRepoPath, fromRef, toRef);
