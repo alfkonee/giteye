@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import {
@@ -24,7 +25,7 @@ export function AppChrome({ title, subtitle, leading, trailing, children, classN
 
   const handleTitlebarMouseDown = (event: MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    if (event.defaultPrevented || event.button !== 0 || target.closest("[data-giteye-no-drag]")) {
+    if (event.defaultPrevented || event.button !== 0 || target.closest("[data-giteye-no-drag], button, a, input, select, textarea, [role='button']")) {
       return;
     }
 
@@ -34,6 +35,10 @@ export function AppChrome({ title, subtitle, leading, trailing, children, classN
       });
       return;
     }
+
+    void getCurrentWindow().startDragging().catch((error) => {
+      console.warn("Unable to drag window", error);
+    });
   };
 
   return (
@@ -53,12 +58,12 @@ export function AppChrome({ title, subtitle, leading, trailing, children, classN
         )}
 
         {leading ? (
-          <div className="flex min-w-0 items-center gap-2" data-giteye-no-drag>
+          <div className="flex min-w-0 items-center gap-2">
             {leading}
           </div>
         ) : null}
 
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-center" data-giteye-drag-region data-tauri-drag-region>
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-center" data-giteye-drag-region>
           {leading || trailing ? null : (
             <>
               <span className="min-w-0 truncate text-[12px] font-medium tracking-[-0.01em] text-[var(--color-window-title)]">
@@ -94,7 +99,7 @@ export function AppChrome({ title, subtitle, leading, trailing, children, classN
 
 function WindowBrand() {
   return (
-    <div className="hidden min-w-0 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region data-tauri-drag-region>
+    <div className="hidden min-w-0 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-window-subtitle)] sm:flex" data-giteye-drag-region>
       <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-text-subtle)]" />
       <span className="truncate">GitEye</span>
     </div>

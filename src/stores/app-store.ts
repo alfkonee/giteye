@@ -8,6 +8,7 @@ import type {
   RepositorySessionState,
   SelectedEntityState,
   ViewType,
+  HistoryFocusSelection,
 } from "../types/git";
 
 const DEFAULT_REPOSITORY_VIEW: ViewType = "workspace";
@@ -79,6 +80,8 @@ export interface AppStore {
   setSelectedCommitFilePath: (path: string | null) => void;
   selectedGitRef: GitRefSelection | null;
   setSelectedGitRef: (selection: GitRefSelection | null) => void;
+  historyFocus: HistoryFocusSelection | null;
+  setHistoryFocus: (focus: HistoryFocusSelection | null) => void;
 
   selectedFilePath: string | null;
   selectedFileStaged: boolean;
@@ -135,6 +138,7 @@ type ActiveSessionState = Pick<
   | "selectedCommitRange"
   | "selectedCommitFilePath"
   | "selectedGitRef"
+  | "historyFocus"
   | "selectedFilePath"
   | "selectedFileStaged"
   | "selectedPullRequestId"
@@ -161,6 +165,7 @@ function activeStateFromSession(
     selectedBranchName: selected.branchName,
     pendingAdvancedBranchName: null,
     selectedGitRef: null,
+    historyFocus: null,
     selectedCommitHash: selected.commitHash,
     selectedCommitRange: selected.commitRange,
     selectedCommitFilePath: selected.commitFilePath,
@@ -185,6 +190,7 @@ function emptyActiveState(): ActiveSessionState {
     selectedBranchName: null,
     pendingAdvancedBranchName: null,
     selectedGitRef: null,
+    historyFocus: null,
     selectedCommitHash: null,
     selectedCommitRange: [],
     selectedCommitFilePath: null,
@@ -350,6 +356,9 @@ export const useAppStore = create<AppStore>((set) => ({
         { selected },
       );
     }),
+
+  /** Visual-only focus; never clears entity selection or mutates state. */
+  setHistoryFocus: (focus) => set({ historyFocus: focus }),
 
   setSelectedCommitHash: (hash) =>
     set((state) => {

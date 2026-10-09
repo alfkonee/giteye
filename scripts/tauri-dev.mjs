@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { waitForViteUrl } from "./vite-readiness.mjs";
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, options);
@@ -8,31 +9,6 @@ function start(command, args, options = {}) {
   });
 
   return child;
-}
-
-function waitForViteUrl(vite) {
-  return new Promise((resolve, reject) => {
-    let output = "";
-
-    const read = (chunk) => {
-      const text = chunk.toString();
-      process.stdout.write(text);
-      output += text;
-
-      const match = output.match(/Local:\s+(https?:\/\/[^\s/]+:\d+)\//);
-      if (match) {
-        resolve(match[1]);
-      }
-    };
-
-    vite.stdout.on("data", read);
-    vite.stderr.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
-    vite.once("exit", (code, signal) => {
-      reject(new Error(`Vite exited before becoming ready (${signal ?? code}).`));
-    });
-  });
 }
 
 const vite = start("bun", ["run", "dev"], {
