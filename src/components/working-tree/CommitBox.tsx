@@ -7,6 +7,7 @@ import { Sparkles, GitCommitHorizontal } from "lucide-react";
 import { Button, Textarea } from "../ui";
 import { appDialog } from "../common/AppDialogProvider";
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/app-error";
 
 export function CommitBox() {
   const activeRepoPath = useAppStore((s) => s.activeRepoPath);
@@ -47,7 +48,7 @@ export function CommitBox() {
   const commitBlocked = !message.trim() || (!allowEmpty && stagedCount === 0);
   const aiProviderLabel = aiConfig?.providers.find((provider) => provider.id === aiConfig.provider)?.label ?? "OpenAI";
   const aiStatus = `AI: ${aiProviderLabel} · ${aiConfig?.model ?? "gpt-4o-mini"}${aiConfig?.apiKeyConfigured === false ? " · key missing" : ""}`;
-  const aiSuggestionError = aiSuggestionMutation.error?.message ?? null;
+  const aiSuggestionError = aiSuggestionMutation.error ? formatAppError(aiSuggestionMutation.error) : null;
 
   const handleCommit = () => {
     const commitMessage = message.trim();
@@ -99,9 +100,9 @@ export function CommitBox() {
       : aiSuggestionError
         ? `AI error: ${aiSuggestionError}`
         : commitMutation.isError
-          ? `Error: ${commitMutation.error}`
+          ? `Error: ${formatAppError(commitMutation.error)}`
           : amendMutation.isError
-            ? `Error: ${amendMutation.error}`
+            ? `Error: ${formatAppError(amendMutation.error)}`
             : commitMutation.isSuccess
               ? "Committed."
               : amendMutation.isSuccess

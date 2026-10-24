@@ -1,3 +1,4 @@
+import { formatAppError, normalizeAppError } from "./app-error";
 import {
   mutationOptions,
   queryOptions,
@@ -693,30 +694,6 @@ function finishGitActionNotice(
     .finishNotice(context.noticeId, "success", detail, context.recoveryHint);
 }
 
-export function gitActionErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error && typeof error === "object") {
-    const payload = error as { error?: unknown; message?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-    if (typeof payload.message === "string" && payload.message.length > 0) {
-      return payload.message;
-    }
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "Unexpected Git operation error.";
-    }
-  }
-  return String(error);
-}
-
 function failGitActionNotice(
   context: GitMutationNoticeContext | undefined,
   error: unknown,
@@ -724,14 +701,20 @@ function failGitActionNotice(
   if (!context) {
     return;
   }
+  const normalized = normalizeAppError(error);
+  const recoveryHint = [...new Set(
+    [normalized.recoveryHint, context.recoveryHint]
+      .filter((hint): hint is string => Boolean(hint?.trim()))
+      .map((hint) => hint.trim()),
+  )].join("\n") || null;
 
   useNoticeStore
     .getState()
     .finishNotice(
       context.noticeId,
       "error",
-      gitActionErrorMessage(error),
-      context.recoveryHint,
+      formatAppError({ ...normalized, message: normalized.message, recoveryHint: null }),
+      recoveryHint,
     );
 }
 

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, GitPullRequest, Sparkles, X } from "lucide-react";
-import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
+import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { gitApi } from "../../lib/tauri-api";
 import { useBranchPullRequests } from "../../lib/branch-pull-requests";
 import type { Branch } from "../../types/git";
@@ -106,7 +107,7 @@ export function CreatePullRequestDialog({
             </p>
           ) : pullRequestsQuery.isError ? (
             <div role="alert" className="space-y-2 text-xs text-[var(--color-danger)]">
-              <p>Unable to check for existing pull requests: {gitActionErrorMessage(pullRequestsQuery.error)}</p>
+              <p>Unable to check for existing pull requests: {formatAppError(pullRequestsQuery.error)}</p>
               <Button variant="secondary" size="sm" onClick={() => void pullRequestsQuery.refetch()}>
                 Retry lookup
               </Button>
@@ -218,7 +219,7 @@ export function CreatePullRequestDialog({
 
           {error ? (
             <p className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
-              {gitActionErrorMessage(error)}
+              {formatAppError(error)}
             </p>
           ) : null}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
+import { formatAppError } from "../../lib/app-error";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Archive,
@@ -109,7 +110,7 @@ export function WorkingTreePathContextMenu({
       await action();
     } catch (error) {
       await appDialog.alert(
-        `${description} failed: ${error instanceof Error ? error.message : String(error)}`,
+        `${description} failed: ${formatAppError(error)}`,
         `${description} failed`,
       );
     }

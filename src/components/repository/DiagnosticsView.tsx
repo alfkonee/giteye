@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useAppStore } from "../../stores/app-store";
 import type {
   BisectState,
@@ -24,11 +25,6 @@ import type {
 } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
 import { Button, Select } from "../ui";
-
-function errorMessage(error: unknown) {
-  if (!error) return null;
-  return error instanceof Error ? error.message : String(error);
-}
 
 function splitInput(value: string) {
   return value
@@ -72,20 +68,19 @@ export function DiagnosticsView() {
     bisectBad.isPending ||
     bisectSkip.isPending ||
     bisectReset.isPending;
-  const bisectError = errorMessage(
+  const bisectFailure =
     bisectQuery.error ??
-      bisectStart.error ??
-      bisectGood.error ??
-      bisectBad.error ??
-      bisectSkip.error ??
-      bisectReset.error,
-  );
+    bisectStart.error ??
+    bisectGood.error ??
+    bisectBad.error ??
+    bisectSkip.error ??
+    bisectReset.error;
+  const bisectError = bisectFailure ? formatAppError(bisectFailure) : null;
   const latestBisectState =
     bisectReset.data?.state ?? bisectSkip.data?.state ?? bisectBad.data?.state ?? bisectGood.data?.state ?? bisectStart.data?.state ?? bisectState;
 
-  const diagnosticsError = errorMessage(
-    fsckMutation.error ?? maintenanceMutation.error ?? signatureMutation.error,
-  );
+  const diagnosticsFailure = fsckMutation.error ?? maintenanceMutation.error ?? signatureMutation.error;
+  const diagnosticsError = diagnosticsFailure ? formatAppError(diagnosticsFailure) : null;
 
   const startBisect = async () => {
     const bad = badRevision.trim();

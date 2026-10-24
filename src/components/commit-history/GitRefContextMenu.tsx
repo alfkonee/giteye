@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { useGitRefActions } from "../../hooks/useGitRefActions";
 import { useAppStore } from "../../stores/app-store";
@@ -74,7 +75,7 @@ export function GitRefContextMenu({ target, x, y, onClose, onLocateBase }: {
       await navigator.clipboard.writeText(text);
       setCopyError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatAppError(error);
       setCopyError(`Could not copy to clipboard: ${message}`);
       useNoticeStore.getState().startNotice({ title: "Copy failed", detail: message, repoPath, status: "error" });
     }

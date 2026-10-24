@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { gitActionErrorMessage, gitKeys, gitQueries } from "./git-data";
+import { gitKeys, gitQueries } from "./git-data";
+import { formatAppError } from "./app-error";
 import { useAppStore } from "../stores/app-store";
 import type { Branch, BranchPullRequestMatch } from "../types/git";
 import { appDialog } from "../components/common/AppDialogProvider";
@@ -25,7 +26,7 @@ export function useBranchPullRequests(repoPath: string | null, branch: Branch | 
         await openUrl(pullRequest.url);
         return true;
       } catch (error) {
-        await appDialog.alert(gitActionErrorMessage(error), "Unable to open pull request");
+        await appDialog.alert(formatAppError(error), "Unable to open pull request");
         return false;
       }
     }

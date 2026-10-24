@@ -28,6 +28,7 @@ import {
 } from "../diff-viewer/UnifiedDiffFallback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import {
   findPullRequestFilePatch,
   mergePullRequestDiffFiles,
@@ -94,23 +95,6 @@ const mergeMethodLabels: Record<MergeMethod, string> = {
   merge: "Create merge commit",
   squash: "Squash commits",
   rebase: "Rebase and merge",
-};
-
-const formatErrorMessage = (error: unknown) => {
-  if (!error) return null;
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  if (typeof error === "object") {
-    const value = error as { error?: unknown; message?: unknown };
-    if (typeof value.error === "string") return value.error;
-    if (typeof value.message === "string") return value.message;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return String(error);
-    }
-  }
-  return String(error);
 };
 
 const formatRelative = (value: string | null | undefined) => {
@@ -407,6 +391,7 @@ export function DiffReviewStudio() {
   const {
     data: githubOverview,
     isError,
+    error: githubOverviewError,
     isFetching: githubOverviewFetching,
     isLoading: githubOverviewLoading,
     refetch: refetchGithubOverview,
@@ -607,7 +592,7 @@ export function DiffReviewStudio() {
   const providerDetail = !activeRepoPath
     ? "Open a repository to load GitHub review metadata."
     : isError
-      ? "GitHub metadata unavailable."
+      ? `GitHub metadata unavailable: ${formatAppError(githubOverviewError)}`
       : !githubOverview?.providerAvailable
         ? "GitHub provider is not available."
         : !githubOverview.isGithubRepository
@@ -644,9 +629,10 @@ export function DiffReviewStudio() {
     );
   }, [changedFiles, fileFilter]);
   const firstChangedFilePath = changedFiles[0]?.path ?? null;
-  const diffErrorMessage = formatErrorMessage(prDiffError ?? selectedSummaryQuery.error);
+  const diffError = prDiffError ?? selectedSummaryQuery.error;
+  const diffErrorMessage = diffError ? formatAppError(diffError) : null;
   const diffUnavailable = currentPr && !prDiffLoading && !prDiff && prDiffError;
-  const prFetchWarning = prDiff?.fetchError ?? null;
+  const prFetchWarning = prDiff?.fetchError ? formatAppError(prDiff.fetchError) : null;
   const dataLoadingMessage = missingSelectedPr && selectedSummaryQuery.isFetching
     ? `Loading pull request #${selectedPrNumber}...`
     : githubOverviewLoading
@@ -1116,7 +1102,7 @@ export function DiffReviewStudio() {
         </div>
         {reviewActionError ? (
           <div className="border-b border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-2 text-xs text-[var(--color-danger)]">
-            {formatErrorMessage(reviewActionError)}
+            {formatAppError(reviewActionError)}
           </div>
         ) : null}
         {dataLoadingMessage || incompleteDataMessage ? (

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArrowLeftRight, GitBranch, Globe2, HardDrive, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, Tag as TagIcon, Trash2, UploadCloud, DownloadCloud, Wrench } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { gitApi } from "../../lib/tauri-api";
 import { useAppStore } from "../../stores/app-store";
@@ -28,11 +29,6 @@ function formatRelativeTime(value: string | null) {
 
   const elapsedDays = Math.floor(elapsedHours / 24);
   return `${elapsedDays}d ago`;
-}
-
-function errorMessage(error: unknown) {
-  if (!error) return null;
-  return error instanceof Error ? error.message : String(error);
 }
 
 function formatPreviewForDialog(lines: string[]) {
@@ -106,19 +102,19 @@ export function RemotesView() {
     pruneRemotePreviewMutation.isPending ||
     pushBranchMutation.isPending ||
     pushBranchDryRunMutation.isPending;
-  const error = errorMessage(
+  const failure =
     remotesQuery.error ??
-      fetchMutation.error ??
-      pullMutation.error ??
-      pushMutation.error ??
-      addRemoteMutation.error ??
-      updateRemoteMutation.error ??
-      deleteRemoteMutation.error ??
-      pruneRemoteMutation.error ??
-      pruneRemotePreviewMutation.error ??
-      pushBranchMutation.error ??
-      pushBranchDryRunMutation.error,
-  );
+    fetchMutation.error ??
+    pullMutation.error ??
+    pushMutation.error ??
+    addRemoteMutation.error ??
+    updateRemoteMutation.error ??
+    deleteRemoteMutation.error ??
+    pruneRemoteMutation.error ??
+    pruneRemotePreviewMutation.error ??
+    pushBranchMutation.error ??
+    pushBranchDryRunMutation.error;
+  const error = failure ? formatAppError(failure) : null;
 
   const addRemote = () => {
     const name = remoteName.trim();
@@ -166,7 +162,7 @@ export function RemotesView() {
       previewLines = await pruneRemotePreviewMutation.mutateAsync(remote.name);
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview remote prune for "${remote.name}": ${errorMessage(error)}`,
+        `Unable to preview remote prune for "${remote.name}": ${formatAppError(error)}`,
         "Prune preview failed",
       );
       return;
@@ -210,7 +206,7 @@ export function RemotesView() {
         "Git did not report any ref updates for this push dry run.",
       );
     } catch (error) {
-      await appDialog.alert(`Unable to preview push to ${target}: ${errorMessage(error)}`, "Push preview failed");
+      await appDialog.alert(`Unable to preview push to ${target}: ${formatAppError(error)}`, "Push preview failed");
       return;
     }
     const forceWarning = forceWithLease
@@ -241,7 +237,7 @@ export function RemotesView() {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview push to ${remote.name}/${branchName}: ${errorMessage(error)}`,
+        `Unable to preview push to ${remote.name}/${branchName}: ${formatAppError(error)}`,
         "Push preview failed",
       );
       return;
@@ -356,7 +352,8 @@ export function StashesView() {
 
   const stashes = stashesQuery.data ?? [];
   const isMutating = createStash.isPending || actions.isBusy;
-  const error = errorMessage(stashesQuery.error ?? createStash.error ?? actions.error);
+  const failure = stashesQuery.error ?? createStash.error ?? actions.error;
+  const error = failure ? formatAppError(failure) : null;
 
   const create = () => {
     createStash.mutate(
@@ -428,7 +425,8 @@ export function TagsView() {
 
   const tags = tagsQuery.data ?? [];
   const isMutating = createTag.isPending || actions.isBusy;
-  const error = errorMessage(tagsQuery.error ?? createTag.error ?? actions.error);
+  const failure = tagsQuery.error ?? createTag.error ?? actions.error;
+  const error = failure ? formatAppError(failure) : null;
   const sortedTags = useMemo(() => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), [tags]);
 
   const create = () => {
@@ -535,7 +533,7 @@ export function LfsView() {
       );
     } catch (previewError) {
       await appDialog.alert(
-        `Unable to preview ${action.toLowerCase()}: ${errorMessage(previewError)}`,
+        `Unable to preview ${action.toLowerCase()}: ${formatAppError(previewError)}`,
         "LFS preview failed",
       );
       return false;
@@ -621,7 +619,7 @@ export function LfsView() {
       />
       {(error || mutationError || locksQuery.error || lfsStatus?.error) && (
         <div className="border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-danger)]">
-          {errorMessage(error ?? mutationError ?? locksQuery.error ?? lfsStatus?.error)}
+          {formatAppError(error ?? mutationError ?? locksQuery.error ?? lfsStatus?.error)}
         </div>
       )}
       <div className="flex-1 overflow-y-auto p-4">

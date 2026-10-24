@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Download, FolderOpen, GitBranch, HardDrive, RefreshCw, ShieldCheck } from "lucide-react";
 import { gitApi } from "../../lib/tauri-api";
+import { formatAppError } from "../../lib/app-error";
 import type { ToolchainStatus } from "../../types/app";
 import { AppChrome } from "../layout/AppChrome";
 
@@ -28,7 +29,7 @@ export function ToolchainGate({ children }: { children: React.ReactNode }) {
       <ToolchainShell>
         <div className="mx-auto max-w-lg text-center">
           <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">Tool detection failed</h1>
-          <p className="mt-2 text-sm text-[var(--color-text-muted)]">{String(statusQuery.error)}</p>
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">{formatAppError(statusQuery.error)}</p>
           <button type="button" onClick={() => statusQuery.refetch()} className="giteye-btn giteye-btn-primary mt-5">Retry detection</button>
         </div>
       </ToolchainShell>
@@ -62,7 +63,7 @@ export function ToolchainSettings() {
     retry: false,
   });
   if (statusQuery.isLoading) return <div className="p-4 text-xs text-[var(--color-text-muted)]">Detecting Git tools...</div>;
-  if (!statusQuery.data) return <div className="p-4 text-xs text-[var(--color-danger)]">{String(statusQuery.error)}</div>;
+  if (!statusQuery.data) return <div className="p-4 text-xs text-[var(--color-danger)]">{statusQuery.error ? formatAppError(statusQuery.error) : null}</div>;
   return <ToolchainSetup status={statusQuery.data} />;
 }
 
@@ -149,7 +150,7 @@ function ToolchainSetup({ status, onboarding = false, onDeferLfs }: { status: To
         </ToolCard>
       </div>
 
-      {(message || error) ? <div className={`mt-4 rounded-lg border px-4 py-3 text-xs ${error ? "border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]" : "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-text-primary)]"}`}>{error ? String(error) : message}</div> : null}
+      {(message || error) ? <div className={`mt-4 rounded-lg border px-4 py-3 text-xs ${error ? "border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]" : "border-[var(--color-success)]/40 bg-[var(--color-success)]/10 text-[var(--color-text-primary)]"}`}>{error ? formatAppError(error) : message}</div> : null}
       {pending ? <div className="mt-4 flex items-center justify-between gap-3 text-xs text-[var(--color-text-muted)]"><span className="flex items-center gap-2"><RefreshCw className="h-3.5 w-3.5 animate-spin" />Installing into your user profile. This can take several minutes.</span>{installGit.isPending || installLfs.isPending ? <button type="button" onClick={() => void gitApi.cancelToolchainInstall()} className="giteye-btn">Cancel</button> : null}</div> : null}
       {onDeferLfs ? <div className="mt-6 text-center"><button type="button" disabled={pending} onClick={onDeferLfs} className="text-xs text-[var(--color-text-muted)] underline-offset-4 hover:text-[var(--color-text-primary)] hover:underline">Continue without Git LFS</button></div> : null}
     </div>

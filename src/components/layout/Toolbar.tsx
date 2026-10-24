@@ -12,6 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/app-error";
 import { runBranchPushFlow } from "../../lib/branch-push";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { useAppStore } from "../../stores/app-store";
@@ -238,7 +239,7 @@ export function Toolbar({ currentBranch, isClean }: ToolbarProps) {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        `Unable to preview remote branch deletion for ${target}: ${formatAppError(error)}`,
         "Remote deletion preview failed",
       );
       return;

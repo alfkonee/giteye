@@ -12,6 +12,7 @@ import { ArrowDownUp, History, X } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { useConflictStore } from "../../stores/conflict-store";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { gitApi } from "../../lib/tauri-api";
 import { CommitListItem } from "./CommitListItem";
 import { LoadingSpinner } from "../common/LoadingSpinner";
@@ -251,8 +252,7 @@ export function CommitHistory({
         setLocateBase({ repoPath: activeRepoPath, hash });
       } catch (error) {
         if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
-        const message = error instanceof Error ? error.message : String(error);
-        setLocateError(`Could not locate ${refLabel}: ${message}`);
+        setLocateError(`Could not locate ${refLabel}: ${formatAppError(error)}`);
       }
     },
     [activeRepoPath, commits],
@@ -271,8 +271,7 @@ export function CommitHistory({
         else setLocateError(`${fromRef} and ${toRef} share no common ancestor.`);
       } catch (error) {
         if (navigationEpoch.current !== epoch || useAppStore.getState().activeRepoPath !== activeRepoPath) return;
-        const message = error instanceof Error ? error.message : String(error);
-        setLocateError(`Could not locate the merge base of ${fromRef} and ${toRef}: ${message}`);
+        setLocateError(`Could not locate the merge base of ${fromRef} and ${toRef}: ${formatAppError(error)}`);
       }
     },
     [activeRepoPath],
@@ -384,7 +383,7 @@ export function CommitHistory({
         </div>
       ) : error ? (
         <div className="p-4">
-          <ErrorCallout message="Failed to load commit history" />
+          <ErrorCallout message={`Failed to load commit history: ${formatAppError(error)}`} />
         </div>
       ) : historyRows.length === 0 ? (
         <EmptyState

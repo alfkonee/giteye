@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { getViewDefinition } from "../../lib/view-registry";
 import { CommitDetails } from "../commit-history/CommitDetails";
 import { GitRefDetails } from "../commit-history/GitRefDetails";
@@ -191,7 +192,7 @@ export function PanelLayout() {
                   Loading blame…
                 </div>
               ) : blameError ? (
-                <ErrorCallout message={`Failed to load blame: ${String(blameError)}`} />
+                <ErrorCallout message={`Failed to load blame: ${formatAppError(blameError)}`} />
               ) : (
                 <BlameTable lines={blameLines ?? []} />
               )
@@ -202,7 +203,7 @@ export function PanelLayout() {
                   Loading history…
                 </div>
               ) : historyError ? (
-                <ErrorCallout message={`Failed to load history: ${String(historyError)}`} />
+                <ErrorCallout message={`Failed to load history: ${formatAppError(historyError)}`} />
               ) : (
                 <FileHistoryList commits={historyEntries ?? []} />
               )
@@ -214,7 +215,7 @@ export function PanelLayout() {
                 isBinary={fileDiff.isBinary}
                 truncated={fileDiff.truncated}
                 isLoading={diffLoading}
-                error={diffError?.toString() ?? null}
+                error={diffError ? formatAppError(diffError) : null}
                 mode={diffMode}
                 isStaged={selectedFileStaged}
                 isHunkActionPending={isStageHunkPending || isUnstageHunkPending || isDiscardHunkPending}
@@ -241,7 +242,7 @@ export function PanelLayout() {
     }
 
     return selectedFilePath ? (
-      <ErrorCallout message={diffError ? String(diffError) : "Unable to load the selected file."} />
+      <ErrorCallout message={diffError ? formatAppError(diffError) : "Unable to load the selected file."} />
     ) : null;
   }, [selectedGitRef, selectedFilePath, selectedCommitHash, selectedCommitRange, selectedCommitFilePath, fileDiff, diffLoading, diffError, diffMode, selectedFileStaged, selectedSubmodule, openSubmodule, openRepository, isStageHunkPending, isUnstageHunkPending, isDiscardHunkPending, handleStageHunk, handleUnstageHunk, handleDiscardHunk, setSelectedCommitHash, fileDetailMode, blameLines, blameLoading, blameError, historyEntries, historyLoading, historyError]);
 
@@ -319,7 +320,7 @@ function CommitDetailsWrapper() {
   if (error) {
     return (
       <div className="p-4">
-        <ErrorCallout message={`Failed to load commit details: ${String(error)}`} />
+        <ErrorCallout message={`Failed to load commit details: ${formatAppError(error)}`} />
       </div>
     );
   }
@@ -368,7 +369,7 @@ function CommitDiffWrapper() {
           isBinary={commitDiff?.isBinary}
           truncated={commitDiff?.truncated}
           isLoading={isLoading}
-          error={error?.toString() ?? null}
+          error={error ? formatAppError(error) : null}
           mode={diffMode}
           focusedFilePath={selectedCommitFilePath ?? undefined}
         />
@@ -435,7 +436,7 @@ function CommitRangeDiffWrapper() {
             {isFilesLoading ? (
               <p className="px-1 py-2 text-[11px] text-[var(--color-text-muted)]">Loading files...</p>
             ) : filesError ? (
-              <ErrorCallout message={`Failed to load changed files: ${String(filesError)}`} />
+              <ErrorCallout message={`Failed to load changed files: ${formatAppError(filesError)}`} />
             ) : changedFiles?.length ? (
               <FileTree
                 items={changedFiles}
@@ -458,7 +459,7 @@ function CommitRangeDiffWrapper() {
               isBinary={commitDiff?.isBinary}
               truncated={commitDiff?.truncated}
               isLoading={isLoading}
-              error={error?.toString() ?? null}
+              error={error ? formatAppError(error) : null}
               mode={diffMode}
             />
           ) : (

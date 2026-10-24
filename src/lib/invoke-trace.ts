@@ -1,4 +1,5 @@
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { formatAppError, normalizeAppError } from "./app-error";
 
 export type InvokeTraceStatus = "running" | "succeeded" | "failed" | "interrupted";
 export type TraceKind = "rust" | "navigation" | "frontend";
@@ -44,7 +45,11 @@ function restoreRecordingSetting(): boolean {
 }
 
 export function tracedInvoke<T>(command: string, args?: InvokeArgs): Promise<T> {
-  if (!recording) return invoke<T>(command, args);
+  if (!recording) {
+    return invoke<T>(command, args).catch((error: unknown) => {
+      throw normalizeAppError(error, command);
+    });
+  }
 
   const startedAt = new Date();
   const record: InvokeTraceRecord = {
@@ -67,8 +72,9 @@ export function tracedInvoke<T>(command: string, args?: InvokeArgs): Promise<T> 
       return result;
     },
     (error) => {
-      finishTrace(record.id, "failed", redactErrorMessage(error));
-      throw error;
+      const normalized = normalizeAppError(error, command);
+      finishTrace(record.id, "failed", redactTraceText(formatAppError(normalized)));
+      throw normalized;
     },
   );
 }
@@ -247,16 +253,6 @@ function redact(value: unknown, seen = new WeakSet<object>()): unknown {
       return [key, redact(item, seen)];
     }),
   );
-}
-
-function redactErrorMessage(error: unknown) {
-  if (error instanceof Error) return redactTraceText(error.message);
-  if (typeof error === "string") return redactTraceText(error);
-  try {
-    return redactTraceText(JSON.stringify(redact(error)));
-  } catch {
-    return redactTraceText(String(error));
-  }
 }
 
 export function redactTraceText(value: string) {

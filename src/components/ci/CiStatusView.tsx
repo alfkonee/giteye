@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import {
   filterChecks,
   formatCheckDuration,
@@ -238,7 +239,7 @@ export function CiStatusView() {
   if (overviewQuery.error) {
     return (
       <div className="h-full overflow-auto bg-[var(--color-bg-primary)] p-6">
-        <ErrorCallout message={`GitHub CI metadata unavailable: ${String(overviewQuery.error)}`} />
+        <ErrorCallout message={`GitHub CI metadata unavailable: ${formatAppError(overviewQuery.error)}`} />
       </div>
     );
   }
@@ -370,7 +371,7 @@ export function CiStatusView() {
                 </div>
               ) : prChecksQuery.error ? (
                 <div className="p-4">
-                  <ErrorCallout message={`Selected PR checks unavailable: ${String(prChecksQuery.error)}`} />
+                  <ErrorCallout message={`Selected PR checks unavailable: ${formatAppError(prChecksQuery.error)}`} />
                 </div>
               ) : workflowGroups.length > 0 ? (
                 workflowGroups.map((group) => (

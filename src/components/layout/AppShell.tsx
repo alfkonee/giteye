@@ -10,6 +10,7 @@ import { useJobStore, isTerminalStatus } from "../../stores/job-store";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { useQuery } from "@tanstack/react-query";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { Circle, GitBranch, TerminalSquare } from "lucide-react";
 import type {
   OperationSnapshot,
@@ -57,7 +58,7 @@ export function AppShell() {
         />
         {error ? (
           <div className="giteye-banner border-b border-[var(--color-border)] p-3">
-            <ErrorCallout message="Failed to load repository snapshot" />
+            <ErrorCallout message={`Failed to load repository snapshot: ${formatAppError(error)}`} />
           </div>
         ) : null}
         <div className="relative flex min-h-0 flex-1 overflow-hidden">

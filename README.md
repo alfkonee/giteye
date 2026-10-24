@@ -22,7 +22,7 @@
 - **GitHub pull requests** — create and review PRs, inspect checks and timelines, comment on diffs, manage labels and reviewers, and open the PR for an exact branch or fork.
 - **Background operations** — cancellable fetch, pull, push, clone, merge, rebase, submodule, and worktree jobs with streamed command logs.
 - **Terminal launcher** — open a repository with `giteye .`; later launches reuse and focus the running app.
-- **Build diagnostics** — Settings → About reports the running version, compiled source commit, application ID, runtime, platform, and Git toolchain details.
+- **Build diagnostics** — Settings → About reports the running version, compiled source commit, application ID, runtime, platform, and Git toolchain details. Create a diagnostic bundle there to preview and save a local JSON snapshot with selected job/trace metadata and safe preferences; raw commands, logs, file contents, paths, account details, and credentials are excluded.
 
 ## Install
 
@@ -50,7 +50,11 @@ giteye --help
 giteye --version
 ```
 
-Launching from a terminal starts GitEye in the background and returns the prompt immediately; closing the terminal does not close the app. Nested directories resolve to their Git root; linked worktrees open as separate workspaces. To manage the launcher directly:
+Launching from a terminal starts GitEye in the background and returns the prompt immediately; closing the terminal does not close the app. Nested directories resolve to their Git root; linked worktrees open as separate workspaces.
+
+The `v0.0.3-rc.1` Linux AppImage resolves relative paths inside its bundle. Until upgrading to a build containing the caller-directory fix, use `giteye "$PWD"` or another absolute repository path.
+
+To manage the launcher directly:
 
 ```sh
 /path/to/giteye --install-cli
@@ -122,6 +126,8 @@ CI stamps the checked-out source commit into the native binary. Release builds s
 ## Architecture
 
 GitEye uses a React/TypeScript frontend inside Tauri 2, backed by Rust services for Git, filesystem, credential, and provider operations.
+
+Native command failures use a typed envelope (`code`, `message`, `command`, `recoveryHint`, `retryable`). The frontend normalizes IPC rejections whether tracing is enabled or disabled and uses one shared error formatter. Recovery guidance never triggers an automatic retry; failed mutations retain their operation-specific safety advice.
 
 ```text
 src/

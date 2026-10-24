@@ -34,6 +34,8 @@ pub struct ToolComponentStatus {
 #[serde(rename_all = "camelCase")]
 pub struct ToolchainStatus {
     pub platform: String,
+    pub architecture: String,
+    pub os_version: String,
     pub git: ToolComponentStatus,
     pub lfs: ToolComponentStatus,
     pub lfs_enabled: bool,
@@ -112,6 +114,8 @@ pub fn get_status(app: &tauri::AppHandle) -> ToolchainStatus {
 
     ToolchainStatus {
         platform: std::env::consts::OS.to_string(),
+        architecture: std::env::consts::ARCH.to_string(),
+        os_version: os_info::get().version().to_string(),
         git: ToolComponentStatus {
             installed: git_version.is_some(),
             version: git_version,

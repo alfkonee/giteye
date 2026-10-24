@@ -1,7 +1,8 @@
 import { useState, type MouseEvent } from "react";
 import { useAppStore } from "../../stores/app-store";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { gitActionErrorMessage, gitMutations, gitQueries } from "../../lib/git-data";
+import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { cn } from "../../lib/cn";
 import { runBranchPushFlow } from "../../lib/branch-push";
 import { formatDryRunPreview } from "../../lib/git-preview";
@@ -402,7 +403,7 @@ export function BranchList() {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview remote branch deletion for ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        `Unable to preview remote branch deletion for ${target}: ${formatAppError(error)}`,
         "Remote deletion preview failed",
       );
       return;
@@ -484,7 +485,7 @@ export function BranchList() {
       {(branchMutationPending || branchMutationError) && (
         <div className={cn("border-b border-[var(--color-border)] px-3 py-2 text-xs", branchMutationError ? "text-[var(--color-danger)]" : "text-[var(--color-text-muted)]")}>
           {branchMutationError
-            ? gitActionErrorMessage(branchMutationError)
+            ? formatAppError(branchMutationError)
             : "Updating branches…"}
         </div>
       )}

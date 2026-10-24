@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
 import { useAppStore } from "../../stores/app-store";
 import { cn } from "../../lib/cn";
@@ -64,11 +65,6 @@ function shortHash(target: CommitActionTarget) {
 
 function fullCommitMessage(target: CommitActionTarget) {
   return [target.message, target.body].filter(Boolean).join("\n\n");
-}
-
-function errorMessage(error: unknown) {
-  if (!error) return null;
-  return error instanceof Error ? error.message : String(error);
 }
 
 function isResetMode(value: string): value is ResetMode {
@@ -285,7 +281,7 @@ function useHistorySurgeryActions() {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview reset to ${shortHash(target)}: ${errorMessage(error)}`,
+        `Unable to preview reset to ${shortHash(target)}: ${formatAppError(error)}`,
         "Reset preview failed",
       );
       return;
@@ -359,7 +355,7 @@ function useHistorySurgeryActions() {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview amend for HEAD (${shortHash(target)}): ${errorMessage(error)}`,
+        `Unable to preview amend for HEAD (${shortHash(target)}): ${formatAppError(error)}`,
         "Amend preview failed",
       );
       return;
@@ -439,7 +435,7 @@ function useHistorySurgeryActions() {
       );
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview rebase of ${currentBranchLabel} onto ${ref}: ${errorMessage(error)}`,
+        `Unable to preview rebase of ${currentBranchLabel} onto ${ref}: ${formatAppError(error)}`,
         "Rebase preview failed",
       );
       return;
@@ -845,7 +841,7 @@ export function CommitActionContextMenu({
         />
         {actions.error ? (
           <p className="border-t border-[var(--color-border-muted)] px-2.5 py-1.5 text-[10.5px] leading-snug text-[var(--color-danger)]">
-            {errorMessage(actions.error)}
+            {formatAppError(actions.error)}
           </p>
         ) : null}
       </div>
@@ -933,7 +929,7 @@ export function ReflogRecoveryPanel({ open }: ReflogRecoveryPanelProps) {
       </div>
       {reflogQuery.error ? (
         <p className="rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-2 py-1.5 text-[11px] text-[var(--color-danger)]">
-          Failed to load reflog: {errorMessage(reflogQuery.error)}
+          Failed to load reflog: {formatAppError(reflogQuery.error)}
         </p>
       ) : entries.length === 0 ? (
         <p className="rounded-md border border-dashed border-[var(--color-border-muted)] px-2 py-3 text-center text-[11px] text-[var(--color-text-muted)]">

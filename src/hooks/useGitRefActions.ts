@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { gitActionErrorMessage as describeError, gitMutations, gitQueries } from "../lib/git-data";
+import { gitMutations, gitQueries } from "../lib/git-data";
+import { formatAppError } from "../lib/app-error";
 import { formatDryRunPreview } from "../lib/git-preview";
 import { gitApi } from "../lib/tauri-api";
 import { useAppStore } from "../stores/app-store";
@@ -42,7 +43,7 @@ export function useGitRefActions() {
     try {
       await action(repoPath);
     } catch (caught) {
-      const detail = describeError(caught);
+      const detail = formatAppError(caught);
       setError(detail);
       useNoticeStore.getState().startNotice({ title: `${label} failed`, detail, repoPath, status: "error" });
     } finally {
@@ -92,7 +93,7 @@ export function useGitRefActions() {
     try {
       preview = await gitApi.previewStash(path, stash);
     } catch (caught) {
-      await appDialog.alert(`Unable to preview ${stash.name}: ${describeError(caught)}`, "Stash preview failed");
+      await appDialog.alert(`Unable to preview ${stash.name}: ${formatAppError(caught)}`, "Stash preview failed");
       return;
     }
     const isPop = action === "pop";
@@ -144,7 +145,7 @@ export function useGitRefActions() {
     try {
       preview = formatDryRunPreview(await gitApi.pushTagDryRun(path, remote, tag.name), "Git did not report any ref updates for this tag push dry run.");
     } catch (caught) {
-      await appDialog.alert(`Unable to preview tag push for "${tag.name}": ${describeError(caught)}`, "Tag push preview failed");
+      await appDialog.alert(`Unable to preview tag push for "${tag.name}": ${formatAppError(caught)}`, "Tag push preview failed");
       return;
     }
     if (!(await appDialog.confirm(`Push tag "${tag.name}" to ${remote}?\n\nPreview:\n${preview}`, "Push tag?"))) return;
@@ -161,7 +162,7 @@ export function useGitRefActions() {
     try {
       preview = formatDryRunPreview(await gitApi.deleteRemoteTagDryRun(path, remote, tag.name), "Git did not report a ref deletion for this remote tag dry run.");
     } catch (caught) {
-      await appDialog.alert(`Unable to preview remote tag deletion for "${tag.name}": ${describeError(caught)}`, "Remote tag deletion preview failed");
+      await appDialog.alert(`Unable to preview remote tag deletion for "${tag.name}": ${formatAppError(caught)}`, "Remote tag deletion preview failed");
       return;
     }
     if (!(await appDialog.confirm(`Delete remote tag "${tag.name}" from ${remote}?\n\nPreview:\n${preview}\n\nThis does not delete the local tag. Recovery: push the local tag again, or recreate it at the intended commit before pushing.`, "Delete remote tag?", "danger"))) return;

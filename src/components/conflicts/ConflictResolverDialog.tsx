@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { X, RefreshCw, ExternalLink } from "lucide-react";
 import { gitApi } from "../../lib/tauri-api";
+import { formatAppError } from "../../lib/app-error";
 import {
-  gitActionErrorMessage,
   gitKeys,
   gitMutations,
   gitQueries,
@@ -269,10 +269,10 @@ function ResolverContents({
   useEffect(() => {
     const onFocus = () => {
       if (!mutationLock.current)
-        void refresh().catch((cause) => setError(gitActionErrorMessage(cause)));
+        void refresh().catch((cause) => setError(formatAppError(cause)));
     };
     window.addEventListener("focus", onFocus);
-    void refresh().catch((cause) => setError(gitActionErrorMessage(cause)));
+    void refresh().catch((cause) => setError(formatAppError(cause)));
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
 
@@ -296,7 +296,7 @@ function ResolverContents({
           useConflictStore.getState().receive(repoPath, value);
       })
       .catch((cause) => {
-        if (!cancelled) setLoadError(gitActionErrorMessage(cause));
+        if (!cancelled) setLoadError(formatAppError(cause));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -412,7 +412,7 @@ function ResolverContents({
       useConflictStore.getState().sync(repoPath, freshOperation);
       await invalidateGitState(queryClient, repoPath);
     } catch (cause) {
-      setError(gitActionErrorMessage(cause));
+      setError(formatAppError(cause));
       try {
         const fresh = await gitApi.getConflictContent(repoPath, selectedPath);
         useConflictStore.getState().receive(repoPath, fresh);
@@ -492,7 +492,7 @@ function ResolverContents({
         }));
       await refresh();
     } catch (cause) {
-      setError(gitActionErrorMessage(cause));
+      setError(formatAppError(cause));
     } finally {
       mutationLock.current = false;
       setBusy(false);
@@ -513,7 +513,7 @@ function ResolverContents({
       queryClient.setQueryData(gitKeys.operationSummary(child), childOperation);
       if (childOperation.id) useConflictStore.getState().open(child);
     } catch (cause) {
-      setError(gitActionErrorMessage(cause));
+      setError(formatAppError(cause));
     } finally {
       setBusy(false);
     }
@@ -534,7 +534,7 @@ function ResolverContents({
         settings.externalEditorPath ?? undefined,
       );
     } catch (cause) {
-      setError(gitActionErrorMessage(cause));
+      setError(formatAppError(cause));
     }
   };
 
@@ -584,7 +584,7 @@ function ResolverContents({
             disabled={pending}
             onClick={() =>
               void refresh().catch((cause) =>
-                setError(gitActionErrorMessage(cause)),
+                setError(formatAppError(cause)),
               )
             }
           >
@@ -618,7 +618,7 @@ function ResolverContents({
                   onSuccess: () => {
                     void invalidateGitState(queryClient, parent.path);
                   },
-                  onError: (cause) => setError(gitActionErrorMessage(cause)),
+                  onError: (cause) => setError(formatAppError(cause)),
                 });
               }}
             >

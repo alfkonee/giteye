@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { History, X } from "lucide-react";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { formatRelativeTime, truncateHash } from "../../lib/format";
 import { LoadingSpinner } from "../common/LoadingSpinner";
 import { ErrorCallout } from "../common/ErrorCallout";
@@ -147,7 +148,7 @@ export function RefHistoryDialog({
       <div className="flex justify-center py-8"><LoadingSpinner /></div>
      ) : error ? (
       <div className="p-4">
-       <ErrorCallout message={`Could not load history of ${label}: ${error instanceof Error ? error.message : String(error)}`} />
+       <ErrorCallout message={`Could not load history of ${label}: ${formatAppError(error)}`} />
       </div>
      ) : (
       <div role="table" aria-label={`History of ${label}`}>

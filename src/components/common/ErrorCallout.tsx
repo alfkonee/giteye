@@ -1,12 +1,14 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/app-error";
 
 interface ErrorCalloutProps {
-  message: string;
+  message?: string;
+  error?: unknown;
   className?: string;
 }
 
-export function ErrorCallout({ message, className }: ErrorCalloutProps) {
+export function ErrorCallout({ message, error, className }: ErrorCalloutProps) {
   return (
     <div
       className={cn(
@@ -21,7 +23,7 @@ export function ErrorCallout({ message, className }: ErrorCalloutProps) {
       role="alert"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-      <span className="min-w-0 text-[var(--color-text-primary)]">{message}</span>
+      <span className="min-w-0 whitespace-pre-line text-[var(--color-text-primary)]">{formatAppError(error ?? message)}</span>
     </div>
   );
 }

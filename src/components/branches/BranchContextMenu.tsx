@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { formatRebasePreview } from "../../lib/git-preview";
 import { useExclusiveMenu } from "../../lib/exclusive-menu";
-import { gitActionErrorMessage, gitMutations } from "../../lib/git-data";
+import { gitMutations } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useBranchPullRequests } from "../../lib/branch-pull-requests";
 import { appDialog } from "../common/AppDialogProvider";
 import type { Branch, StartRebaseRequest } from "../../types/git";
@@ -90,7 +91,7 @@ export function BranchContextMenu({
     } catch (error) {
       await appDialog.alert(
         `Unable to preview rebase onto ${branch.shortName}: ${
-          error instanceof Error ? error.message : String(error)
+          formatAppError(error)
         }`,
         "Rebase preview failed",
       );
@@ -193,7 +194,7 @@ export function BranchContextMenu({
         {pullRequestsQuery.isError ? (
           <BranchMenuItem
             label="Retry pull request lookup"
-            detail={gitActionErrorMessage(pullRequestsQuery.error)}
+            detail={formatAppError(pullRequestsQuery.error)}
             disabled={!isCurrentSelection || pullRequestsQuery.isFetching}
             keepOpen
             onSelect={() => void pullRequestsQuery.refetch()}

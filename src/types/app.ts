@@ -30,6 +30,8 @@ export interface ToolComponentStatus {
 
 export interface ToolchainStatus {
   platform: string;
+  architecture: string;
+  osVersion: string;
   git: ToolComponentStatus;
   lfs: ToolComponentStatus;
   lfsEnabled: boolean;

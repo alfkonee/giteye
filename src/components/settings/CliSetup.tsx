@@ -3,7 +3,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Button } from "../ui";
 import { cliLauncherApi } from "../../lib/cli-launcher-api";
-import { gitActionErrorMessage } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { gitApi } from "../../lib/tauri-api";
 
 const CLI_STATUS_KEY = ["cli-launcher-status"] as const;
@@ -31,7 +31,7 @@ export function CliSetupControls({ compact = false }: { compact?: boolean }) {
         await rememberCliSetup(queryClient);
         setPreferenceError(null);
       } catch (error) {
-        setPreferenceError(`CLI setup succeeded, but the first-run preference could not be saved: ${gitActionErrorMessage(error)}`);
+        setPreferenceError(`CLI setup succeeded, but the first-run preference could not be saved: ${formatAppError(error)}`);
       }
     },
   });
@@ -54,7 +54,7 @@ export function CliSetupControls({ compact = false }: { compact?: boolean }) {
         </Button>}
       </div>
       {result && <p className="whitespace-pre-wrap break-words text-xs text-[var(--color-text-muted)]">{result.instructions}</p>}
-      {error != null && <p role="alert" className="text-xs text-[var(--color-danger)]">{gitActionErrorMessage(error)}</p>}
+      {error != null && <p role="alert" className="text-xs text-[var(--color-danger)]">{formatAppError(error)}</p>}
       {preferenceError && <p role="alert" className="text-xs text-[var(--color-danger)]">{preferenceError}</p>}
     </section>
   );
@@ -98,7 +98,7 @@ export function CliSetupOffer() {
           {status.data?.installed ? "Done" : "Not now"}
         </Button>
       </div>
-      {dismiss.error != null && <p role="alert" className="mt-2 text-xs text-[var(--color-danger)]">{gitActionErrorMessage(dismiss.error)}</p>}
+      {dismiss.error != null && <p role="alert" className="mt-2 text-xs text-[var(--color-danger)]">{formatAppError(dismiss.error)}</p>}
     </aside>
   );
 }
