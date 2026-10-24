@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitMerge, ListChecks, RefreshCw, ToggleLeft, ToggleRight } from "lucide-react";
 import { gitMutations, gitQueries } from "../../lib/git-data";
 import { formatRebasePreview } from "../../lib/git-preview";
+import { formatAppError } from "../../lib/app-error";
 import { useAppStore } from "../../stores/app-store";
 import type { MergeStrategyOption, StartRebaseRequest } from "../../types/git";
 
@@ -138,7 +139,7 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
       previewText = formatRebasePreview(await previewRebaseMutation.mutateAsync(request));
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview rebase of ${branchLabel}: ${error instanceof Error ? error.message : String(error)}`,
+        `Unable to preview rebase of ${branchLabel}: ${formatAppError(error)}`,
         "Rebase preview failed",
       );
       return;
@@ -165,7 +166,7 @@ export function IntegratePanel({ prefillRef, activeOperation }: IntegratePanelPr
     <div className="h-full overflow-y-auto p-3">
       {actionError ? (
         <div className="mb-3 rounded-md border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
-          {actionError instanceof Error ? actionError.message : String(actionError)}
+          {formatAppError(actionError)}
         </div>
       ) : null}
       {prefillRef ? (

@@ -142,6 +142,18 @@ impl LaunchIntent {
     }
 }
 
+/// AppRun changes into the bundle's usr directory and records the caller in OWD.
+/// Restore it before resolving paths, detaching, or forwarding through Tauri.
+#[cfg(target_os = "linux")]
+pub fn restore_appimage_working_directory() -> std::io::Result<()> {
+    if std::env::var_os("APPIMAGE").is_some_and(|value| !value.is_empty()) {
+        if let Some(directory) = std::env::var_os("OWD").filter(|value| !value.is_empty()) {
+            std::env::set_current_dir(directory)?;
+        }
+    }
+    Ok(())
+}
+
 /// Relaunches this application with the same arguments as a process detached
 /// from the calling terminal, so the caller can exit and return the prompt.
 /// The child gets null stdio and, on Windows, no console, so it never detaches again.
@@ -336,6 +348,52 @@ mod tests {
     fn non_unicode_arguments_are_rejected_before_plugin_forwarding() {
         use std::os::unix::ffi::OsStringExt;
         assert!(parse_arguments([OsString::from_vec(vec![0xff])]).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_launch_restores_caller_without_changing_native_launches() {
+        const CHILD: &str = "GITEYE_TEST_APPIMAGE_CWD";
+        let caller = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .canonicalize()
+            .unwrap();
+        let bundle_directory = caller.join("src");
+        if let Some(case) = std::env::var_os(CHILD) {
+            restore_appimage_working_directory().unwrap();
+            let expected = if case == "appimage" {
+                &caller
+            } else {
+                &bundle_directory
+            };
+            assert_eq!(std::env::current_dir().unwrap(), *expected);
+            assert_eq!(
+                LaunchIntent::repository(Path::new("."), &std::env::current_dir().unwrap()),
+                LaunchIntent::OpenRepository {
+                    path: expected.to_str().unwrap().into()
+                },
+            );
+            return;
+        }
+        for case in ["appimage", "native"] {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", "launch::tests::appimage_launch_restores_caller_without_changing_native_launches"])
+                .current_dir(&bundle_directory)
+                .env(CHILD, case)
+                .env("OWD", &caller);
+            if case == "appimage" {
+                command.env("APPIMAGE", caller.join("GitEye.AppImage"));
+            } else {
+                command.env_remove("APPIMAGE");
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{case}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+        }
     }
 
     #[test]

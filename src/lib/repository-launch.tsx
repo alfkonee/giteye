@@ -4,7 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../stores/app-store";
 import { useNoticeStore } from "../stores/notice-store";
-import { gitActionErrorMessage, gitMutations } from "./git-data";
+import { gitMutations } from "./git-data";
+import { formatAppError, normalizeAppError } from "./app-error";
 import { tracedInvoke } from "./invoke-trace";
 
 type LaunchIntent =
@@ -19,10 +20,15 @@ let drainInFlight: Promise<void> | null = null;
 let drainRequested = false;
 
 function reportLaunchError(error: unknown) {
+  const normalized = normalizeAppError(error);
+  const recoveryHint = [...new Set([
+    normalized.recoveryHint,
+    "Run giteye with an existing Git repository directory, or use Open in the Repo Hub.",
+  ].filter((hint): hint is string => Boolean(hint?.trim())).map((hint) => hint.trim()))].join("\n");
   useNoticeStore.getState().startNotice({
     title: "Could not open repository from the command line",
-    detail: gitActionErrorMessage(error),
-    recoveryHint: "Run giteye with an existing Git repository directory, or use Open in the Repo Hub.",
+    detail: formatAppError({ ...normalized, message: normalized.message, recoveryHint: null }),
+    recoveryHint,
     category: "system",
     status: "error",
   });

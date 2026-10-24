@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useAppStore } from "../../stores/app-store";
 import type { Submodule, SubmoduleForeachStatus, Worktree } from "../../types/git";
 import { appDialog } from "../common/AppDialogProvider";
@@ -114,11 +115,6 @@ function formatRelativeTime(value: string | null) {
 function formatStatus(status: string | null | undefined, fallback: string) {
   if (!status) return fallback;
   return STATUS_LABELS[status] ?? status.replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-function formatMutationError(error: unknown) {
-  if (!error) return null;
-  return error instanceof Error ? error.message : String(error);
 }
 
 function previewList(paths: string[]) {
@@ -233,7 +229,7 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function QueryNote({ loading, error }: { loading: boolean; error: unknown }) {
-  const message = error ? formatMutationError(error) : loading ? "Loading live repository data…" : null;
+  const message = error ? formatAppError(error) : loading ? "Loading live repository data…" : null;
   if (!message) return null;
 
   return <span className="text-xs text-[var(--color-text-muted)]">{message}</span>;
@@ -333,7 +329,8 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
   const mutationError = addSubmodule.error ?? updateSubmodule.error ?? syncSubmodules.error ?? bumpSubmodule.error ?? submoduleInitUpdate.error ?? submoduleSetBranch.error ?? foreachStatusQuery.error;
   const canMutateSubmodules = submoduleRows.length > 0 && !isSubmoduleMutating;
   const isWorktreeMutating = createWorktree.isPending || removeWorktreeDryRun.isPending || removeWorktree.isPending || pruneWorktrees.isPending || moveWorktree.isPending || lockWorktree.isPending || unlockWorktree.isPending || repairWorktree.isPending;
-  const worktreeError = actionError ?? formatMutationError(createWorktree.error ?? removeWorktreeDryRun.error ?? removeWorktree.error ?? openRepository.error ?? pruneWorktrees.error ?? pruneWorktreesDryRun.error ?? moveWorktree.error ?? lockWorktree.error ?? unlockWorktree.error ?? repairWorktree.error ?? repairWorktreeDryRun.error);
+  const worktreeMutationError = createWorktree.error ?? removeWorktreeDryRun.error ?? removeWorktree.error ?? openRepository.error ?? pruneWorktrees.error ?? pruneWorktreesDryRun.error ?? moveWorktree.error ?? lockWorktree.error ?? unlockWorktree.error ?? repairWorktree.error ?? repairWorktreeDryRun.error;
+  const worktreeError = actionError ?? (worktreeMutationError ? formatAppError(worktreeMutationError) : null);
 
   const openCreateWorktreeDialog = () => {
     setActionError(null);
@@ -427,7 +424,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
         await appDialog.alert("Repair dry run did not report any worktree link changes.", "No repair needed");
       }
     } catch (error) {
-      setActionError(formatMutationError(error));
+      setActionError(formatAppError(error));
     }
   };
 
@@ -439,7 +436,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     try {
       dryRunLines = await removeWorktreeDryRun.mutateAsync({ path: worktreePath, force });
     } catch (error) {
-      setActionError(formatMutationError(error));
+      setActionError(formatAppError(error));
       return;
     }
 
@@ -473,7 +470,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
         await appDialog.alert("No stale worktree metadata was found by the prune dry run.", "Nothing to prune");
       }
     } catch (error) {
-      setActionError(formatMutationError(error));
+      setActionError(formatAppError(error));
     }
   };
 
@@ -493,7 +490,7 @@ export function WorktreesSubmodules({ section = "worktrees" }: WorktreesSubmodul
     setActionError(null);
     openSubmodule.mutate(submodulePath, {
       onSuccess: (repoPath) => openRepository.mutate(repoPath),
-      onError: (error) => setActionError(formatMutationError(error)),
+      onError: (error) => setActionError(formatAppError(error)),
     });
   };
 

@@ -10,10 +10,10 @@ import {
   X,
 } from "lucide-react";
 import {
-  gitActionErrorMessage,
   gitMutations,
   gitQueries,
 } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import type { LocalBranchPruneCandidate } from "../../types/git";
 import { Button, Select } from "../ui";
 import { useAppDialog } from "../common/AppDialogProvider";
@@ -101,7 +101,7 @@ function BranchPruneDialog({
     } catch (error) {
       await dialog.alert({
         title: "Unable to preview branch prune",
-        message: gitActionErrorMessage(error),
+        message: formatAppError(error),
         tone: "danger",
       });
     }
@@ -138,7 +138,7 @@ function BranchPruneDialog({
     } catch (error) {
       await dialog.alert({
         title: "Unable to scan local branches",
-        message: gitActionErrorMessage(error),
+        message: formatAppError(error),
         tone: "danger",
       });
     }
@@ -280,7 +280,7 @@ function BranchPruneDialog({
 
           {error ? (
             <p className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
-              {gitActionErrorMessage(error)}
+              {formatAppError(error)}
             </p>
           ) : null}
 
@@ -313,7 +313,7 @@ function BranchPruneDialog({
             </div>
             {localPruneMutation.error ? (
               <p className="border-b border-[var(--color-border-muted)] px-3 py-2 text-[11px] text-[var(--color-danger)]">
-                {gitActionErrorMessage(localPruneMutation.error)}
+                {formatAppError(localPruneMutation.error)}
               </p>
             ) : null}
             {localCandidates.length > 0 ? (

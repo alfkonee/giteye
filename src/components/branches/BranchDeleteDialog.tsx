@@ -2,7 +2,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, Globe2, Trash2, TriangleAlert, X } from "lucide-react";
-import { gitActionErrorMessage, gitMutations } from "../../lib/git-data";
+import { gitMutations } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import type { Branch } from "../../types/git";
 import { Button } from "../ui";
@@ -49,7 +50,7 @@ export function BranchDeleteDialog({
       } catch (reason) {
         await appDialog.alert({
           title: "Unable to preview remote deletion",
-          message: gitActionErrorMessage(reason),
+          message: formatAppError(reason),
           tone: "danger",
         });
         return;
@@ -161,8 +162,8 @@ export function BranchDeleteDialog({
 
           {error ? (
             <p className="rounded-lg border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-xs text-[var(--color-danger)]">
-              {gitActionErrorMessage(error)}
-              {!force && /not fully merged|unmerged/i.test(gitActionErrorMessage(error)) ? (
+              {formatAppError(error)}
+              {!force && /not fully merged|unmerged/i.test(formatAppError(error)) ? (
                 <span className="mt-1 block">
                   Enable “Force delete” above to remove it anyway.
                 </span>

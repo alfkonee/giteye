@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitApi } from "../../lib/tauri-api";
-import { gitActionErrorMessage, invalidateGitState } from "../../lib/git-data";
+import { invalidateGitState } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { todoEqual, useConflictStore } from "../../stores/conflict-store";
 import type { RebaseTodoItem } from "../../types/git";
 import { Button, Select } from "../ui";
@@ -253,7 +254,7 @@ export function RebaseTodo({
         }));
       await invalidateGitState(queryClient, repoPath);
     },
-    onError: (cause) => setError(gitActionErrorMessage(cause)),
+    onError: (cause) => setError(formatAppError(cause)),
     onSettled: () =>
       useConflictStore
         .getState()

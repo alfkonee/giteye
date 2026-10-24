@@ -4,7 +4,7 @@ import { useConflictStore } from "../../stores/conflict-store";
 import { Button } from "../ui";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
 import { resultPatch } from "./conflict-text";
-import { gitActionErrorMessage } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 
 export function ConflictAiReview({
   repoPath,
@@ -112,9 +112,9 @@ export function ConflictAiReview({
         } catch (cause) {
           store.updateFile(repoPath, path, (value) => ({
             ...value,
-            ai: { status: "error", error: gitActionErrorMessage(cause) },
+            ai: { status: "error", error: formatAppError(cause) },
           }));
-          setError(`${path}: ${gitActionErrorMessage(cause)}`);
+          setError(`${path}: ${formatAppError(cause)}`);
         }
       }
       setPreviewPaths(ready);
@@ -216,7 +216,7 @@ export function ConflictAiReview({
             ai: {
               ...item.ai,
               status: "error",
-              error: gitActionErrorMessage(cause),
+              error: formatAppError(cause),
             },
           }));
         }
@@ -270,7 +270,7 @@ export function ConflictAiReview({
           ai: {
             ...value.ai,
             status: "stale",
-            error: gitActionErrorMessage(cause),
+            error: formatAppError(cause),
           },
         }));
     }

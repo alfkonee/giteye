@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { formatDryRunPreview } from "../../lib/git-preview";
 import { runBranchPushFlow } from "../../lib/branch-push";
 import { gitApi } from "../../lib/tauri-api";
@@ -342,7 +343,7 @@ export function Sidebar() {
       deleteRemoteBranchMutation.mutate(request);
     } catch (error) {
       await appDialog.alert(
-        `Unable to preview remote deletion for ${target}: ${String(error)}`,
+        `Unable to preview remote deletion for ${target}: ${formatAppError(error)}`,
         "Remote deletion preview failed",
       );
     }
@@ -445,7 +446,7 @@ export function Sidebar() {
         {!localBranchesExpanded ? null : branchesQuery.isLoading ? (
           <SidebarNote>Loading branches…</SidebarNote>
         ) : branchesQuery.error ? (
-          <SidebarNote>Branches unavailable</SidebarNote>
+          <SidebarNote>Branches unavailable: {formatAppError(branchesQuery.error)}</SidebarNote>
         ) : localBranches.length === 0 ? (
           <SidebarNote>No branches</SidebarNote>
         ) : (
@@ -508,7 +509,7 @@ export function Sidebar() {
         {worktreesQuery.isLoading ? (
           <SidebarNote>Loading worktrees…</SidebarNote>
         ) : worktreesQuery.error ? (
-          <SidebarNote>Worktrees unavailable</SidebarNote>
+          <SidebarNote>Worktrees unavailable: {formatAppError(worktreesQuery.error)}</SidebarNote>
         ) : worktrees.length === 0 ? (
           <SidebarNote>No linked worktrees</SidebarNote>
         ) : (
@@ -541,7 +542,7 @@ export function Sidebar() {
         {submodulesQuery.isLoading ? (
           <SidebarNote>Loading submodules…</SidebarNote>
         ) : submodulesQuery.error ? (
-          <SidebarNote>Submodules unavailable</SidebarNote>
+          <SidebarNote>Submodules unavailable: {formatAppError(submodulesQuery.error)}</SidebarNote>
         ) : submodules.length === 0 ? (
           <SidebarNote>No submodules configured</SidebarNote>
         ) : (

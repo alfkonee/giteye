@@ -7,6 +7,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useAppStore } from "../../stores/app-store";
 import { EmptyState } from "../common/EmptyState";
 import { ErrorCallout } from "../common/ErrorCallout";
@@ -72,7 +73,7 @@ export function CollaborationConnect() {
             </div>
           ) : providerQuery.error ? (
             <ErrorCallout
-              message={`Provider metadata unavailable: ${String(providerQuery.error)}`}
+              message={`Provider metadata unavailable: ${formatAppError(providerQuery.error)}`}
             />
           ) : canOpenProviderViews ? (
             <div className="space-y-4">

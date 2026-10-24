@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useAppStore } from "../../stores/app-store";
 import { useNoticeStore } from "../../stores/notice-store";
 import { cn } from "../../lib/cn";
@@ -323,7 +324,7 @@ export function RepositoryWelcome() {
                         {openMutation.isPending ? "Opening…" : "Open"}
                       </button>
                     </div>
-                    {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{String(actionError)}</p>}
+                    {actionError && <p className="mt-2 text-xs text-[var(--color-danger)]">{formatAppError(actionError)}</p>}
                   </div>
                 )}
 

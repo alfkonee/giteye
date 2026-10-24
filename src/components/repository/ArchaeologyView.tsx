@@ -12,6 +12,7 @@ import {
 import { useAppStore } from "../../stores/app-store";
 import { gitQueries } from "../../lib/git-data";
 import { cn } from "../../lib/cn";
+import { formatAppError, normalizeAppError, type AppCommandError } from "../../lib/app-error";
 import { ErrorCallout } from "../common/ErrorCallout";
 import { EmptyState } from "../common/EmptyState";
 import { Button, Select } from "../ui";
@@ -39,7 +40,7 @@ type ArchaeologyTool = "commits" | "files" | "blame" | "grep" | "pickaxe" | "ref
 
 type QueryState<T> = {
   data?: T[];
-  error: Error | null;
+  error: AppCommandError | null;
   isFetching: boolean;
   hasRequest: boolean;
   emptyTitle: string;
@@ -417,7 +418,7 @@ function ResultFrame<T>({ state, render }: { state: QueryState<T>; render: (resu
   }
 
   if (state.error) {
-    return <ErrorCallout className="mt-4" message={state.error.message} />;
+    return <ErrorCallout className="mt-4" message={formatAppError(state.error)} />;
   }
 
   if (state.isFetching && !state.data) {
@@ -465,7 +466,7 @@ function CommitList<T extends CommitSearchResult | FileHistoryEntry | PickaxeSea
 function queryState<T>(query: { data?: T[]; error: unknown; isFetching: boolean }, hasRequest: boolean, emptyTitle: string, emptyDescription: string): QueryState<T> {
   return {
     data: query.data,
-    error: query.error instanceof Error ? query.error : query.error ? new Error(String(query.error)) : null,
+    error: query.error ? normalizeAppError(query.error) : null,
     isFetching: query.isFetching,
     hasRequest,
     emptyTitle,

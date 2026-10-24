@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Archive, GitBranch, Tag as TagIcon } from "lucide-react";
-import { gitActionErrorMessage, gitQueries } from "../../lib/git-data";
+import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { useGitRefActions } from "../../hooks/useGitRefActions";
 import { useAppStore } from "../../stores/app-store";
 import type { GitRefSelection, StashFile, StashSection } from "../../types/git";
@@ -37,7 +38,7 @@ export function GitRefDetails({ selection }: { selection: GitRefSelection }) {
 
   if (selection.kind === "tag") {
     if (tagQuery.isPending) return <p className="p-4 text-sm text-[var(--color-text-secondary)]">Loading tag details…</p>;
-    if (tagQuery.error) return <p role="alert" className="p-4 text-sm text-[var(--color-danger)]">Failed to load tag: {gitActionErrorMessage(tagQuery.error)}</p>;
+    if (tagQuery.error) return <p role="alert" className="p-4 text-sm text-[var(--color-danger)]">Failed to load tag: {formatAppError(tagQuery.error)}</p>;
     if (!tag) return <p className="p-4 text-sm text-[var(--color-text-secondary)]">Tag was removed or moved. Clearing selection…</p>;
     return (
       <section className="flex h-full flex-col overflow-y-auto bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
@@ -66,7 +67,7 @@ export function GitRefDetails({ selection }: { selection: GitRefSelection }) {
   }
 
   if (stashQuery.isPending) return <p className="p-4 text-sm text-[var(--color-text-secondary)]">Loading stash details…</p>;
-  if (stashQuery.error) return <p role="alert" className="p-4 text-sm text-[var(--color-danger)]">Failed to load stash: {gitActionErrorMessage(stashQuery.error)}</p>;
+  if (stashQuery.error) return <p role="alert" className="p-4 text-sm text-[var(--color-danger)]">Failed to load stash: {formatAppError(stashQuery.error)}</p>;
   if (!stash) return <p className="p-4 text-sm text-[var(--color-text-secondary)]">Stash was removed. Clearing selection…</p>;
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
@@ -89,7 +90,7 @@ export function GitRefDetails({ selection }: { selection: GitRefSelection }) {
       </header>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="max-h-[40%] shrink-0 overflow-auto border-b border-[var(--color-border)] px-3 py-2">
-          {filesQuery.isPending ? <p className="text-xs text-[var(--color-text-muted)]">Loading saved files…</p> : filesQuery.error ? <p role="alert" className="text-xs text-[var(--color-danger)]">Failed to load saved files: {gitActionErrorMessage(filesQuery.error)}</p> :
+          {filesQuery.isPending ? <p className="text-xs text-[var(--color-text-muted)]">Loading saved files…</p> : filesQuery.error ? <p role="alert" className="text-xs text-[var(--color-danger)]">Failed to load saved files: {formatAppError(filesQuery.error)}</p> :
             sections.map(({ key, label }) => {
               const files = filesQuery.data?.filter((file) => file.section === key) ?? [];
               return <div key={key} className="mb-2">
@@ -104,7 +105,7 @@ export function GitRefDetails({ selection }: { selection: GitRefSelection }) {
         <div className="min-h-0 flex-1">
           {selected ? <DiffViewer diffText={diffQuery.data?.diffText ?? ""} filePath={diffQuery.data?.filePath ?? selected.path}
             oldFilePath={diffQuery.data?.oldFilePath ?? undefined} isBinary={diffQuery.data?.isBinary} truncated={diffQuery.data?.truncated}
-            isLoading={diffQuery.isPending} error={diffQuery.error ? gitActionErrorMessage(diffQuery.error) : null} mode={diffMode} /> :
+            isLoading={diffQuery.isPending} error={diffQuery.error ? formatAppError(diffQuery.error) : null} mode={diffMode} /> :
             <p className="p-4 text-xs text-[var(--color-text-muted)]">No saved file changes in this stash.</p>}
         </div>
       </div>

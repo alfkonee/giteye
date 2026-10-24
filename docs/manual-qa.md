@@ -68,3 +68,14 @@ Capture the mapped design screens at 1490×1024 and at least one wider desktop s
 - Run `bunx tauri info`: the frontend API and native Tauri crate must share a major/minor release, as must the dialog and opener bindings. Launch the app, open a fixture, and verify repository history through the native IPC bridge.
 - Run the locked Rust suite, including LFS checksum acceptance/rejection and stale resolver/AI consent checks. SHA-256 revisions and release checksums remain 64-character lowercase hexadecimal values.
 - Require Linux, Windows, and macOS smoke builds. The MCP bridge patch in `Cargo.toml` pins the upstream Windows dependency-alignment change; retain it until a published bridge release includes that fix.
+
+## Terminal launcher
+
+- For Linux AppImages, run `giteye .` from a repository, a nested directory, and a path containing spaces. Check both the first launch and a second launch from a different repository while the app is running: each must open the caller's repository, never the mounted bundle's `usr` directory.
+- Confirm terminal launches return the prompt immediately without success output; closing the terminal must not close the app. Check native (non-AppImage) launches still resolve paths from their actual working directory.
+
+## Errors and support bundles
+
+- Trigger a repository-open failure and a query failure with trace recording both disabled and enabled. Check readable error text, command context, and actionable recovery guidance, never `[object Object]`. A failed destructive operation must retain its specific recovery advice as well as native guidance; do not automatically retry mutations.
+- Settings → About → Create diagnostic bundle: verify app/build/runtime, OS version/architecture, Git/LFS versions, and the three allowlisted preferences. Select individual traces/jobs and opt into the recent-failure summary. Confirm secrets, repository/file paths, raw arguments/output/logs, contents, and private identifiers are absent from the JSON.
+- Change live activity after capturing: the preview remains frozen. Refresh clears selections and captures a new snapshot. Save previewed JSON and compare the downloaded file byte-for-byte with the preview; Cancel must not save. Nothing is uploaded.

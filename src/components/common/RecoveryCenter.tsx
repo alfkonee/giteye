@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, History, Loader2, RotateCcw, X } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { ErrorCallout } from "./ErrorCallout";
 
 /** A stable, human-readable recovery branch name from a short hash. */
@@ -76,7 +77,7 @@ export function RecoveryCenter({ open, onClose }: { open: boolean; onClose: () =
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading reflog…
                 </div>
               ) : reflog.error ? (
-                <ErrorCallout message={`Failed to load reflog: ${String(reflog.error)}`} />
+                <ErrorCallout message={`Failed to load reflog: ${formatAppError(reflog.error)}`} />
               ) : reflogEntries.length === 0 ? (
                 <p className="px-4 py-6 text-center text-[12px] text-[var(--color-text-muted)]">Reflog is empty.</p>
               ) : (
@@ -130,7 +131,7 @@ export function RecoveryCenter({ open, onClose }: { open: boolean; onClose: () =
                   <Loader2 className="h-4 w-4 animate-spin" /> Scanning for lost commits…
                 </div>
               ) : lost.error ? (
-                <ErrorCallout message={`Failed to scan lost commits: ${String(lost.error)}`} />
+                <ErrorCallout message={`Failed to scan lost commits: ${formatAppError(lost.error)}`} />
               ) : lostCommits.length === 0 ? (
                 <p className="px-4 py-6 text-center text-[12px] text-[var(--color-text-muted)]">No dangling commits found.</p>
               ) : (

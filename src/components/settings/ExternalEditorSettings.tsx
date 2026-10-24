@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { open } from "@tauri-apps/plugin-dialog";
 import { gitApi } from "../../lib/tauri-api";
-import { gitActionErrorMessage } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { Button } from "../ui";
 
 export function ExternalEditorSettings() {
@@ -52,7 +52,7 @@ export function ExternalEditorSettings() {
       </div>
       {settings.error || update.error ? (
         <p role="alert" className="mt-2 text-xs text-[var(--color-danger)]">
-          {gitActionErrorMessage(settings.error ?? update.error)}
+          {formatAppError(settings.error ?? update.error)}
         </p>
       ) : null}
     </section>

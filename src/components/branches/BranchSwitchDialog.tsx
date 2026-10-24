@@ -4,6 +4,7 @@ import { AlertTriangle, Archive, ArrowRightLeft, GitBranch, Trash2, X } from "lu
 import { Button } from "../ui/Button";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
+import { formatAppError } from "../../lib/app-error";
 
 interface BranchSwitchDialogProps {
   branch: Branch | null;
@@ -94,7 +95,7 @@ export function BranchSwitchDialog({ branch, isClean, isPending, error, followUp
 
         {error ? (
           <p role="alert" className="mt-3 whitespace-pre-wrap break-words text-xs text-[var(--color-danger)]">
-            {error.message}
+            {formatAppError(error)}
           </p>
         ) : null}
 

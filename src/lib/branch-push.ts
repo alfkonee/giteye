@@ -1,4 +1,5 @@
 import { formatDryRunPreview } from "./git-preview";
+import { formatAppError } from "./app-error";
 import { appDialog } from "../components/common/AppDialogProvider";
 import type { PushBranchRequest } from "./tauri-api";
 
@@ -76,7 +77,7 @@ export async function runBranchPushFlow(
   } catch (error) {
     await appDialog.alert(
       `Unable to preview push to ${target}: ${
-        error instanceof Error ? error.message : String(error)
+        formatAppError(error)
       }`,
       "Push preview failed",
     );

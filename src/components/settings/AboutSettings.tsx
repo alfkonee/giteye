@@ -3,9 +3,11 @@ import { getIdentifier, getName, getTauriVersion, getVersion } from "@tauri-apps
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Copy, ExternalLink, Info } from "lucide-react";
-import { gitActionErrorMessage, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
+import { gitQueries } from "../../lib/git-data";
 import { gitApi } from "../../lib/tauri-api";
 import { Button } from "../ui";
+import { DiagnosticBundle } from "./DiagnosticBundle";
 
 const PROJECT_URL = "https://github.com/alfkonee/giteye";
 const LINKS = [
@@ -68,11 +70,11 @@ export function AboutSettings() {
       </div>
       {!native && <p className="px-5 pt-4 text-xs text-[var(--color-text-muted)]">Running app details are available in the GitEye desktop app.</p>}
       {metadata.isError && <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
-        <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to load app details: {gitActionErrorMessage(metadata.error)}</p>
+        <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to load app details: {formatAppError(metadata.error)}</p>
         <Button variant="secondary" size="sm" disabled={metadata.isFetching} onClick={() => void metadata.refetch()}>Retry app details</Button>
       </div>}
       {toolchain.isError && <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
-        <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to load Git details: {gitActionErrorMessage(toolchain.error)}</p>
+        <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to load Git details: {formatAppError(toolchain.error)}</p>
         <Button variant="secondary" size="sm" disabled={toolchain.isFetching} onClick={() => void toolchain.refetch()}>Retry Git details</Button>
       </div>}
       <dl className="divide-y divide-[var(--color-border-muted)] px-5 py-2">
@@ -99,9 +101,10 @@ export function AboutSettings() {
             {label}<ExternalLink className="h-3 w-3" aria-hidden="true" />
           </a>)}
         </div>
-        {copy.isError && <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to copy app details: {gitActionErrorMessage(copy.error)}</p>}
-        {link.isError && <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to open link: {gitActionErrorMessage(link.error)}</p>}
+        {copy.isError && <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to copy app details: {formatAppError(copy.error)}</p>}
+        {link.isError && <p role="alert" className="text-xs text-[var(--color-danger)]">Unable to open link: {formatAppError(link.error)}</p>}
       </div>
+      <DiagnosticBundle app={app} tools={tools} />
     </section>
   );
 }

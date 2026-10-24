@@ -5,6 +5,7 @@ import { useAppStore } from "../../stores/app-store";
 import { isTerminalStatus, useJobStore } from "../../stores/job-store";
 import { gitApi } from "../../lib/tauri-api";
 import { gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import { Button } from "../ui";
 export function InterruptedJobRecovery() {
   const activeRepoPath = useAppStore((state) => state.activeRepoPath);
@@ -106,7 +107,7 @@ export function InterruptedJobRecovery() {
           )}
           {recoverMutation.error ? (
             <p className="mt-2 text-sm text-[var(--color-danger)]">
-              {String(recoverMutation.error)}
+              {formatAppError(recoverMutation.error)}
             </p>
           ) : null}
           {recoveryInProgress ? (

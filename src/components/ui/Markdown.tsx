@@ -14,6 +14,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/cn";
+import { formatAppError } from "../../lib/app-error";
 
 interface MarkdownProps {
   children: string;
@@ -77,7 +78,7 @@ function MermaidDiagram({ source }: { source: string }) {
       })
       .catch((reason: unknown) => {
         if (!active) return;
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setError(formatAppError(reason));
       });
 
     return () => {

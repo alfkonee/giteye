@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gitApi } from "./tauri-api";
+import { formatAppError } from "./app-error";
 import { useAppStore } from "../stores/app-store";
 import { useNoticeStore } from "../stores/notice-store";
 import { DEFAULT_SETTINGS } from "../types/app";
 
 const APP_SETTINGS_QUERY_KEY = ["app-settings"] as const;
-
-function settingsErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return String(error);
-}
 
 export function AppSettingsSync() {
   const queryClient = useQueryClient();
@@ -38,7 +33,7 @@ export function AppSettingsSync() {
     onError: (error) => {
       useNoticeStore.getState().startNotice({
         title: "Settings were not saved",
-        detail: settingsErrorMessage(error),
+        detail: formatAppError(error),
         status: "error",
         category: "system",
       });

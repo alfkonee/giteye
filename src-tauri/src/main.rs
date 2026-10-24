@@ -2,6 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() -> std::process::ExitCode {
+    #[cfg(target_os = "linux")]
+    if let Err(error) = giteye_lib::launch::restore_appimage_working_directory() {
+        eprintln!("giteye: cannot restore the calling directory: {error}");
+        return std::process::ExitCode::FAILURE;
+    }
     // Release builds remain GUI apps; attaching lets CLI commands write
     // help/errors to the terminal that launched them, without creating one.
     #[cfg(windows)]
@@ -49,8 +54,7 @@ fn main() -> std::process::ExitCode {
             // Terminal launches must return the prompt immediately. Debug builds stay
             // attached so `tauri dev` keeps supervising the process and its logs.
             if from_terminal && !cfg!(debug_assertions) {
-                if let Err(error) =
-                    giteye_lib::launch::spawn_detached(std::env::args_os().skip(1))
+                if let Err(error) = giteye_lib::launch::spawn_detached(std::env::args_os().skip(1))
                 {
                     eprintln!("giteye: cannot start GitEye in the background: {error}");
                     return std::process::ExitCode::FAILURE;

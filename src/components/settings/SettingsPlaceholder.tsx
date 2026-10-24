@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import { gitMutations, gitQueries } from "../../lib/git-data";
+import { formatAppError } from "../../lib/app-error";
 import {
   gitApi,
   type AiProvider,
@@ -115,12 +116,11 @@ export function SettingsPlaceholder() {
   const testAuthMutation = useMutation({
     mutationFn: () => gitApi.testGitAuthentication(activeRepoPath!, null),
     onSuccess: (result) => setAuthTestResult(result),
-    onError: () =>
+    onError: (error) =>
       setAuthTestResult({
         success: false,
         remote: "origin",
-        message:
-          "Unable to test authentication. Check your network connection.",
+        message: `Unable to test authentication. Check your network connection. ${formatAppError(error)}`,
       }),
   });
 
@@ -150,7 +150,7 @@ export function SettingsPlaceholder() {
       );
     },
     onSuccess: (result) => setExportImportMessage(result ?? null),
-    onError: (error) => setExportImportMessage(`Export failed: ${error}`),
+    onError: (error) => setExportImportMessage(`Export failed: ${formatAppError(error)}`),
   });
 
   const importMutation = useMutation({
@@ -183,7 +183,7 @@ export function SettingsPlaceholder() {
         "Settings imported successfully. Restart any open repositories to apply all changes.",
       );
     },
-    onError: (error) => setExportImportMessage(`Import failed: ${error}`),
+    onError: (error) => setExportImportMessage(`Import failed: ${formatAppError(error)}`),
   });
 
   const systemPrefersDark = useSystemPrefersDark();
@@ -439,7 +439,7 @@ export function SettingsPlaceholder() {
     } catch (error) {
       useNoticeStore.getState().startNotice({
         title: "Preferences not saved",
-        detail: String(error),
+        detail: formatAppError(error),
         status: "error",
         category: "system",
       });
@@ -665,7 +665,7 @@ export function SettingsPlaceholder() {
                         warning={
                           aiModelsQuery.data?.warning ??
                           (aiModelsQuery.error
-                            ? String(aiModelsQuery.error)
+                            ? formatAppError(aiModelsQuery.error)
                             : null)
                         }
                         placeholder={selectedAiProvider.defaultModel}
@@ -713,7 +713,7 @@ export function SettingsPlaceholder() {
                   </div>
                   {aiErrorText ? (
                     <p className="text-[var(--color-danger)]">
-                      {String(aiErrorText)}
+                      {formatAppError(aiErrorText)}
                     </p>
                   ) : null}
                   <div className="flex justify-end gap-2">
@@ -871,7 +871,7 @@ export function SettingsPlaceholder() {
                             warning={
                               mergeModelsQuery.data?.warning ??
                               (mergeModelsQuery.error
-                                ? String(mergeModelsQuery.error)
+                                ? formatAppError(mergeModelsQuery.error)
                                 : null)
                             }
                             placeholder={selectedMergeProvider.defaultModel}
@@ -937,7 +937,7 @@ export function SettingsPlaceholder() {
                   </p>
                   {aiErrorText ? (
                     <p className="text-[var(--color-danger)]">
-                      {String(aiErrorText)}
+                      {formatAppError(aiErrorText)}
                     </p>
                   ) : null}
                   <div className="flex flex-wrap justify-end gap-2">
@@ -1072,7 +1072,7 @@ export function SettingsPlaceholder() {
                   ) : null}
                   {sshErrorText ? (
                     <p className="text-[var(--color-danger)]">
-                      {String(sshErrorText)}
+                      {formatAppError(sshErrorText)}
                     </p>
                   ) : null}
 
@@ -1181,7 +1181,7 @@ export function SettingsPlaceholder() {
                       ) : null}
                       {credentialErrorText ? (
                         <p className="text-[var(--color-danger)]">
-                          {String(credentialErrorText)}
+                          {formatAppError(credentialErrorText)}
                         </p>
                       ) : null}
                       <div className="flex justify-between gap-2">
@@ -1361,7 +1361,7 @@ export function SettingsPlaceholder() {
                       </div>
                       {identityErrorText ? (
                         <p className="text-[var(--color-danger)]">
-                          {String(identityErrorText)}
+                          {formatAppError(identityErrorText)}
                         </p>
                       ) : null}
                       <div className="flex justify-end gap-2">
